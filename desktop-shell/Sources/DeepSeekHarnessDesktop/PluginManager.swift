@@ -439,7 +439,7 @@ final class PluginManager: @unchecked Sendable {
     arguments: [String],
     progress: @escaping @Sendable (String) -> Void
   ) throws -> CommandResult {
-    let toolchain = try Toolchain.locate()
+    let toolchain = try Toolchain.resolve(supportRoot: supportRoot, progress: progress)
     let shimDirectory = try ensurePnpmShim(toolchain: toolchain)
     let cli = sourceRoot.appendingPathComponent("apps/cli/lib/bin.js")
     guard FileManager.default.fileExists(atPath: cli.path) else {

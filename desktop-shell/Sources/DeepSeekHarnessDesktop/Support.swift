@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 enum DesktopError: LocalizedError {
@@ -43,33 +44,143 @@ final class LogStore: @unchecked Sendable {
 }
 
 struct Toolchain: Sendable {
+  struct ManagedDistribution: Sendable {
+    let archiveURL: URL
+    let directoryName: String
+    let sha256: String
+  }
+
+  static let managedDistribution = ManagedDistribution(
+    archiveURL: URL(string: "https://nodejs.org/dist/v24.16.0/node-v24.16.0-darwin-arm64.tar.gz")!,
+    directoryName: "node-v24.16.0-darwin-arm64",
+    sha256: "39189dab4eeb15706c424af0ac08a3044c9e48f7db12a7d77f6b7aafc7dd5df6"
+  )
+
   let node: URL
   let npx: URL
 
-  static func locate() throws -> Toolchain {
+  static func locate(supportRoot: URL? = nil, candidateDirectories: [String]? = nil) throws -> Toolchain {
     let environment = ProcessInfo.processInfo.environment
     let home = FileManager.default.homeDirectoryForCurrentUser.path
     let pathDirectories = (environment["PATH"] ?? "").split(separator: ":").map(String.init)
-    let candidates = [
+    let managed = supportRoot?.appendingPathComponent("tools/node/bin", isDirectory: true).path
+    let hostCandidates = candidateDirectories ?? [
       "\(home)/.local/bin",
       "\(home)/.hermes/node/bin",
       "/opt/homebrew/bin",
       "/usr/local/bin",
       "/usr/bin",
     ] + pathDirectories
+    let candidates = [managed].compactMap { $0 } + hostCandidates
 
-    func executable(named name: String) -> URL? {
-      for directory in candidates {
-        let candidate = URL(fileURLWithPath: directory, isDirectory: true).appendingPathComponent(name)
-        if FileManager.default.isExecutableFile(atPath: candidate.path) { return candidate }
+    for directory in candidates {
+      let root = URL(fileURLWithPath: directory, isDirectory: true)
+      let node = root.appendingPathComponent("node")
+      let npx = root.appendingPathComponent("npx")
+      guard FileManager.default.isExecutableFile(atPath: node.path),
+            FileManager.default.isExecutableFile(atPath: npx.path),
+            supports(node: node)
+      else { continue }
+      return Toolchain(node: node, npx: npx)
+    }
+    throw DesktopError.message("未找到兼容的 Node.js / npx。应用将尝试安装受管理的 Node.js 24。")
+  }
+
+  static func resolve(
+    supportRoot: URL,
+    progress: @escaping @Sendable (String) -> Void,
+    distribution: ManagedDistribution = managedDistribution,
+    candidateDirectories: [String]? = nil
+  ) throws -> Toolchain {
+    if let toolchain = try? locate(supportRoot: supportRoot, candidateDirectories: candidateDirectories) {
+      return toolchain
+    }
+    return try installManaged(
+      supportRoot: supportRoot,
+      progress: progress,
+      distribution: distribution,
+      candidateDirectories: candidateDirectories
+    )
+  }
+
+  static func installManaged(
+    supportRoot: URL,
+    progress: @escaping @Sendable (String) -> Void,
+    distribution: ManagedDistribution,
+    candidateDirectories: [String]? = nil
+  ) throws -> Toolchain {
+    let fileManager = FileManager.default
+    let toolsRoot = supportRoot.appendingPathComponent("tools", isDirectory: true)
+    try fileManager.createDirectory(at: toolsRoot, withIntermediateDirectories: true)
+    let stage = toolsRoot.appendingPathComponent("node-install-\(UUID().uuidString)", isDirectory: true)
+    try fileManager.createDirectory(at: stage, withIntermediateDirectories: false)
+    defer { try? fileManager.removeItem(at: stage) }
+    let archive = stage.appendingPathComponent("node.tar.gz")
+
+    progress("正在下载受管理的 Node.js 24…\n")
+    let download = try CommandRunner.run(
+      executable: URL(fileURLWithPath: "/usr/bin/curl"),
+      arguments: ["--fail", "--location", "--show-error", "--output", archive.path, distribution.archiveURL.absoluteString],
+      progress: progress
+    )
+    guard download.status == 0 else {
+      throw DesktopError.message("Node.js 下载失败：\n\(download.output)")
+    }
+    let digest = SHA256.hash(data: try Data(contentsOf: archive)).map { String(format: "%02x", $0) }.joined()
+    guard digest == distribution.sha256 else {
+      throw DesktopError.message("Node.js 下载文件校验失败，已拒绝安装。")
+    }
+
+    progress("正在安装受管理的 Node.js 24…\n")
+    let unpack = try CommandRunner.run(
+      executable: URL(fileURLWithPath: "/usr/bin/tar"),
+      arguments: ["-xzf", archive.path, "-C", stage.path],
+      progress: progress
+    )
+    guard unpack.status == 0 else {
+      throw DesktopError.message("Node.js 解压失败：\n\(unpack.output)")
+    }
+    let extracted = stage.appendingPathComponent(distribution.directoryName, isDirectory: true)
+    let extractedNode = extracted.appendingPathComponent("bin/node")
+    let extractedNpx = extracted.appendingPathComponent("bin/npx")
+    guard fileManager.isExecutableFile(atPath: extractedNode.path),
+          fileManager.isExecutableFile(atPath: extractedNpx.path),
+          supports(node: extractedNode)
+    else {
+      throw DesktopError.message("Node.js 下载文件缺少兼容的 node 或 npx 可执行文件。")
+    }
+
+    let target = toolsRoot.appendingPathComponent("node", isDirectory: true)
+    let previous = toolsRoot.appendingPathComponent("node-previous-\(UUID().uuidString)", isDirectory: true)
+    let hadPrevious = fileManager.fileExists(atPath: target.path)
+    if hadPrevious { try fileManager.moveItem(at: target, to: previous) }
+    var installedNew = false
+    do {
+      try fileManager.moveItem(at: extracted, to: target)
+      installedNew = true
+      if hadPrevious { try fileManager.removeItem(at: previous) }
+    } catch {
+      if installedNew { try? fileManager.removeItem(at: target) }
+      if hadPrevious { try? fileManager.moveItem(at: previous, to: target) }
+      if !hadPrevious, let installedByAnotherProcess = try? locate(
+        supportRoot: supportRoot,
+        candidateDirectories: candidateDirectories
+      ) {
+        return installedByAnotherProcess
       }
-      return nil
+      throw error
     }
+    return try locate(supportRoot: supportRoot, candidateDirectories: candidateDirectories)
+  }
 
-    guard let node = executable(named: "node"), let npx = executable(named: "npx") else {
-      throw DesktopError.message("找不到 Node.js / npx。请安装 Node.js 22.19 或 24 以上版本。")
+  static func supports(node: URL) -> Bool {
+    guard let result = try? CommandRunner.run(executable: node, arguments: ["--version"]), result.status == 0 else {
+      return false
     }
-    return Toolchain(node: node, npx: npx)
+    let value = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+    let fields = value.drop(while: { $0 == "v" }).split(separator: ".")
+    guard fields.count >= 2, let major = Int(fields[0]), let minor = Int(fields[1]) else { return false }
+    return (major == 22 && minor >= 19) || major >= 24
   }
 
   func environment(overrides: [String: String] = [:], prepending paths: [String] = []) -> [String: String] {

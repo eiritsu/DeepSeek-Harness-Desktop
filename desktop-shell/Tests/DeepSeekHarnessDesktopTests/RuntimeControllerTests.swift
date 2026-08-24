@@ -1,4 +1,5 @@
 import AppKit
+import CryptoKit
 import Foundation
 import Testing
 @testable import DeepSeekHarnessDesktop
@@ -41,6 +42,109 @@ import Testing
   #expect(state.wait(timeout: .now()) == .success)
   #expect(state.outcome().0 == URL(string: "http://127.0.0.1:43210"))
   #expect(progress.get() == ["Preparing profile\n"])
+}
+
+@Test func compatibleHostNodeSkipsManagedInstallation() throws {
+  let temporaryRoot = FileManager.default.temporaryDirectory
+    .appendingPathComponent("dsh-host-node-\(UUID().uuidString)", isDirectory: true)
+  defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+  let bin = temporaryRoot.appendingPathComponent("host/bin", isDirectory: true)
+  try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+  try writeExecutable("#!/bin/sh\necho v24.16.0\n", to: bin.appendingPathComponent("node"))
+  try writeExecutable("#!/bin/sh\nexit 0\n", to: bin.appendingPathComponent("npx"))
+  let progress = LockedBox<[String]>([])
+  let unavailable = Toolchain.ManagedDistribution(
+    archiveURL: URL(string: "https://127.0.0.1:1/unavailable.tar.gz")!,
+    directoryName: "unavailable",
+    sha256: "unavailable"
+  )
+
+  let toolchain = try Toolchain.resolve(
+    supportRoot: temporaryRoot.appendingPathComponent("support", isDirectory: true),
+    progress: { progress.set(progress.get() + [$0]) },
+    distribution: unavailable,
+    candidateDirectories: [bin.path]
+  )
+
+  #expect(toolchain.node == bin.appendingPathComponent("node"))
+  #expect(progress.get().isEmpty)
+}
+
+@Test func missingHostNodeInstallsVerifiedManagedDistribution() throws {
+  let temporaryRoot = FileManager.default.temporaryDirectory
+    .appendingPathComponent("dsh-managed-node-\(UUID().uuidString)", isDirectory: true)
+  defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+  let fixture = temporaryRoot.appendingPathComponent("fixture/node-test/bin", isDirectory: true)
+  try FileManager.default.createDirectory(at: fixture, withIntermediateDirectories: true)
+  try writeExecutable("#!/bin/sh\necho v24.16.0\n", to: fixture.appendingPathComponent("node"))
+  try writeExecutable("#!/bin/sh\nexit 0\n", to: fixture.appendingPathComponent("npx"))
+  let archive = temporaryRoot.appendingPathComponent("node.tar.gz")
+  let tar = Process()
+  tar.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
+  tar.arguments = ["-czf", archive.path, "-C", temporaryRoot.appendingPathComponent("fixture").path, "node-test"]
+  try tar.run()
+  tar.waitUntilExit()
+  #expect(tar.terminationStatus == 0)
+  let digest = SHA256.hash(data: try Data(contentsOf: archive)).map { String(format: "%02x", $0) }.joined()
+  let progress = LockedBox<[String]>([])
+  let support = temporaryRoot.appendingPathComponent("support", isDirectory: true)
+
+  let toolchain = try Toolchain.installManaged(
+    supportRoot: support,
+    progress: { progress.set(progress.get() + [$0]) },
+    distribution: Toolchain.ManagedDistribution(
+      archiveURL: archive,
+      directoryName: "node-test",
+      sha256: digest
+    ),
+    candidateDirectories: []
+  )
+
+  #expect(toolchain.node == support.appendingPathComponent("tools/node/bin/node"))
+  #expect(progress.get().contains { $0.contains("下载受管理的 Node.js") })
+  #expect(progress.get().contains { $0.contains("安装受管理的 Node.js") })
+}
+
+@Test func managedNodeRejectsAnInvalidArchiveDigest() throws {
+  let temporaryRoot = FileManager.default.temporaryDirectory
+    .appendingPathComponent("dsh-managed-node-digest-\(UUID().uuidString)", isDirectory: true)
+  defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+  try FileManager.default.createDirectory(at: temporaryRoot, withIntermediateDirectories: true)
+  let archive = temporaryRoot.appendingPathComponent("node.tar.gz")
+  try Data("not a node archive".utf8).write(to: archive)
+  let support = temporaryRoot.appendingPathComponent("support", isDirectory: true)
+
+  #expect(throws: (any Error).self) {
+    try Toolchain.installManaged(
+      supportRoot: support,
+      progress: { _ in },
+      distribution: Toolchain.ManagedDistribution(
+        archiveURL: archive,
+        directoryName: "node-test",
+        sha256: String(repeating: "0", count: 64)
+      ),
+      candidateDirectories: []
+    )
+  }
+  #expect(!FileManager.default.fileExists(atPath: support.appendingPathComponent("tools/node").path))
+}
+
+@Test func nodeCompatibilityMatchesTheRepositoryEngineRange() throws {
+  let temporaryRoot = FileManager.default.temporaryDirectory
+    .appendingPathComponent("dsh-node-range-\(UUID().uuidString)", isDirectory: true)
+  defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+  try FileManager.default.createDirectory(at: temporaryRoot, withIntermediateDirectories: true)
+  let node = temporaryRoot.appendingPathComponent("node")
+
+  for (version, supported) in [("22.18.0", false), ("22.19.0", true), ("23.11.0", false), ("24.0.0", true)] {
+    try writeExecutable("#!/bin/sh\necho v\(version)\n", to: node)
+    #expect(Toolchain.supports(node: node) == supported)
+  }
+}
+
+private func writeExecutable(_ contents: String, to url: URL) throws {
+  try Data(contents.utf8).write(to: url)
+  try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
 }
 
 @Test func sessionSelectionBridgeRestoresAndMirrorsOnlyTheSelectionCell() {

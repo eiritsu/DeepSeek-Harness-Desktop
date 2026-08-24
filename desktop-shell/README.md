@@ -82,6 +82,8 @@ To replace an older installed build, quit DeepSeek Harness and copy the newly bu
 
 Run `scripts/package-dmg.sh` to create `dist/DeepSeek-Harness-macOS.dmg`. The distribution build uses `ai.deepseek.harness.desktop`, removes the developer checkout path, and embeds a source snapshot assembled only from tracked and non-ignored worktree files. Development builds keep the separate `ai.deepseek.harness.desktop.local` identity so their source-root preference cannot affect an installed distribution. Application Support data, profiles, API keys, sessions, logs, ignored `.env` files, and package caches are not build inputs. The disk image remains ad-hoc signed and is not notarized.
 
+The distributed application accepts an existing `node` and same-directory `npx` when the Node.js version satisfies `^22.19.0 || >=24.0.0`. If no compatible pair exists, startup downloads the official Node.js 24.16.0 ARM64 archive, verifies its pinned SHA-256 digest, and installs it at `tools/node` under the application support directory. This managed installation requires no administrator access and does not replace a system Node.js installation. The first source dependency installation still requires network access.
+
 ## Application icon
 
 The editable icon source belongs in the repository at [`Resources/AppIcon.svg`](Resources/AppIcon.svg). Keeping it here makes builds reproducible and prevents the application icon from depending on a file in Downloads. `scripts/build-app.sh` renders the macOS icon sizes, assembles `AppIcon.icns`, and increments the bundle build number so Launch Services refreshes its icon cache. The generated `.icns` and built `.app` are outputs and should not replace the SVG source in version control.

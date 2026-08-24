@@ -104,7 +104,7 @@ final class SourceManager: @unchecked Sendable {
     let frontend = source.appendingPathComponent("apps/web/dist/index.html")
     if FileManager.default.fileExists(atPath: artifact.path), FileManager.default.fileExists(atPath: frontend.path) { return }
 
-    let toolchain = try Toolchain.locate()
+    let toolchain = try Toolchain.resolve(supportRoot: supportRoot, progress: progress)
     progress("正在安装源码依赖…\n")
     let install = try CommandRunner.run(
       executable: toolchain.npx,
@@ -165,7 +165,12 @@ final class SourceManager: @unchecked Sendable {
 
         try self.prepare(stage, progress: progress)
         progress("正在执行本地健康检查…\n")
-        try RuntimeController.healthCheck(sourceRoot: stage, dshHome: self.probeHome, progress: progress)
+        try RuntimeController.healthCheck(
+          sourceRoot: stage,
+          dshHome: self.probeHome,
+          supportRoot: self.supportRoot,
+          progress: progress
+        )
         self.defaults.set(current.path, forKey: "previousSourceRoot")
         self.defaults.set(stage.path, forKey: "activeSourceRoot")
         completion(.success(SourceUpdate(sourceRoot: stage, commit: remote, changed: true)))

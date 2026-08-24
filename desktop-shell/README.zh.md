@@ -82,6 +82,8 @@ open "desktop-shell/dist/DeepSeek Harness.app"
 
 运行 `scripts/package-dmg.sh` 可生成 `dist/DeepSeek-Harness-macOS.dmg`。分发构建使用 `ai.deepseek.harness.desktop`，移除开发者 checkout 路径，并且只从已跟踪及未被忽略的 worktree 文件生成内置源码快照；开发构建继续使用独立的 `ai.deepseek.harness.desktop.local`，因此它保存的源码根目录不会影响已安装的分发版。Application Support 数据、profile、API Key、会话、日志、被忽略的 `.env` 文件和包缓存都不属于构建输入。该磁盘映像仍采用 ad-hoc 签名且未经 notarization。
 
+分发版会优先使用现有 `node` 与同目录 `npx`，前提是 Node.js 版本满足 `^22.19.0 || >=24.0.0`。如果没有兼容工具链，启动流程会下载官方 Node.js 24.16.0 ARM64 归档，校验固定的 SHA-256 摘要，再安装到应用支持目录中的 `tools/node`。该受管理安装不需要管理员权限，也不会替换系统 Node.js；首次安装源码依赖仍需要联网。
+
 ## App 图标
 
 可编辑图标源文件应放在仓库的 [`Resources/AppIcon.svg`](Resources/AppIcon.svg)。这样可以保证构建可复现，应用图标也不会依赖 Downloads 中的文件。`scripts/build-app.sh` 会渲染 macOS 所需尺寸、组装 `AppIcon.icns`，并递增 bundle build number，让 Launch Services 刷新图标缓存。生成的 `.icns` 和构建出的 `.app` 都属于产物，不应替代版本库中的 SVG 源文件。

@@ -72,8 +72,16 @@ final class StartupState: @unchecked Sendable {
 final class RuntimeController: @unchecked Sendable {
   private let queue = DispatchQueue(label: "ai.deepseek.harness.desktop.runtime", qos: .userInitiated)
   private let lock = NSLock()
+  private let supportRoot: URL
   private var process: Process?
   private var stopping = false
+
+  init(supportRoot: URL? = nil) {
+    self.supportRoot = supportRoot ?? FileManager.default.urls(
+      for: .applicationSupportDirectory,
+      in: .userDomainMask
+    )[0].appendingPathComponent("DeepSeek Harness Desktop", isDirectory: true)
+  }
 
   func start(
     sourceRoot: URL,
@@ -83,7 +91,7 @@ final class RuntimeController: @unchecked Sendable {
   ) {
     queue.async {
       do {
-        let toolchain = try Toolchain.locate()
+        let toolchain = try Toolchain.resolve(supportRoot: self.supportRoot, progress: progress)
         try FileManager.default.createDirectory(at: dshHome, withIntermediateDirectories: true)
         let executable = sourceRoot.appendingPathComponent("apps/cli/lib/bin.js")
         guard FileManager.default.fileExists(atPath: executable.path) else {
@@ -223,9 +231,10 @@ final class RuntimeController: @unchecked Sendable {
   static func healthCheck(
     sourceRoot: URL,
     dshHome: URL,
+    supportRoot: URL,
     progress: @escaping @Sendable (String) -> Void
   ) throws {
-    let runtime = RuntimeController()
+    let runtime = RuntimeController(supportRoot: supportRoot)
     let ready = DispatchSemaphore(value: 0)
     let result = LockedBox<Result<URL, Error>?>(nil)
     runtime.start(sourceRoot: sourceRoot, dshHome: dshHome, progress: progress) {

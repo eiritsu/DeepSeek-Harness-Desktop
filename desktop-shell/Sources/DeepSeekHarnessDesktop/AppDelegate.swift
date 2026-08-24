@@ -30,8 +30,8 @@ func makeDesktopWindow() -> NSWindow {
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate,
   WKUIDelegate, WKScriptMessageHandler, WKScriptMessageHandlerWithReply
 {
-  private let runtime = RuntimeController()
   private let sources = SourceManager()
+  private lazy var runtime = RuntimeController(supportRoot: sources.supportRoot)
   private lazy var plugins = PluginManager(supportRoot: sources.supportRoot, dshHome: sources.dshHome)
   private var sourceRoot: URL?
   private var runtimeURL: URL?

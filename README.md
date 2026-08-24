@@ -96,6 +96,8 @@ desktop-shell/scripts/package-dmg.sh
 
 The distribution build removes the developer checkout path and embeds a source snapshot assembled only from tracked and non-ignored worktree files. It does not include Application Support data, profiles, API keys, sessions, logs, ignored `.env` files, or package caches. The resulting `desktop-shell/dist/DeepSeek-Harness-macOS.dmg` remains ad-hoc signed and is not notarized, so macOS may require an explicit first-open approval.
 
+On first launch, the distributed application uses an existing `node` and `npx` when they satisfy `^22.19.0 || >=24.0.0`. Otherwise it downloads the official Node.js 24.16.0 ARM64 archive, verifies its pinned SHA-256 digest, and installs it under the application support directory without administrator access or changes to the system Node.js installation. The initial pnpm dependency installation still requires network access.
+
 ## Data, logs, and source versions
 
 Sessions, settings, credentials, profiles, plugin dependencies, and desktop logs live under:

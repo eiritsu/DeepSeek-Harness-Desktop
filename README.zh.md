@@ -96,6 +96,8 @@ desktop-shell/scripts/package-dmg.sh
 
 分发构建会移除开发者 checkout 路径，并且只从已跟踪及未被忽略的 worktree 文件生成内置源码快照；Application Support 数据、profile、API Key、会话、日志、被忽略的 `.env` 文件和包缓存都不会进入产物。生成的 `desktop-shell/dist/DeepSeek-Harness-macOS.dmg` 仍采用 ad-hoc 签名且未经 notarization，因此 macOS 首次打开时可能要求用户明确批准。
 
+分发版首次启动时，如果现有 `node` 与同目录 `npx` 满足 `^22.19.0 || >=24.0.0`，应用会直接使用它们；否则会下载官方 Node.js 24.16.0 ARM64 归档，校验固定的 SHA-256 摘要，再安装到应用支持目录。该过程不需要管理员权限，也不会修改系统 Node.js；首次执行 pnpm 依赖安装仍需要联网。
+
 ## 数据、日志与源码版本
 
 会话、设置、凭据、profile、插件依赖和桌面日志保存在：
