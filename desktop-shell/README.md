@@ -80,7 +80,7 @@ The build script recreates `desktop-shell/dist/DeepSeek Harness.app`, generates 
 
 To replace an older installed build, quit DeepSeek Harness and copy the newly built application to `/Applications/DeepSeek Harness.app`. A sibling path ending in `.previous` is a recoverable backup of the replaced application, not Harness user data.
 
-Run `scripts/package-dmg.sh` to create `dist/DeepSeek-Harness-macOS.dmg`. The distribution build removes the developer checkout path and embeds a source snapshot assembled only from tracked and non-ignored worktree files. Application Support data, profiles, API keys, sessions, logs, ignored `.env` files, and package caches are not build inputs. The disk image remains ad-hoc signed and is not notarized.
+Run `scripts/package-dmg.sh` to create `dist/DeepSeek-Harness-macOS.dmg`. The distribution build uses `ai.deepseek.harness.desktop`, removes the developer checkout path, and embeds a source snapshot assembled only from tracked and non-ignored worktree files. Development builds keep the separate `ai.deepseek.harness.desktop.local` identity so their source-root preference cannot affect an installed distribution. Application Support data, profiles, API keys, sessions, logs, ignored `.env` files, and package caches are not build inputs. The disk image remains ad-hoc signed and is not notarized.
 
 ## Application icon
 

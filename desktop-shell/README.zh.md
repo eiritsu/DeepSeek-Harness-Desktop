@@ -80,7 +80,7 @@ open "desktop-shell/dist/DeepSeek Harness.app"
 
 要替换已安装的旧版本，请先退出 DeepSeek Harness，再把新构建的应用复制到 `/Applications/DeepSeek Harness.app`。同级目录中以 `.previous` 结尾的路径是被替换应用的可恢复备份，不是 Harness 用户数据。
 
-运行 `scripts/package-dmg.sh` 可生成 `dist/DeepSeek-Harness-macOS.dmg`。分发构建会移除开发者 checkout 路径，并且只从已跟踪及未被忽略的 worktree 文件生成内置源码快照；Application Support 数据、profile、API Key、会话、日志、被忽略的 `.env` 文件和包缓存都不属于构建输入。该磁盘映像仍采用 ad-hoc 签名且未经 notarization。
+运行 `scripts/package-dmg.sh` 可生成 `dist/DeepSeek-Harness-macOS.dmg`。分发构建使用 `ai.deepseek.harness.desktop`，移除开发者 checkout 路径，并且只从已跟踪及未被忽略的 worktree 文件生成内置源码快照；开发构建继续使用独立的 `ai.deepseek.harness.desktop.local`，因此它保存的源码根目录不会影响已安装的分发版。Application Support 数据、profile、API Key、会话、日志、被忽略的 `.env` 文件和包缓存都不属于构建输入。该磁盘映像仍采用 ad-hoc 签名且未经 notarization。
 
 ## App 图标
 

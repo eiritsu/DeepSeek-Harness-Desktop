@@ -36,6 +36,7 @@ cp "$SHELL_ROOT/.build/release/DeepSeekHarnessDesktop" "$APP_ROOT/Contents/MacOS
 /usr/bin/strip -S "$APP_ROOT/Contents/MacOS/DeepSeekHarnessDesktop"
 cp "$SHELL_ROOT/Resources/Info.plist" "$APP_ROOT/Contents/Info.plist"
 if [ "$DISTRIBUTION" = true ]; then
+  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ai.deepseek.harness.desktop" "$APP_ROOT/Contents/Info.plist"
   /usr/libexec/PlistBuddy -c "Delete :DSHSourceRoot" "$APP_ROOT/Contents/Info.plist"
   /usr/libexec/PlistBuddy -c "Set :DSHSourceRepository https://github.com/eiritsu/DeepSeek-Harness-Desktop.git" "$APP_ROOT/Contents/Info.plist"
   /usr/libexec/PlistBuddy -c "Set :DSHSourceBranch main" "$APP_ROOT/Contents/Info.plist"

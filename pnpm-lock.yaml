@@ -945,6 +945,9 @@ importers:
 
   packages/attachment/file-recognizer-office:
     dependencies:
+      '@deepseek-ai/dsh-client-ui-deepseek-files':
+        specifier: workspace:^
+        version: link:../../client/ui-deepseek-files
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery

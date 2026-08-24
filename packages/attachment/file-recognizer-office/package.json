@@ -23,6 +23,7 @@
   "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
   "dependencies": {
     "@deepseek-ai/schemastery": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-deepseek-files": "workspace:^",
     "officeparser": "5.2.0",
     "yauzl": "^3.1.3"
   },

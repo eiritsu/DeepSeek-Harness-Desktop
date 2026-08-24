@@ -4,7 +4,9 @@
  * Only the dedicated Node compatibility gate opts this test in after building
  * both artifacts; ordinary Vitest inventory deterministically skips it.
  * The child runs built artifacts under plain Node with the real shipped
- * web profile (dsh-base + dsh-web-app bundle patches, auto-initialized).
+ * web profile (dsh-base + dsh-web-app and default feature bundle patches,
+ * auto-initialized), including config-only plugin dependencies reached through
+ * the installation module fallback.
  * Its URL line follows the settled profile boot; SIGTERM then exercises the
  * shipped quiescent disposer.
  */
@@ -100,7 +102,7 @@ function runBuiltWeb(cwd: string): Promise<{ stdout: string; stderr: string; cod
 }
 
 describe.skipIf(!requireBuiltArtifacts)('built CLI lazy-search startup', () => {
-  it('boots and disposes the shipped composition with full-text search off by default', async () => {
+  it('boots and disposes the shipped composition with default bundle dependencies resolvable', async () => {
     expect(existsSync(builtBin), `missing built CLI ${resolve(builtBin)}; run pnpm build`).toBe(true)
     expect(existsSync(webDist), `missing Web dist ${resolve(webDist)}; run pnpm run build:web`).toBe(true)
     const baseRows = (yaml.load(await readFile(baseConfigPath, 'utf8'), { schema: configSchema }) as PatchEntry[])
@@ -121,6 +123,9 @@ describe.skipIf(!requireBuiltArtifacts)('built CLI lazy-search startup', () => {
       expect(result.stdout).toMatch(/dsh web: http:\/\/127\.0\.0\.1:\d+/u)
       expect(result.code).toBe(0)
       expect(result.stderr).not.toMatch(/ExperimentalWarning: SQLite/u)
+      expect(existsSync(join(
+        cwd, '.dsh', 'profiles', 'node_modules', '@deepseek-ai', 'dsh-client-ui-deepseek-files', 'package.json',
+      ))).toBe(true)
     } finally {
       await rm(cwd, { recursive: true, force: true })
     }

@@ -12,6 +12,10 @@ trap 'rm -rf "$STAGE"' EXIT
 "$SCRIPT_DIR/build-app.sh" --distribution
 codesign --verify --deep --strict "$APP_ROOT"
 
+if [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_ROOT/Contents/Info.plist")" != "ai.deepseek.harness.desktop" ]; then
+  echo "package-dmg: distribution app uses the development bundle identifier" >&2
+  exit 1
+fi
 if /usr/libexec/PlistBuddy -c 'Print :DSHSourceRoot' "$APP_ROOT/Contents/Info.plist" >/dev/null 2>&1; then
   echo "package-dmg: distribution app contains DSHSourceRoot" >&2
   exit 1
