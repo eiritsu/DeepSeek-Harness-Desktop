@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-07-22-web-multimodal-image-input-and-durable-attachments.md
+2026-07-22-web-multimodal-image-input-and-durable-attachments.md: 3cf76ab8deb9255ea88eb9219e042e2fe13805ca
+2026-07-22-web-multimodal-image-input-and-durable-attachments.zh.md: 0989403bf7b4956116acd944c35e293ef60becbb

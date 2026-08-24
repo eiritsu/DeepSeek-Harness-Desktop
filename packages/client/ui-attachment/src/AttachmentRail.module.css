@@ -1,0 +1,164 @@
+/* Thumbnail geometry mirrors DeepSeek Chat's composer rail: 64px cards with a
+   16px radius, remove control fully inside the card, arrows overlaid at the
+   edges instead of a scrollbar. */
+
+.root {
+  position: relative;
+  min-width: 0;
+}
+
+.rail {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* Edge arrows page the overflow; the scrollbar stays hidden (both engines). */
+  scrollbar-width: none;
+  /* The rail scrolls on the composer's elevated input surface: bind the l2
+     pair (ui-theme styles/scrollbar.css rebinding contract) so anything that
+     does draw a thumb here matches the surface. */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+.rail::-webkit-scrollbar {
+  display: none;
+}
+
+.item {
+  position: relative;
+  flex: 0 0 64px;
+  width: 64px;
+  height: 64px;
+}
+
+.thumbnail {
+  width: 64px;
+  height: 64px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--dsw-alias-border-l2-darkmode-thin);
+  border-radius: 16px;
+  background: var(--dsw-alias-interactive-bg-hover);
+  cursor: zoom-in;
+}
+
+.thumbnail img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fileCard {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  width: 180px;
+  height: 64px;
+  padding: 8px;
+  overflow: hidden;
+  border: 1px solid var(--dsw-alias-border-l2-darkmode-thin);
+  border-radius: 16px;
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.item:has(.fileCard) {
+  flex-basis: 180px;
+  width: 180px;
+}
+
+.fileGlyph {
+  display: grid;
+  place-items: center;
+  flex: 0 0 46px;
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-layer-2, rgb(0 0 0 / 4%));
+  color: var(--dsw-alias-label-secondary, #65676b);
+}
+
+.fileGlyph svg {
+  width: 30px;
+  height: 30px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.fileText {
+  display: flex;
+  min-width: 0;
+  margin-left: 12px;
+  flex-direction: column;
+}
+
+.fileName,
+.fileMeta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileName {
+  color: var(--dsw-alias-label-primary, #1f1f1f);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.fileMeta {
+  margin-top: 2px;
+  color: var(--dsw-alias-label-tertiary, #777);
+  font-size: 13px;
+}
+
+.remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--dsw-alias-button-contrast-fill);
+  color: var(--dsw-alias-label-primary-inverted);
+  cursor: pointer;
+  opacity: 1;
+}
+
+.arrow {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--dsw-alias-border-l2-darkmode-thin);
+  border-radius: 999px;
+  background: var(--dsw-specific-input-major);
+  color: var(--dsw-alias-label-secondary);
+  box-shadow: var(--dsw-shadow-lv2);
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.arrow:hover {
+  background: var(--dsw-alias-interactive-bg-hover-solid);
+}
+
+.arrowLeft {
+  left: 4px;
+}
+
+.arrowRight {
+  right: 4px;
+}
