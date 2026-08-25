@@ -14,7 +14,7 @@ Reasoning effort makes the persistence shape significant: a model selection with
 
 `AgentDefaultModelConfig` provides `ctx.agentDefaultModel` and registers `{provider, model, reasoningEffort?}` as the `agent-default-model` Settings section. Its `{provider, model}` composition entry is the base layer and `settings.yaml` supplies the user layer. The service is entry-point-neutral, so direct creation and ApiProxy-backed creation share one default ([headless direct core entry point](../architecture/2026-08-09-headless-direct-core-entry-point.md)).
 
-`reasoningEffort` belongs to the Settings section but not to the plugin config. Settings layers merge by field, so a configured effort would survive a user selection that omits it. `saveSelection()` instead writes the complete user section; absence therefore clears a stored effort. A deployment-wide effort default belongs to the adapter profile, which resolves it per model.
+`reasoningEffort` belongs to the Settings section but not to the plugin config. Settings layers merge by field, so a configured effort would survive a user selection that omits it. `saveSelection()` instead writes the complete user section; absence therefore clears a stored effort and restores `Default`. A deployment-wide effort default belongs to the adapter profile and applies only while the session keeps `Default`.
 
 `session.selectModel` applies an accepted `ModelSelection` to its session and calls `saveDefaultModelSelection()` for the shared Agent default. A storage failure is logged without undoing the session selection. A deployment with no settings provider retains the composition entry and keeps the accepted selection only in that session.
 

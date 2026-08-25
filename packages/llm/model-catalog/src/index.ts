@@ -1,8 +1,9 @@
 /**
  * Dynamic model-discovery enrichment backed by models.dev with a persisted
  * last-good snapshot and the installed pi-ai catalog as its offline fallback.
- * Exact provider/model declarations or exact-id consensus are required; route
- * names, wire protocols, and model-name patterns are never capability evidence.
+ * Exact provider/model declarations or exact-id shared capabilities are
+ * required; route names, wire protocols, and model-name patterns are never
+ * capability evidence.
  *
  * @module @deepseek-ai/dsh-model-catalog
  */
@@ -95,6 +96,10 @@ function supportedModalities(value: unknown): ModelModality[] | undefined {
   return input.length === 0 ? undefined : input
 }
 
+function sameModelId(left: string, right: string): boolean {
+  return left.toLowerCase() === right.toLowerCase()
+}
+
 /** Parse exact provider/model declarations from one models.dev document. */
 function parseCatalog(value: unknown): CatalogDeclaration[] {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -170,14 +175,14 @@ class DynamicCatalog {
 
   /** Resolve one discovered model from dynamic declarations, then pi-ai. */
   modalities(model: CatalogModelRef): readonly ModelModality[] | undefined {
-    const remote = this.cache.declarations.filter(candidate => candidate.id === model.id)
+    const remote = this.cache.declarations.filter(candidate => sameModelId(candidate.id, model.id))
     if (remote.length > 0) return this.resolveDeclarations(remote, model.ownedBy)
     if (model.ownedBy !== undefined && isBuiltinProvider(model.ownedBy)) {
-      return getBuiltinModels(model.ownedBy).find(candidate => candidate.id === model.id)?.input
+      return getBuiltinModels(model.ownedBy).find(candidate => sameModelId(candidate.id, model.id))?.input
     }
     return this.consensus(getBuiltinProviders().flatMap(provider =>
       getBuiltinModels(provider)
-        .filter(candidate => candidate.id === model.id)
+        .filter(candidate => sameModelId(candidate.id, model.id))
         .map(candidate => candidate.input),
     ))
   }
@@ -240,8 +245,8 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
       return modalities === undefined ? [] : [{ id: model.id, inputModalities: [...modalities] }]
     })
   })
-  ctx.llm.registerModelInputResolver(async ({ provider, model, signal }) => {
+  ctx.llm.registerModelInputResolver(async ({ provider, model, ownedBy, signal }) => {
     await catalog.refresh(signal)
-    return catalog.modalities({ id: model, ownedBy: provider })
+    return catalog.modalities({ id: model, ownedBy: ownedBy ?? provider })
   })
 }

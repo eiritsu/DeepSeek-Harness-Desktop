@@ -1,0 +1,6 @@
+# Start on a hand-declared A6 route. The test installs conflicting catalog
+# declarations to prove they do not alter the core-standard reasoning menu.
+- id: agent-default-model
+  config:
+    provider: a6
+    model: grok-4.6

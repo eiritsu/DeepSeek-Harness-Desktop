@@ -454,7 +454,7 @@ interface LlmModelInfo {
 }
 ```
 
-对正确性敏感的元数据与参考目录分开解析，并归服务该确切路由的适配器所有。上下文容量、适配器调用默认值和推理选项共用同一个确切模型结果，消费方因而无需重复执行权威模型解析。
+对正确性敏感的元数据与参考目录分开解析。上下文容量和输出默认值来自服务确切路由的适配器；runtime 为每个已解析模型附加相同的标准推理控件，使消费方不依赖提供方声明。
 
 ```ts type-equiv
 /** Provider-owned context capacity for one exact provider/model route. */
@@ -464,17 +464,17 @@ interface LlmModelContext {
 }
 ```
 
-推理强度是另一项针对确切路由的能力。核心为标识符添加品牌类型，但不枚举其值；有序集合、展示名称和可选的部署默认值均由各适配器持有。
+推理强度使用一组提供方无关的标准值。runtime 为每个模型公开 `off`、`low`、`high` 和 `max`；客户端再加入由字段缺席表示的 `Default`。适配器把显式值转换为提供方协议字段；端点无法执行时可以返回提供方错误。
 
 ```ts type-equiv
-/** Adapter-owned identifier for one model's selectable reasoning effort. */
+/** Standard identifier for one selectable reasoning effort. */
 type ReasoningEffortId = Branded<'ReasoningEffortId'>
 ```
 
 ```ts type-equiv
-/** Display metadata for one adapter-owned reasoning effort. */
+/** Display metadata for one provider-neutral reasoning effort. */
 interface LlmReasoningEffortInfo {
-  /** Opaque stable value accepted by {@link GenerateOptions.reasoningEffort}. */
+  /** Stable value accepted by {@link GenerateOptions.reasoningEffort}. */
   id: ReasoningEffortId
   /** Human-readable effort name for selectors and diagnostics. */
   name: string
@@ -484,13 +484,13 @@ interface LlmReasoningEffortInfo {
 ```
 
 ```ts type-equiv
-/** Selectable reasoning efforts for one exact provider/model route. */
+/** Reasoning metadata normalized by the runtime to the standard controls. */
 interface LlmModelReasoningInfo {
-  /** Supported efforts in adapter-preferred display order. */
+  /** Standard efforts in core display order after runtime resolution. */
   efforts: readonly LlmReasoningEffortInfo[]
   /**
-   * Adapter-configured default materialized into requests when callers omit
-   * an effort. Absence preserves the provider's own default.
+   * Adapter-local default declaration. The runtime removes it so omission
+   * always represents provider-default behavior to consumers.
    */
   defaultEffort?: ReasoningEffortId
 }
@@ -503,7 +503,7 @@ interface LlmResolvedModelInfo extends LlmModelInfo {
   context?: LlmModelContext
   /** Adapter-configured per-request output cap materialized when callers omit one. */
   defaultMaxTokens?: number
-  /** Adapter-owned selectable reasoning levels when exposed. */
+  /** Provider-neutral selectable reasoning levels; the runtime publishes its fixed standard set. */
   reasoning?: LlmModelReasoningInfo
 }
 ```
@@ -514,7 +514,7 @@ interface GenerateOptions {
   /** Registered provider route selecting the adapter instance. */
   provider: string
   model: string
-  /** Adapter-owned reasoning effort selected for this exact model. */
+  /** Standard reasoning effort selected for this request. */
   reasoningEffort?: ReasoningEffortId
   /**
    * Ordered conversation messages, exactly as the provider sees them (after
@@ -676,6 +676,8 @@ interface LlmModelInputRequest {
   provider: string
   /** Exact model id sent to the provider. */
   model: string
+  /** Upstream model owner preserved from provider discovery, when disclosed. */
+  ownedBy?: string
   /** Cancellation for asynchronous catalog access. */
   signal?: AbortSignal
 }
@@ -734,12 +736,12 @@ interface LlmCallConfigAdapterDefaults {
 
 ## 服务与提供方约定
 
-`LlmAdapter` 是提供方约定：创建子类、实现 `stream()`，再用 `ctx.llm.registerAdapter(providers, adapter)` 注册一个适配器实例。`GenerateOptions.provider` 选择已注册适配器；`GenerateOptions.model` 会传给该适配器，无需在生命周期启动时注册。重复提供方路由会原子失败。可选的 `providerRetryPolicy()` 会按路由捕获并填入 normal 默认值，`providerInfo()` 与异步 `listModels()` 方法则为 `LlmRuntime.listProviders()` / `listModels()` 提供分离的 selector 元数据。该目录仅供参考，不是请求白名单：适配器仍是权威，并可接受未列出的模型 id。单次异步 `resolveModel()` 查询返回确切模型身份，以及可选的对正确性敏感的上下文容量、适配器配置的 `defaultMaxTokens`、由模型持有的有序推理强度 ID 和可选的部署默认值；字段缺失表示元数据不可用或保留提供方持有的行为，而不表示目录成员关系无效。解析器会接收可选的取消信号，并且必须在信号中止后迅速完成结算。`LlmRuntime.resolveModelInfo()` 会校验聚合结果并返回分离值。在最终适配器边界，`resolveCallConfig()` 仅在 `maxTokens` 缺失时填入输出默认值，并校验和填入推理强度，因此直接调用也无法绕过任何一项已配置行为；直接分派会在等待解析前捕获一项适配器注册。agent loop 则使用 `prepareCall()`，使模型解析、请求头持久记录和分派全程使用同一项注册，保留来自同一次查询的分离上下文元数据，并报告适配器填入的配置字段。适配器查找发生在 `llm/stream` waterfall 的终端 continuation，因此 listener 可以在查找前短路调用，或路由一个可变的一次性请求。AgentLoop 在外层 waterfall 返回流句柄时观察到一次请求尝试；这个有限边界不能证明惰性终端适配器已构造完成或开始提供方 I/O。`block-start` / `block-end` 的 `index` 关联与 assembler 共同意味着适配器只需 emit 格式正确的分片——块重组不是每个适配器各自的问题。`ctx.llm.stream()` 与 `llm/stream` waterfall 在一个轮次中的位置见 [architecture.md](../architecture.zh.md#turn-flow)。
+`LlmAdapter` 是提供方约定：创建子类、实现 `stream()`，再用 `ctx.llm.registerAdapter(providers, adapter)` 注册一个适配器实例。`GenerateOptions.provider` 选择已注册适配器；`GenerateOptions.model` 会传给该适配器，无需在生命周期启动时注册。重复提供方路由会原子失败。可选的 `providerRetryPolicy()` 会按路由捕获并填入 normal 默认值，`providerInfo()` 与异步 `listModels()` 方法则为 `LlmRuntime.listProviders()` / `listModels()` 提供分离的 selector 元数据。该目录仅供参考，不是请求白名单：适配器仍是权威，并可接受未列出的模型 id。单次异步 `resolveModel()` 查询返回确切模型身份，以及可选的对正确性敏感的上下文容量和适配器配置的 `defaultMaxTokens`；字段缺失表示元数据不可用或保留提供方持有的行为，而不表示目录成员关系无效。解析器会接收可选的取消信号，并且必须在信号中止后迅速完成结算。`LlmRuntime.resolveModelInfo()` 会校验聚合结果、返回分离值并附加固定推理控件。在最终适配器边界，`resolveCallConfig()` 仅在 `maxTokens` 缺失时填入输出默认值，并校验显式标准推理强度；直接分派会在等待解析前捕获一项适配器注册。agent loop 则使用 `prepareCall()`，使模型解析、请求头持久记录和分派全程使用同一项注册，保留来自同一次查询的分离上下文元数据，并报告适配器填入的输出字段。适配器查找发生在 `llm/stream` waterfall 的终端 continuation，因此 listener 可以在查找前短路调用，或路由一个可变的一次性请求。AgentLoop 在外层 waterfall 返回流句柄时观察到一次请求尝试；这个有限边界不能证明惰性终端适配器已构造完成或开始提供方 I/O。`block-start` / `block-end` 的 `index` 关联与 assembler 共同意味着适配器只需 emit 格式正确的分片——块重组不是每个适配器各自的问题。`ctx.llm.stream()` 与 `llm/stream` waterfall 在一个轮次中的位置见 [architecture.md](../architecture.zh.md#turn-flow)。
 
 ```ts type-equiv
 /** One model call whose config and adapter registration were resolved together. */
 interface PreparedLlmCall {
-  /** Detached, deep-frozen config with any adapter-owned default materialized. */
+  /** Detached, deep-frozen config with any adapter-owned output default materialized. */
   readonly config: LlmCallConfig
   /** Immutable retry policy captured with the adapter registration. */
   readonly retryPolicy: ResolvedRetryPolicy
@@ -795,7 +797,7 @@ declare abstract class LlmAdapter {
    * @param model - exact model id passed to {@link GenerateOptions.model}.
    * @param _signal - cancellation for this exact-model lookup; asynchronous
    *   implementations must settle promptly after it aborts.
-   * @returns provider/model identity plus any context, call-default, and reasoning metadata.
+   * @returns provider/model identity plus any context and call-default metadata.
    */
   resolveModel(
     provider: string,
@@ -905,9 +907,10 @@ registerModelInputResolver(resolve: LlmModelInputResolver): () => void
  * @param provider - configured provider route.
  * @param model - exact model id sent to the provider.
  * @param signal - cancellation for asynchronous catalog access.
+ * @param ownedBy - upstream model owner preserved from discovery, when disclosed.
  * @returns the first resolver answer, or `undefined` when none knows the model.
  */
-async resolveModelInput( provider: string, model: string, signal?: AbortSignal, ): Promise<readonly ModelModality[] | undefined>
+async resolveModelInput( provider: string, model: string, signal?: AbortSignal, ownedBy?: string, ): Promise<readonly ModelModality[] | undefined>
 
 /**
  * Interrogate one provider endpoint for the models it advertises. The
@@ -942,14 +945,14 @@ async listModels(provider: string): Promise<LlmModelInfo[]>
  * @param provider - registered provider route to inspect.
  * @param model - exact model id passed to the adapter.
  * @param signal - optional cancellation for adapter-owned asynchronous lookup.
- * @returns exact model identity plus available context and reasoning metadata.
+ * @returns exact model identity plus available context and standard reasoning controls.
  */
 async resolveModelInfo( provider: string, model: string, signal?: AbortSignal, ): Promise<LlmResolvedModelInfo>
 
 /**
- * Validate a conversation call config against its exact model capability and
- * materialize adapter-configured defaults. Unsupported explicit efforts
- * reject before provider I/O; no clamping or aliasing is performed. This
+ * Validate a conversation call config against the standard reasoning levels
+ * and materialize adapter-configured output defaults. Unknown effort ids
+ * reject before provider I/O. This
  * standalone query does not bind a later dispatch; use {@link prepareCall}
  * when logging and streaming must share one adapter registration.
  * @param config - provider/model route and optional request controls.

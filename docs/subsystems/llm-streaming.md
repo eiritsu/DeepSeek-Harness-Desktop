@@ -448,7 +448,7 @@ interface LlmModelInfo {
 }
 ```
 
-Correctness-sensitive metadata is resolved separately from the advisory catalog and is owned by the adapter serving the exact route. Context capacity, adapter call defaults, and reasoning choices share one exact-model result so consumers do not repeat authoritative model resolution.
+Correctness-sensitive metadata is resolved separately from the advisory catalog. Context capacity and output defaults come from the adapter serving the exact route; the runtime attaches the same standard reasoning controls to every resolved model so consumers do not depend on provider declarations.
 
 ```ts type-equiv
 /** Provider-owned context capacity for one exact provider/model route. */
@@ -458,17 +458,17 @@ interface LlmModelContext {
 }
 ```
 
-Reasoning effort is another exact-route capability. The core brands identifiers but does not enumerate their values; each adapter owns the ordered set, display names, and optional deployment default.
+Reasoning effort uses one provider-neutral set. The runtime exposes `off`, `low`, `high`, and `max` for every model; clients add `Default`, represented by an absent value. Adapters translate explicit values to provider wire fields and may report a provider error when an endpoint cannot honor one.
 
 ```ts type-equiv
-/** Adapter-owned identifier for one model's selectable reasoning effort. */
+/** Standard identifier for one selectable reasoning effort. */
 type ReasoningEffortId = Branded<'ReasoningEffortId'>
 ```
 
 ```ts type-equiv
-/** Display metadata for one adapter-owned reasoning effort. */
+/** Display metadata for one provider-neutral reasoning effort. */
 interface LlmReasoningEffortInfo {
-  /** Opaque stable value accepted by {@link GenerateOptions.reasoningEffort}. */
+  /** Stable value accepted by {@link GenerateOptions.reasoningEffort}. */
   id: ReasoningEffortId
   /** Human-readable effort name for selectors and diagnostics. */
   name: string
@@ -478,13 +478,13 @@ interface LlmReasoningEffortInfo {
 ```
 
 ```ts type-equiv
-/** Selectable reasoning efforts for one exact provider/model route. */
+/** Reasoning metadata normalized by the runtime to the standard controls. */
 interface LlmModelReasoningInfo {
-  /** Supported efforts in adapter-preferred display order. */
+  /** Standard efforts in core display order after runtime resolution. */
   efforts: readonly LlmReasoningEffortInfo[]
   /**
-   * Adapter-configured default materialized into requests when callers omit
-   * an effort. Absence preserves the provider's own default.
+   * Adapter-local default declaration. The runtime removes it so omission
+   * always represents provider-default behavior to consumers.
    */
   defaultEffort?: ReasoningEffortId
 }
@@ -497,7 +497,7 @@ interface LlmResolvedModelInfo extends LlmModelInfo {
   context?: LlmModelContext
   /** Adapter-configured per-request output cap materialized when callers omit one. */
   defaultMaxTokens?: number
-  /** Adapter-owned selectable reasoning levels when exposed. */
+  /** Provider-neutral selectable reasoning levels; the runtime publishes its fixed standard set. */
   reasoning?: LlmModelReasoningInfo
 }
 ```
@@ -508,7 +508,7 @@ interface GenerateOptions {
   /** Registered provider route selecting the adapter instance. */
   provider: string
   model: string
-  /** Adapter-owned reasoning effort selected for this exact model. */
+  /** Standard reasoning effort selected for this request. */
   reasoningEffort?: ReasoningEffortId
   /**
    * Ordered conversation messages, exactly as the provider sees them (after
@@ -670,6 +670,8 @@ interface LlmModelInputRequest {
   provider: string
   /** Exact model id sent to the provider. */
   model: string
+  /** Upstream model owner preserved from provider discovery, when disclosed. */
+  ownedBy?: string
   /** Cancellation for asynchronous catalog access. */
   signal?: AbortSignal
 }
@@ -728,12 +730,12 @@ interface LlmCallConfigAdapterDefaults {
 
 ## Service and provider contracts
 
-`LlmAdapter` is the provider contract: subclass, implement `stream()`, and register one adapter instance with `ctx.llm.registerAdapter(providers, adapter)`. `GenerateOptions.provider` selects the registered adapter; `GenerateOptions.model` is passed to that adapter and need not be registered at lifecycle start. Duplicate provider routes fail atomically. Optional `providerRetryPolicy()` is captured per route with normal defaults, while `providerInfo()` and asynchronous `listModels()` feed `LlmRuntime.listProviders()` / `listModels()` with detached selector metadata. That catalog is advisory rather than a request whitelist: the adapter remains authoritative and may accept unlisted model ids. One asynchronous `resolveModel()` query returns exact model identity plus optional correctness-sensitive context capacity, an adapter-configured `defaultMaxTokens`, and ordered model-owned reasoning ids with an optional deployment default; absent fields mean unavailable metadata or provider-owned behavior, not invalid catalog membership. The resolver receives optional cancellation and must settle promptly after abort. `LlmRuntime.resolveModelInfo()` validates and detaches the aggregate. At the final adapter boundary, `resolveCallConfig()` materializes the output default only when `maxTokens` is absent and validates and materializes reasoning, so direct calls cannot bypass either configured behavior; direct dispatch captures one registration before awaiting that resolution. The agent loop instead uses `prepareCall()` to keep the same registration across model resolution, durable header logging, and dispatch, retain detached context metadata from that exact lookup, and report which config fields the adapter defaulted. Adapter lookup happens at the terminal continuation of the `llm/stream` waterfall, so a listener may short-circuit the call or route a mutable one-shot request before lookup. AgentLoop observes a request attempt once the outer waterfall returns a stream handle; that limited boundary does not prove a lazy terminal adapter was constructed or began provider I/O. The `block-start` / `block-end` `index` correlation and the assembler together mean an adapter only has to emit well-formed chunks — block reassembly is not each adapter's problem. [architecture.md](../architecture.md#turn-flow) shows where `ctx.llm.stream()` and the `llm/stream` waterfall sit in one turn.
+`LlmAdapter` is the provider contract: subclass, implement `stream()`, and register one adapter instance with `ctx.llm.registerAdapter(providers, adapter)`. `GenerateOptions.provider` selects the registered adapter; `GenerateOptions.model` is passed to that adapter and need not be registered at lifecycle start. Duplicate provider routes fail atomically. Optional `providerRetryPolicy()` is captured per route with normal defaults, while `providerInfo()` and asynchronous `listModels()` feed `LlmRuntime.listProviders()` / `listModels()` with detached selector metadata. That catalog is advisory rather than a request whitelist: the adapter remains authoritative and may accept unlisted model ids. One asynchronous `resolveModel()` query returns exact model identity plus optional correctness-sensitive context capacity and an adapter-configured `defaultMaxTokens`; absent fields mean unavailable metadata or provider-owned behavior, not invalid catalog membership. The resolver receives optional cancellation and must settle promptly after abort. `LlmRuntime.resolveModelInfo()` validates and detaches the aggregate, then attaches the fixed reasoning controls. At the final adapter boundary, `resolveCallConfig()` materializes the output default only when `maxTokens` is absent and validates an explicit standard reasoning value; direct dispatch captures one registration before awaiting that resolution. The agent loop instead uses `prepareCall()` to keep the same registration across model resolution, durable header logging, and dispatch, retain detached context metadata from that exact lookup, and report which output fields the adapter defaulted. Adapter lookup happens at the terminal continuation of the `llm/stream` waterfall, so a listener may short-circuit the call or route a mutable one-shot request before lookup. AgentLoop observes a request attempt once the outer waterfall returns a stream handle; that limited boundary does not prove a lazy terminal adapter was constructed or began provider I/O. The `block-start` / `block-end` `index` correlation and the assembler together mean an adapter only has to emit well-formed chunks — block reassembly is not each adapter's problem. [architecture.md](../architecture.md#turn-flow) shows where `ctx.llm.stream()` and the `llm/stream` waterfall sit in one turn.
 
 ```ts type-equiv
 /** One model call whose config and adapter registration were resolved together. */
 interface PreparedLlmCall {
-  /** Detached, deep-frozen config with any adapter-owned default materialized. */
+  /** Detached, deep-frozen config with any adapter-owned output default materialized. */
   readonly config: LlmCallConfig
   /** Immutable retry policy captured with the adapter registration. */
   readonly retryPolicy: ResolvedRetryPolicy
@@ -789,7 +791,7 @@ declare abstract class LlmAdapter {
    * @param model - exact model id passed to {@link GenerateOptions.model}.
    * @param _signal - cancellation for this exact-model lookup; asynchronous
    *   implementations must settle promptly after it aborts.
-   * @returns provider/model identity plus any context, call-default, and reasoning metadata.
+   * @returns provider/model identity plus any context and call-default metadata.
    */
   resolveModel(
     provider: string,
@@ -899,9 +901,10 @@ registerModelInputResolver(resolve: LlmModelInputResolver): () => void
  * @param provider - configured provider route.
  * @param model - exact model id sent to the provider.
  * @param signal - cancellation for asynchronous catalog access.
+ * @param ownedBy - upstream model owner preserved from discovery, when disclosed.
  * @returns the first resolver answer, or `undefined` when none knows the model.
  */
-async resolveModelInput( provider: string, model: string, signal?: AbortSignal, ): Promise<readonly ModelModality[] | undefined>
+async resolveModelInput( provider: string, model: string, signal?: AbortSignal, ownedBy?: string, ): Promise<readonly ModelModality[] | undefined>
 
 /**
  * Interrogate one provider endpoint for the models it advertises. The
@@ -936,14 +939,14 @@ async listModels(provider: string): Promise<LlmModelInfo[]>
  * @param provider - registered provider route to inspect.
  * @param model - exact model id passed to the adapter.
  * @param signal - optional cancellation for adapter-owned asynchronous lookup.
- * @returns exact model identity plus available context and reasoning metadata.
+ * @returns exact model identity plus available context and standard reasoning controls.
  */
 async resolveModelInfo( provider: string, model: string, signal?: AbortSignal, ): Promise<LlmResolvedModelInfo>
 
 /**
- * Validate a conversation call config against its exact model capability and
- * materialize adapter-configured defaults. Unsupported explicit efforts
- * reject before provider I/O; no clamping or aliasing is performed. This
+ * Validate a conversation call config against the standard reasoning levels
+ * and materialize adapter-configured output defaults. Unknown effort ids
+ * reject before provider I/O. This
  * standalone query does not bind a later dispatch; use {@link prepareCall}
  * when logging and streaming must share one adapter registration.
  * @param config - provider/model route and optional request controls.

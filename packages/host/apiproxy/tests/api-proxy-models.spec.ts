@@ -67,10 +67,10 @@ class CatalogAdapter extends LlmAdapter {
 const REASONING: LlmModelReasoningInfo = {
   efforts: [
     { id: ReasoningEffortId('off'), name: 'Off' },
+    { id: ReasoningEffortId('low'), name: 'Low' },
     { id: ReasoningEffortId('high'), name: 'High' },
     { id: ReasoningEffortId('max'), name: 'Max' },
   ],
-  defaultEffort: ReasoningEffortId('high'),
 }
 
 async function harness(logged?: {
@@ -598,7 +598,7 @@ describe('Web session model selection', () => {
       ok: false,
       error: {
         code: 'model-unavailable',
-        message: 'provider "deepseek-official" model "private-preview" does not support reasoning effort "medium"',
+        message: 'unknown standard reasoning effort "medium" for provider "deepseek-official" model "private-preview"',
       },
     })
 
@@ -688,9 +688,9 @@ describe('Web session model selection', () => {
     const stillAccepted = expectValue(await api.sessions.selectModel(request({
       sessionId, provider: 'deepseek-official', model: 'deepseek-chat',
     })))
-    expect(stillAccepted.selected).toEqual({ provider: 'deepseek-official', model: 'deepseek-chat', reasoningEffort: 'high' })
+    expect(stillAccepted.selected).toEqual({ provider: 'deepseek-official', model: 'deepseek-chat' })
     expect(expectValue(await api.sessions.models(request({ sessionId }))).current)
-      .toEqual({ provider: 'deepseek-official', model: 'deepseek-chat', reasoningEffort: 'high' })
+      .toEqual({ provider: 'deepseek-official', model: 'deepseek-chat' })
     await ctx.fiber.dispose()
   })
 

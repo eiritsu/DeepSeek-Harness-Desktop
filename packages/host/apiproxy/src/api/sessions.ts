@@ -111,21 +111,21 @@ export interface ModelSelection {
   provider: string
   /** Provider-owned model id. */
   model: string
-  /** Adapter-owned reasoning effort; absence preserves adapter/provider default behavior. */
+  /** Standard reasoning effort; absence preserves provider default behavior. */
   reasoningEffort?: string
 }
 
-/** One adapter-owned reasoning effort displayed for an exact model route. */
+/** One standard reasoning effort displayed for every model route. */
 export interface ModelReasoningEffort {
-  /** Opaque value submitted back to the owning adapter. */
+  /** Standard value submitted to the selected adapter. */
   id: string
-  /** Adapter-supplied display name. */
+  /** Core-supplied display name. */
   name: string
-  /** Optional adapter-supplied description. */
+  /** Optional core-supplied description. */
   description?: string
 }
 
-/** Selectable reasoning metadata for one exact model route. */
+/** Standard selectable reasoning metadata for one model route. */
 export interface ModelReasoning {
   /** Efforts in adapter-preferred display order. */
   efforts: ModelReasoningEffort[]
@@ -141,7 +141,7 @@ export interface ModelCatalogModel {
   name: string
   /** Optional provider-supplied description. */
   description?: string
-  /** Exact-route reasoning metadata when the adapter exposes it. */
+  /** Standard reasoning metadata supplied by the LLM runtime. */
   reasoning?: ModelReasoning
 }
 

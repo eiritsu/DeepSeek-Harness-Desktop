@@ -26,7 +26,7 @@
  * @module dsh-llm-pi-ai/adapter
  */
 
-import { createModels, getSupportedThinkingLevels } from '@earendil-works/pi-ai'
+import { createModels } from '@earendil-works/pi-ai'
 import type {
   Api,
   AuthContext,
@@ -37,6 +37,7 @@ import type {
   MutableModels,
   SimpleStreamOptions,
   ThinkingLevel,
+  ThinkingLevelMap,
 } from '@earendil-works/pi-ai'
 import {
   attributionHeaders,
@@ -44,7 +45,7 @@ import {
   contentHasImage,
   LlmAdapter,
   LlmError,
-  ReasoningEffortId,
+  STANDARD_MODEL_REASONING,
 } from '@deepseek-ai/dsh-llm'
 import type {
   GenerateOptions,
@@ -138,6 +139,7 @@ export interface PiAiAdapterOptions {
     provider: string,
     model: string,
     signal?: AbortSignal,
+    ownedBy?: string,
   ) => Promise<readonly ModelModality[] | undefined>
   /**
    * How every collection this adapter builds resolves auth the request-level
@@ -185,74 +187,30 @@ function profileOptions(
   }
 }
 
-/**
- * The profile default this exact model can actually take, for DESCRIBING it.
- * A configured level the model does not support yields none rather than
- * throwing: `resolveModel` builds the model catalog, and a catalog that fails
- * takes its whole provider out of every picker — so one mis-set profile field
- * would hide every model on the route, including the ones that support the
- * level. The request path still refuses, which is where a bad configuration
- * belongs: describing what a model can do must not fail because a deployment
- * asked it for something it cannot.
- * @param model - the resolved model descriptor.
- * @param effort - the profile's configured level, if any.
- * @returns the level when this model supports it, otherwise undefined.
- */
-function describableReasoningLevel(
-  model: Model<Api>,
-  effort: ReasoningEffortIdType | ModelThinkingLevel | undefined,
-): ModelThinkingLevel | undefined {
-  if (effort === undefined) return undefined
-  return getSupportedThinkingLevels(model).some(level => level === effort)
-    ? effort as ModelThinkingLevel
-    : undefined
-}
-
-/** Validate an explicit Harness/profile effort without invoking pi-ai's clamp. */
+/** Translate one validated Harness/profile effort into pi-ai's common vocabulary. */
 function resolveReasoningLevel(
-  model: Model<Api>,
   effort: ReasoningEffortIdType | ModelThinkingLevel | undefined,
 ): ModelThinkingLevel | undefined {
   if (effort === undefined) return undefined
-  const supported = getSupportedThinkingLevels(model)
-  if (supported.some(level => level === effort)) return effort as ModelThinkingLevel
-  throw new LlmError(
-    `pi-ai provider "${model.provider}" model "${model.id}" does not support reasoning effort "${effort}"`,
-    'UNSUPPORTED_REASONING_EFFORT',
-  )
+  return effort as ModelThinkingLevel
 }
 
-/**
- * Selectable reasoning efforts for one model, or nothing at all.
- *
- * A model that carries no reasoning metadata — every hand-declared one, and
- * every catalog model pi-ai marks as non-reasoning — is reported by pi-ai as
- * supporting the single level `off`. Passing that through would offer a control
- * that cannot do what it says: `off` is translated to *omitting* the reasoning
- * option, which for such a model is byte-for-byte the same request as naming no
- * effort — so a provider whose own default is to think would keep thinking with
- * `off` selected. Omitting `reasoning` entirely is the seam's way of saying the
- * capability is unavailable, which leaves the surface offering only the
- * provider's default.
- * @param model - the resolved model descriptor.
- * @param defaultLevel - the profile's configured effort, already validated.
- * @returns the `reasoning` field, or an empty object when none can be offered.
- */
-function reasoningInfo(
-  model: Model<Api>,
-  defaultLevel: ModelThinkingLevel | undefined,
-): Pick<LlmResolvedModelInfo, 'reasoning'> | Record<string, never> {
-  if (!model.reasoning) return {}
-  const levels = getSupportedThinkingLevels(model)
-  return {
-    reasoning: {
-      efforts: levels.map(level => ({
-        id: ReasoningEffortId(level),
-        name: `${level.charAt(0).toUpperCase()}${level.slice(1)}`,
-      })),
-      ...defaultLevel === undefined ? {} : { defaultEffort: ReasoningEffortId(defaultLevel) },
-    },
+/** Return the provider-neutral controls shared by every route. */
+function reasoningInfo(): Pick<LlmResolvedModelInfo, 'reasoning'> {
+  return { reasoning: STANDARD_MODEL_REASONING }
+}
+
+/** Enable best-effort dispatch for one explicit reasoning level without changing Default calls. */
+function modelForReasoning(model: Model<Api>, level: ModelThinkingLevel | undefined): Model<Api> {
+  if (level === undefined) return model
+  const thinkingLevelMap = Object.fromEntries(
+    Object.entries(model.thinkingLevelMap ?? {})
+      .filter(([key, value]) => key !== level || value !== null),
+  ) as ThinkingLevelMap
+  if ((level === 'max' || level === 'xhigh') && thinkingLevelMap[level] === undefined) {
+    thinkingLevelMap[level] = level
   }
+  return { ...model, reasoning: true, thinkingLevelMap }
 }
 
 /** Merge deployment headers while removing case-insensitive attribution collisions. */
@@ -321,8 +279,9 @@ export class PiAiAdapter extends LlmAdapter {
     const profile = this.profileOf(snapshot, provider)
     const resolved = this.modelOf(snapshot, provider, model)
     const fallback = profile.inputModalities.get(model) ?? resolved.input
+    const ownedBy = profile.modelOwners.get(model)
     const external = profile.externallyResolvableInputModels.has(model)
-      ? await this.config.resolveInputModalities?.(provider, model, signal)
+      ? await this.config.resolveInputModalities?.(provider, model, signal, ownedBy)
       : undefined
     const inputModalities = effectiveModalities(resolved.api, external ?? fallback)
     const piAiInput = inputModalities.filter((modality): modality is Model<Api>['input'][number] => (
@@ -375,7 +334,6 @@ export class PiAiAdapter extends LlmAdapter {
   private modelInfo(snapshot: PiAiSnapshot, provider: string, resolved: ResolvedPiAiModel): LlmResolvedModelInfo {
     const resolvedModel = resolved.model
     const profile = this.profileOf(snapshot, provider)
-    const defaultLevel = describableReasoningLevel(resolvedModel, profile.reasoning)
     // Only a cap the deployment configured is a request default; the
     // catalog's `maxTokens` sizes the model and stops there.
     const configuredMaxTokens = profile.configuredMaxTokens.get(resolvedModel.id)
@@ -386,7 +344,7 @@ export class PiAiAdapter extends LlmAdapter {
       inputModalities: [...resolved.inputModalities],
       context: { contextWindow: resolvedModel.contextWindow },
       ...configuredMaxTokens === undefined ? {} : { defaultMaxTokens: configuredMaxTokens },
-      ...reasoningInfo(resolvedModel, defaultLevel),
+      ...reasoningInfo(),
     }
   }
 
@@ -424,10 +382,8 @@ export class PiAiAdapter extends LlmAdapter {
       options.signal,
     )
     const model = resolved.model
-    const reasoning = resolveReasoningLevel(
-      model,
-      options.reasoningEffort ?? profile.reasoning,
-    )
+    const reasoning = resolveReasoningLevel(options.reasoningEffort ?? profile.reasoning)
+    const dispatchModel = modelForReasoning(model, reasoning)
     const apiKey = await this.config.resolveApiKey(options.provider, profile)
 
     const consumer = new AbortController()
@@ -460,7 +416,7 @@ export class PiAiAdapter extends LlmAdapter {
           maxPixels: profile.requestImagePixelBudget,
           maxBytes: profile.requestImageMaxBytes,
         }, resolved.inputModalities, profile.maxRequestFileBytes)
-      const events = snapshot.models.streamSimple(model, context, {
+      const events = snapshot.models.streamSimple(dispatchModel, context, {
         ...profileOptions(profile, reasoning, apiKey),
         ...options.temperature === undefined ? {} : { temperature: options.temperature },
         ...options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens },

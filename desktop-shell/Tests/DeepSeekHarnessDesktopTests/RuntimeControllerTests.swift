@@ -217,7 +217,7 @@ private func writeExecutable(_ contents: String, to url: URL) throws {
   #expect(plugins[0].version == "1.2.3")
   #expect(!plugins[0].removable)
   #expect(plugins[1].name == "@deepseek-ai/dsh-model-catalog")
-  #expect(plugins[1].displayName == "Model Capabilities")
+  #expect(plugins[1].displayName == "dsh-model-catalog")
   #expect(plugins[1].version == "2.3.4")
   #expect(!plugins[1].removable)
 }

@@ -471,7 +471,10 @@ describe('endpoint interrogation', () => {
     const discover = vi.fn(() => Promise.resolve(ok({
       models: [
         { id: 'kept', contextWindow: 999 },
-        { id: 'fresh', contextWindow: 4096, name: 'Fresh', inputModalities: ['text', 'image'] },
+        {
+          id: 'fresh', ownedBy: 'google', contextWindow: 4096, name: 'Fresh',
+          inputModalities: ['text', 'image'],
+        },
       ],
     })))
     const { mutate } = await mountSection({
@@ -491,7 +494,7 @@ describe('endpoint interrogation', () => {
     await waitFor(() => { expect(mutate).toHaveBeenCalled() })
     expect(firstMutate(mutate).ops[0]?.value).toEqual([
       { id: 'kept', contextWindow: 111 },
-      { id: 'fresh', contextWindow: 4096, name: 'Fresh', input: ['text', 'image'] },
+      { id: 'fresh', ownedBy: 'google', contextWindow: 4096, name: 'Fresh', input: ['text', 'image'] },
     ])
   })
 

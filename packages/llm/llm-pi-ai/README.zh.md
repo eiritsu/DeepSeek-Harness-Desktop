@@ -88,9 +88,9 @@ profile 的 `models` 列表是*替换*该路由已安装 catalog，而不是扩�
 
 ### 按模型的推理（reasoning）档位
 
-`reasoningEfforts` 声明模型可选的思考级别：每个键是选择器提供的一个档位，其值是分派在协议中发送的拼写，因此 `high: high` 原样透传规范名称，而 `max: ultra` 则为使用自有词汇的网关改名。键取自 pi-ai 的档位集合（`off`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`）；未声明的档位不会被提供。省略该字段会保留已安装 catalog 条目的能力（手工声明的模型没有这份能力，也不推理）；`false` 声明一个不具备推理能力的模型，profile 正是以此从其网关无法服务的 catalog 模型上剥除推理；空声明会被拒绝，而不是在这两种含义之间去猜。
+`reasoningEfforts` 配置模型特有的协议拼写，不改变输入框菜单。每个模型统一获得 `Default`、`Off`、`Low`、`High`、`Max`；`Default` 不发送会话级覆盖，显式档位则会在每条路由上尝试。`high: high` 会原样透传规范名称，`max: ultra` 则为使用自有词汇的网关改名。键仍取自 pi-ai 的较宽档位集合（`off`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`），因为路由级 `reasoning` 默认值仍可使用 pi-ai 原生档位。`false` 会让 Default 调用保留非推理描述符；显式标准档位仍属于尽力请求，提供方可以拒绝。空声明会被拒绝。
 
-该声明会转换为 pi-ai 的 `Model.reasoning` + `thinkingLevelMap`，其中每个档位都被显式决定——未声明的档位一律固定为不支持，而不是留给 pi-ai 自己的默认规则：那套规则并不对称（键缺席对五个基础档位意味着「支持」，对 `xhigh`/`max` 却意味着「不支持」），也本不该要求 profile 作者了解。`off` 是唯一的三态键：不写它，选择器不提供 Off，显式请求 Off 会被拒绝——不点名任何档位的请求仍会在不带该参数的情况下发出，提供方随后做什么是它自己的默认行为；声明而不给值（`off:`），则会提供 Off，选中它时什么也不发送——对 `deepseek` 方言则是一个显式的 `thinking: {type: "disabled"}`——这同时覆盖完全不点名任何档位的请求；声明并给值（`off: none`），该值就会作为档位参数在协议中发送。没有任何写法能把 catalog 映射中的键恢复为「未设置」：这份声明就是对外提供的全部，因此把你要保留的 catalog 档位重述出来。
+该声明会转换为 pi-ai 的 `Model.reasoning` 与 `thinkingLevelMap`。显式标准档位会在分离的请求描述符上临时启用推理，保留已配置的协议拼写，并在 `max` 没有映射时补为 `max`；这样可以绕过 pi-ai 的模型能力 clamp，同时不改变 Default 请求。`off` 保留协议特有行为：`off: none` 等显式值会进入协议，null 或缺省值则让 pi-ai 发出所选协议的禁用形式，或省略通用 reasoning 选项。私有网关若无法由 pi-ai 推断方言，仍需配置 `compat.thinkingFormat` 与 `compat.supportsReasoningEffort`。
 
 ### 协议兼容开关
 
@@ -119,11 +119,9 @@ pi-ai 依据提供方 id 与 baseURL 决定每个请求的形状：系统提示�
 
 凭据在每次流调用时通过 `apiKeyEnv` 与可选的 `ctx.credentials` seam 解析；未挂载该 seam 时，适配器只读取该引用指向的环境变量。只有完全没有点名任何凭据的 profile——仅限这一种情况——才交给 pi-ai 的环境发现。每个解析出的密钥都会在使用前去除首尾空白并校验格式，因此 HTTP 标头无法承载的值会被拒绝，而不是以语义不明的 `fetch` `TypeError` 形式浮现；这种拒绝会抛出 `LlmError('INVALID_CREDENTIAL')`，点名失败的路由与凭据引用，但绝不透露密钥的任何部分。路由集合与每条路由捕获的重试策略是注册级事实：两者任一变化时，插件都会原子地替换自己的注册（同一适配器实例，候选集合先经校验），因此某条路由若已被另一适配器占有，先前的路由会继续服务，而改回可用配置时注册会重新生效。提供方键的顺序绝不算作变化。本适配器无法服务的分节会在写入处被拒——注册的 `validate` 会解析整份 profile 集合，因此 `ctx.settings.mutate` 以 resolver 自身的错误拒绝（该协议将其报为 `settings-rejected`），什么都不会存储。已存储分节若因其他途径变得不可服务——比如外部编辑了 `settings.yaml`——则由 settings seam 保留该 namespace 最后可用的值并告警。entry 配置本身仍会使插件加载失败；而 llm 注册表拒绝的路由（已被另一适配器族占有的那种）会被记录下来，先前注册的路由继续服务。
 
-适配器通过 `ctx.llm.listModels(provider)` 公开每条已配置路由的模型。这是从请求路径所用的同一个 pi-ai `Models` 集合读取的提供方无关 selector 元数据，因此发现不会创建第二个模型注册表。`ctx.llm.resolveModelInfo(provider, model)` 会执行一次精确 descriptor 查找，并返回其身份、上下文窗口、已配置输出上限和可选思考级别，让权威元数据保留在拥有路由的适配器上，而非消费方。模型**已配置**的 `maxTokens` 会成为 seam 的 `defaultMaxTokens`，因此未点名输出上限的请求会携带部署选定的那一个；而从已安装 catalog 继承来的值是模型的输出**能力**，绝不会自行变成请求默认值。
+适配器通过 `ctx.llm.listModels(provider)` 公开每条已配置路由的模型。这是从请求路径所用的同一个 pi-ai `Models` 集合读取的提供方无关 selector 元数据，因此发现不会创建第二个模型注册表。`ctx.llm.resolveModelInfo(provider, model)` 会执行一次精确 descriptor 查找，并返回其身份、上下文窗口与已配置输出上限；固定推理控件由 `LlmRuntime` 附加。模型**已配置**的 `maxTokens` 会成为 seam 的 `defaultMaxTokens`，因此未点名输出上限的请求会携带部署选定的那一个；而从已安装 catalog 继承来的值是模型的输出**能力**，绝不会自行变成请求默认值。
 
-携带推理元数据的模型——来自已安装 catalog，或来自其条目的 `reasoningEfforts`——会公开 pi-ai 有序的 `getSupportedThinkingLevels(model)` 结果，不经筛选或规范化，其中包括 `off`，以及模型对 `xhigh` 或 `max` 的特定支持。Harness 将每个规范 pi-ai 级别公开为不透明 ID；提供方／模型在协议格式中的表示仍保留在 pi-ai 的 `thinkingLevelMap` 中。
-
-**没有**这份元数据的模型——条目未声明 `reasoningEfforts` 的手工声明模型，以及 pi-ai 标记为不具备推理能力的 catalog 模型——完全不公开 `reasoning`。pi-ai 会把这类模型报告为只支持 `off` 一档，但 `off` 会被翻译成*省略* reasoning 选项，而那与「不点名任何档位」产出的请求逐字节相同：选它关不掉任何东西，于是自身默认就在思考的提供方，会在界面显示 `off` 被选中的同时继续思考。把该能力报告为不可用，界面就只剩提供方默认这一项，不会再出现自相矛盾的控件。配置 profile 的 `reasoning` 值（包括 `off`）在存在时是部署默认值；省略它会保留提供方默认值。每次请求的 `GenerateOptions.reasoningEffort` 优先；未出现在确切模型能力中的档位会让**请求**在网络 I/O 前以 `UNSUPPORTED_REASONING_EFFORT` 失败，而不会被自动调整。**描述**一个模型则从不这样失败：同一提供方下各模型接受的档位并不一致，因此 `resolveModel` 对该模型拿不下的 profile 档位报告为「没有默认值」，而不是抛错。在那里抛错会让整个提供方从任何基于它构建的模型目录中消失——一个配错的 profile 字段连支持该档位的模型也一并藏起来——所以坏配置暴露在被执行处，而不是被描述处。pi-ai 的通用流选项通过省略 `reasoning` 表示 `off`。
+profile 的 `reasoning` 值只在会话保持 `Default` 时作为部署默认值；省略它会保留提供方默认值。每次请求的 `GenerateOptions.reasoningEffort` 优先。`Off`、`Low`、`High`、`Max` 不是能力声明：适配器会通过 pi-ai 的协议翻译尝试发送，端点若未实现所选档位，就返回常规提供方错误。这样，控件是否出现便不再依赖模型发现、提供方 owner 或模型名启发式。
 
 受支持的 profile 字段是 `apiKeyEnv`、`displayName`、`api`、`baseURL`、`models`、`modelOverrides`、`compat`、`defaultContextWindow`、`defaultMaxTokens`、`defaultInput`、`headers`、`reasoning`、`thinkingBudgets`、`cacheRetention`、`transport`、`timeoutMs`、`websocketConnectTimeoutMs`、`streamIdleTimeoutMs`、`maxRequestImageBytes`、`maxRequestFileBytes`、`requestImagePixelBudget`、`requestImageMaxBytes` 和 `retryPolicy`。每条 profile 解析后的重试策略会随该提供方路由一同捕获；省略时使用共享的有界 normal 默认值并重试五次。流空闲间隔必须是正的有限 Node 定时器延迟，默认为五分钟，且只覆盖未完成提供方读取，不包括消费方思考时间。每条图片路由从提供方无关的规范化附件派生确定性请求版本，受 `requestImagePixelBudget`（默认总像素 2048×2048）和 `requestImageMaxBytes`（默认原始字节 1MiB）约束。读取附件前，`maxRequestImageBytes` 先按请求版本的保守上界替换超预算的最旧图片；保留版本生成后再用确切 base64 长度检查。Google 协议还会把 catalog 声明的 `audio`、`video` 与 `pdf` 序列化为 inline media；`maxRequestFileBytes` 以 128MiB 限制其累计 base64 载荷，并把超预算的最旧文件替换为稳定元数据文本。若已配置标头中有同名项，则以 Harness 应用归因为准。
 
@@ -141,7 +139,7 @@ pi-ai 依据提供方 id 与 baseURL 决定每个请求的形状：系统提示�
 
 多数列表只公布 id；`context_window`/`context_length`、`max_output_tokens`/`max_tokens`，以及顶层或 `architecture.input_modalities` 中明确给出的列表，会在网关提供时被读取。系统只保留支持的 `text` 与 `image`，字段缺失或只含不支持的值时保持未知，不会猜测能力；模型页会在采纳候选时自动把已公布模态存入对应模型。没有可用 id 的条目会被跳过，而不是让整份列表失败。回复在四兆字节上限下读取，且上限落在实际收到的字节上——端点是用户自己填的 URL，因此会先看声明长度，但绝不把它当作边界。端点不可达、凭据被拒、响应非 JSON、以及响应没有 `data` 数组，都会以 `DISCOVERY_FAILED` 失败，消息点名端点；仅当 401 或 403 时才点名凭据。读取响应体期间被取消会呈现为 `ABORTED`，与请求发出之前被取消一致。
 
-列表中的 `owned_by` 会作为候选元数据保留。Web profile 默认启用的 `@deepseek-ai/dsh-model-catalog` Bundle 会把 `models.dev` 刷新到持久 last-good 快照，并使用可识别 owner 与精确模型 id 补齐完整的 `text`、`image`、`audio`、`video` 与 `pdf` 声明。owner 为网关自定义值或缺失时，只有动态 catalog 中具有该精确 id 的所有条目达成一致才会回退；动态快照没有该 id 时，再按相同精确匹配规则使用 pi-ai 已安装 catalog。它不依据路由、协议或模型名模式推断。这使通用适配器不依赖任何单一补充 catalog；自定义 profile 可以把该 catalog 作为普通 Bundle 添加。
+列表中的 `owned_by` 会作为候选元数据保留，并由模型页写入采用的模型行。Web profile 默认启用的 `@deepseek-ai/dsh-model-catalog` Bundle 会把 `models.dev` 刷新到持久 last-good 快照，并使用可识别 owner 与精确模型 id 补齐完整的 `text`、`image`、`audio`、`video`、`pdf` 声明。owner 为网关自定义值或缺失时，输入声明必须完全一致；动态快照没有该 id 时，再按相同精确匹配规则使用 pi-ai 已安装 catalog。它不依据路由、协议或模型名模式推断。这使通用适配器不依赖任何单一补充 catalog；自定义 profile 可以把该 catalog 作为普通 Bundle 添加。
 
 ## 提供方／模型路由与回放
 

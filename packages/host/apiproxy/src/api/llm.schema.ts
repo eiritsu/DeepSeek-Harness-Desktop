@@ -39,6 +39,7 @@ export const llmModelsValueSchema = z.object({
 /** DiscoveredModelView row of llm.discoverModels. */
 export const discoveredModelViewSchema = z.object({
   id: z.string().min(1),
+  ownedBy: z.string().min(1).optional(),
   name: z.string().min(1).optional(),
   contextWindow: z.number().int().positive().optional(),
   maxTokens: z.number().int().positive().optional(),

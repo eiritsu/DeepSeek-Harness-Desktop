@@ -193,12 +193,9 @@ export function catalogModels(provider: string): Map<string, Model<Api>> {
 }
 
 /**
- * Selectable reasoning efforts for one model: each key is a level the model
- * offers (and selectors show), and its value is the wire spelling dispatch
- * sends for it. `off` alone may leave its value empty — "supported, send
- * nothing" — because for most providers not thinking is the parameter's
- * absence; every other declared level must name a wire value. A level absent
- * from the dict is not offered.
+ * Model-specific reasoning wire spellings. `off` alone may leave its value
+ * empty because most providers disable thinking by omitting the parameter;
+ * every other configured level must name a wire value.
  */
 export type PiAiReasoningEfforts = Partial<Record<ModelThinkingLevel, string | null>>
 
@@ -539,6 +536,8 @@ function assertOfferedCompatFields(
 export interface PiAiModelProfile {
   /** Model id sent to the provider and accepted by {@link GenerateOptions.model}. */
   id: string
+  /** Upstream catalog owner preserved from model discovery, when disclosed. */
+  ownedBy?: string
   /** Display name for selectors; defaults to the catalog name, then the id. */
   name?: string
   /** Maximum combined request and response context in tokens. */
@@ -563,11 +562,9 @@ export interface PiAiModelProfile {
    */
   input?: PiAiModality[]
   /**
-   * Selectable reasoning efforts. Absent inherits the installed catalog
-   * entry's capability (a hand-declared model has none and does not reason);
-   * `false` declares a non-reasoning model, which is how a profile strips
-   * reasoning from a catalog model its gateway cannot serve; a non-empty dict
-   * declares the offered levels and their wire spellings.
+   * Reasoning wire spellings. Absent inherits the installed catalog entry;
+   * `false` preserves a non-reasoning descriptor for Default calls; a
+   * non-empty dict configures protocol values for named levels.
    */
   reasoningEfforts?: false | PiAiReasoningEfforts
   /** pi-ai wire-compatibility switches for this model, winning over the route's per field; one its protocol does not declare is refused. */
@@ -633,14 +630,13 @@ interface ModelReasoning {
 }
 
 /**
- * Resolve one model's reasoning capability from its declared efforts.
+ * Resolve one model's reasoning descriptor and wire mappings.
  *
  * A declared dict translates to pi-ai's `thinkingLevelMap` with every level
  * decided explicitly: declared levels carry their wire spelling, undeclared
- * levels are pinned to `null` (unsupported). Pinning matters because pi-ai's
- * own defaulting is asymmetric — an absent key means "supported" for the five
- * base levels but "unsupported" for `xhigh`/`max` — and a profile author
- * should not need to know that. A declared `off` with no value is the one
+ * levels are pinned to `null` in the stored descriptor. Explicit session
+ * choices temporarily unpin their selected level before dispatch, allowing
+ * canonical best-effort values without changing Default calls. A declared `off` with no value is the one
  * exception: it stays absent from the map, which pi-ai reads as "supported,
  * send nothing" — the correct dispatch where not thinking is the parameter's
  * absence — while `off` with a value sends that value.
@@ -672,7 +668,7 @@ function resolveModelReasoning(
   // while an explicit `{}` arrives as an empty dict. Both declare nothing,
   // and neither is a spelling of "inherit" or "disable".
   if ((efforts as unknown) === null || Object.keys(efforts).length === 0) {
-    invalid(provider, `model "${entry.id}" has an empty reasoningEfforts; declare the offered levels, set`
+    invalid(provider, `model "${entry.id}" has an empty reasoningEfforts; declare wire mappings, set`
       + ' false for a non-reasoning model, or omit the field to keep the installed catalog\'s capability')
   }
   const declared = THINKING_LEVELS.flatMap((level) => {
@@ -688,10 +684,6 @@ function resolveModelReasoning(
     } else if (wire.length === 0) {
       invalid(provider, `model "${entry.id}" reasoningEfforts.${level} must not be an empty string`)
     }
-  }
-  if (!declared.some(([level]) => level !== 'off')) {
-    invalid(provider, `model "${entry.id}" reasoningEfforts offers no level beyond "off"; declare a thinking`
-      + ' level, or set reasoningEfforts to false for a non-reasoning model')
   }
   const map: ThinkingLevelMap = {}
   for (const level of THINKING_LEVELS) {
@@ -776,6 +768,8 @@ export interface RouteCatalog {
   configuredMaxTokens: ReadonlyMap<string, number>
   /** Complete declared modalities before adapter transport filtering, keyed by model id. */
   inputModalities: ReadonlyMap<string, readonly PiAiModality[]>
+  /** Upstream owners preserved from discovery, keyed by model id. */
+  modelOwners: ReadonlyMap<string, string>
   /** Model ids whose profile entry did not explicitly pin input modalities. */
   externallyResolvableInputModels: ReadonlySet<string>
 }
@@ -840,6 +834,7 @@ export function resolveRouteModels(request: RouteCatalogRequest): RouteCatalog {
   const seen = new Set<string>()
   const configuredMaxTokens = new Map<string, number>()
   const inputModalities = new Map<string, readonly PiAiModality[]>()
+  const modelOwners = new Map<string, string>()
   const externallyResolvableInputModels = new Set<string>()
   const models = entries.map((entry) => {
     if (entry.id.length === 0) invalid(provider, 'has a model with an empty id')
@@ -873,6 +868,7 @@ export function resolveRouteModels(request: RouteCatalogRequest): RouteCatalog {
     const declared = declaredInput(entry.input)
     const input = declared ?? base?.input ?? request.defaultInput
     inputModalities.set(entry.id, [...input])
+    if (entry.ownedBy !== undefined) modelOwners.set(entry.id, entry.ownedBy)
     if (declared === undefined) externallyResolvableInputModels.add(entry.id)
     return {
       // The installed entry lays the floor, and the fields below override it.
@@ -904,5 +900,11 @@ export function resolveRouteModels(request: RouteCatalogRequest): RouteCatalog {
     invalid(provider, `sets compat "${field}", but no model on the route speaks a protocol that takes it;`
       + ` it exists on ${takers.join(', ')}`)
   }
-  return { models, configuredMaxTokens, inputModalities, externallyResolvableInputModels }
+  return {
+    models,
+    configuredMaxTokens,
+    inputModalities,
+    modelOwners,
+    externallyResolvableInputModels,
+  }
 }

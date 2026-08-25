@@ -1,6 +1,7 @@
 # Agent Note: 适配器持有的推理强度能力
 
 Status: implemented
+Archived: 2026-08-25
 
 [English](2026-07-24-adapter-owned-reasoning-effort-capabilities.md) | 中文
 

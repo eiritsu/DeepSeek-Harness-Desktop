@@ -754,7 +754,7 @@ describe('config unary surface', () => {
         providers: record('llm.providers', r => ok(r, { providers: [providerRow] })),
         models: record('llm.models', r => ok(r, { groups: [group], failures: [] })),
         discoverModels: record('llm.discoverModels', r => ok(r, {
-          models: [{ id: 'acme-large', contextWindow: 65536, inputModalities: ['text', 'image'] }],
+          models: [{ id: 'acme-large', ownedBy: 'acme', contextWindow: 65536, inputModalities: ['text', 'image'] }],
         })),
       },
     })
@@ -789,7 +789,9 @@ describe('config unary surface', () => {
     })
     expect(discovered.result).toEqual({
       ok: true,
-      value: { models: [{ id: 'acme-large', contextWindow: 65536, inputModalities: ['text', 'image'] }] },
+      value: {
+        models: [{ id: 'acme-large', ownedBy: 'acme', contextWindow: 65536, inputModalities: ['text', 'image'] }],
+      },
     })
 
     expect(seen.map(call => call.method)).toEqual([

@@ -112,7 +112,7 @@ final class PluginManager: @unchecked Sendable {
         let bundles = ((root["dsh"] as? [String: Any])?["profile"] as? [String: Any])?["bundles"] as? [String] ?? []
         let displayNames = [
           "@deepseek-ai/dsh-file-recognizer-office": "Deepseek-Files",
-          "@deepseek-ai/dsh-model-catalog": "Model Capabilities",
+          "@deepseek-ai/dsh-model-catalog": "dsh-model-catalog",
         ]
         var plugins = dependencies.map {
           DesktopInstalledPlugin(
@@ -130,7 +130,7 @@ final class PluginManager: @unchecked Sendable {
           ),
           (
             name: "@deepseek-ai/dsh-model-catalog",
-            displayName: "Model Capabilities",
+            displayName: "dsh-model-catalog",
             manifestPath: "packages/llm/model-catalog/package.json"
           ),
         ]

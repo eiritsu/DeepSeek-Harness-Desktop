@@ -147,6 +147,7 @@ function capacitySpelling(value: number | undefined): string {
 function adopt(candidate: DiscoveredModelView): ModelDraft {
   return {
     id: candidate.id,
+    ...candidate.ownedBy === undefined ? {} : { ownedBy: candidate.ownedBy },
     ...candidate.name === undefined ? {} : { name: candidate.name },
     ...candidate.contextWindow === undefined ? {} : { contextWindow: candidate.contextWindow },
     ...candidate.maxTokens === undefined ? {} : { maxTokens: candidate.maxTokens },

@@ -1149,6 +1149,8 @@ export interface PiAiProviderProfile {
 export interface PiAiModelProfile {
   /** Model id sent to the provider and accepted by {@link GenerateOptions.model}. */
   id: string
+  /** Upstream catalog owner preserved from model discovery, when disclosed. */
+  ownedBy?: string
   /** Display name for selectors; defaults to the catalog name, then the id. */
   name?: string
   /** Maximum combined request and response context in tokens. */
@@ -1173,11 +1175,9 @@ export interface PiAiModelProfile {
    */
   input?: PiAiModality[]
   /**
-   * Selectable reasoning efforts. Absent inherits the installed catalog
-   * entry's capability (a hand-declared model has none and does not reason);
-   * `false` declares a non-reasoning model, which is how a profile strips
-   * reasoning from a catalog model its gateway cannot serve; a non-empty dict
-   * declares the offered levels and their wire spellings.
+   * Reasoning wire spellings. Absent inherits the installed catalog entry;
+   * `false` preserves a non-reasoning descriptor for Default calls; a
+   * non-empty dict configures protocol values for named levels.
    */
   reasoningEfforts?: false | PiAiReasoningEfforts
   /** pi-ai wire-compatibility switches for this model, winning over the route's per field; one its protocol does not declare is refused. */
@@ -1274,12 +1274,9 @@ export interface PiAiCompatProfile {
 export type PiAiModality = ModelModality
 
 /**
- * Selectable reasoning efforts for one model: each key is a level the model
- * offers (and selectors show), and its value is the wire spelling dispatch
- * sends for it. `off` alone may leave its value empty — "supported, send
- * nothing" — because for most providers not thinking is the parameter's
- * absence; every other declared level must name a wire value. A level absent
- * from the dict is not offered.
+ * Model-specific reasoning wire spellings. `off` alone may leave its value
+ * empty because most providers disable thinking by omitting the parameter;
+ * every other configured level must name a wire value.
  */
 export type PiAiReasoningEfforts = Partial<Record<ModelThinkingLevel, string | null>>
 
@@ -1289,7 +1286,7 @@ export type PiAiThinkingFormat = NonNullable<OpenAICompletionsCompat['thinkingFo
 
 依赖：`CacheRetention`（`@earendil-works/pi-ai`）· [`ModelModality`](subsystems/llm-streaming.zh.md) · `ModelThinkingLevel`（`@earendil-works/pi-ai`）· `OpenAICompletionsCompat`（`@earendil-works/pi-ai`）· [`RetryPolicyConfig`](../packages/llm/llm/src/index.ts) · `ThinkingBudgets`（`@earendil-works/pi-ai`）· `Transport`（`@earendil-works/pi-ai`）
 
-来源：[`packages/llm/llm-pi-ai/src/config.ts:224`](../packages/llm/llm-pi-ai/src/config.ts)
+来源：[`packages/llm/llm-pi-ai/src/config.ts:226`](../packages/llm/llm-pi-ai/src/config.ts)
 
 <a id="deepseek-aidsh-llm-replay"></a>
 
@@ -1523,7 +1520,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/llm/model-catalog/src/index.ts:29`](../packages/llm/model-catalog/src/index.ts)
+来源：[`packages/llm/model-catalog/src/index.ts:30`](../packages/llm/model-catalog/src/index.ts)
 
 <a id="deepseek-aidsh-permission-presets"></a>
 

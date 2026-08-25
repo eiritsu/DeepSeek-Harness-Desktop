@@ -32,6 +32,7 @@ import { HarnessError, INVALID_CREDENTIAL_CODE } from './error.ts'
 import { normalizeLlmFailure } from './adapter-failure.ts'
 import { normalizeApiKey } from './api-key.ts'
 import { contentHasFile, contentHasImage, projectFilesForModel, projectImagesForTextModel } from './content.ts'
+import { STANDARD_MODEL_REASONING } from './reasoning.ts'
 
 export * from './attribution.ts'
 export * from './brand.ts'
@@ -42,6 +43,7 @@ export * from './types.ts'
 export * from './content.ts'
 export * from './message.ts'
 export * from './retry-policy.ts'
+export * from './reasoning.ts'
 export { BlockAssembler } from './assembler.ts'
 export { callConfigEquals, deepFreeze, isAgentLoopRequest, markAgentLoopRequest } from './call-config.ts'
 export type { LlmCallConfig, LlmCallConfigAdapterDefaults } from './call-config.ts'
@@ -156,7 +158,7 @@ export function assertUsableApiKey(raw: string, pkg: string, ref: string): strin
 
 /** One model call whose config and adapter registration were resolved together. */
 export interface PreparedLlmCall {
-  /** Detached, deep-frozen config with any adapter-owned default materialized. */
+  /** Detached, deep-frozen config with any adapter-owned output default materialized. */
   readonly config: LlmCallConfig
   /** Immutable retry policy captured with the adapter registration. */
   readonly retryPolicy: ResolvedRetryPolicy
@@ -227,7 +229,7 @@ export abstract class LlmAdapter {
    * @param model - exact model id passed to {@link GenerateOptions.model}.
    * @param _signal - cancellation for this exact-model lookup; asynchronous
    *   implementations must settle promptly after it aborts.
-   * @returns provider/model identity plus any context, call-default, and reasoning metadata.
+   * @returns provider/model identity plus any context and call-default metadata.
    */
   resolveModel(
     provider: string,
@@ -592,16 +594,23 @@ export class LlmRuntime extends Service {
    * @param provider - configured provider route.
    * @param model - exact model id sent to the provider.
    * @param signal - cancellation for asynchronous catalog access.
+   * @param ownedBy - upstream model owner preserved from discovery, when disclosed.
    * @returns the first resolver answer, or `undefined` when none knows the model.
    */
   async resolveModelInput(
     provider: string,
     model: string,
     signal?: AbortSignal,
+    ownedBy?: string,
   ): Promise<readonly ModelModality[] | undefined> {
     signal?.throwIfAborted()
     for (const resolve of this.modelInputResolvers.values()) {
-      const modalities = await resolve({ provider, model, ...signal === undefined ? {} : { signal } })
+      const modalities = await resolve({
+        provider,
+        model,
+        ...ownedBy === undefined ? {} : { ownedBy },
+        ...signal === undefined ? {} : { signal },
+      })
       if (modalities !== undefined) return [...modalities]
       signal?.throwIfAborted()
     }
@@ -737,7 +746,7 @@ export class LlmRuntime extends Service {
    * @param provider - registered provider route to inspect.
    * @param model - exact model id passed to the adapter.
    * @param signal - optional cancellation for adapter-owned asynchronous lookup.
-   * @returns exact model identity plus available context and reasoning metadata.
+   * @returns exact model identity plus available context and standard reasoning controls.
    */
   async resolveModelInfo(
     provider: string,
@@ -804,55 +813,16 @@ export class LlmRuntime extends Service {
       ...context === undefined ? {} : { context: { contextWindow: context.contextWindow } },
       ...defaultMaxTokens === undefined ? {} : { defaultMaxTokens },
     }
-    const reasoning = resolved.reasoning
-    if (reasoning === undefined) return info
-    if (reasoning.efforts.length === 0) {
-      throw new LlmError(
-        `adapter returned invalid reasoning metadata for provider "${provider}" model "${model}"`,
-        'INVALID_MODEL_REASONING',
-      )
-    }
-    const seen = new Set<string>()
-    const efforts = reasoning.efforts.map((effort) => {
-      if (
-        typeof effort.id !== 'string'
-        || effort.id.length === 0
-        || typeof effort.name !== 'string'
-        || effort.name.length === 0
-        || (effort.description !== undefined && typeof effort.description !== 'string')
-        || seen.has(effort.id)
-      ) {
-        throw new LlmError(
-          `adapter returned invalid or duplicate reasoning effort metadata for provider "${provider}" model "${model}"`,
-          'INVALID_MODEL_REASONING',
-        )
-      }
-      seen.add(effort.id)
-      return {
-        id: effort.id,
-        name: effort.name,
-        ...effort.description === undefined ? {} : { description: effort.description },
-      }
-    })
-    if (reasoning.defaultEffort !== undefined && !seen.has(reasoning.defaultEffort)) {
-      throw new LlmError(
-        `adapter returned an unknown default reasoning effort for provider "${provider}" model "${model}"`,
-        'INVALID_MODEL_REASONING',
-      )
-    }
     return {
       ...info,
-      reasoning: {
-        efforts,
-        ...reasoning.defaultEffort === undefined ? {} : { defaultEffort: reasoning.defaultEffort },
-      },
+      reasoning: STANDARD_MODEL_REASONING,
     }
   }
 
   /**
-   * Validate a conversation call config against its exact model capability and
-   * materialize adapter-configured defaults. Unsupported explicit efforts
-   * reject before provider I/O; no clamping or aliasing is performed. This
+   * Validate a conversation call config against the standard reasoning levels
+   * and materialize adapter-configured output defaults. Unknown effort ids
+   * reject before provider I/O. This
    * standalone query does not bind a later dispatch; use {@link prepareCall}
    * when logging and streaming must share one adapter registration.
    * @param config - provider/model route and optional request controls.
@@ -880,30 +850,16 @@ export class LlmRuntime extends Service {
     const defaulted = config.maxTokens === undefined && info.defaultMaxTokens !== undefined
       ? { ...config, maxTokens: info.defaultMaxTokens }
       : config
-    const reasoning = info.reasoning
     const requested = defaulted.reasoningEffort
-    let resolvedConfig = defaulted
-    if (reasoning === undefined) {
-      if (requested !== undefined) {
-        throw new LlmError(
-          `provider "${config.provider}" model "${config.model}" does not support reasoning effort "${requested}"`,
-          'UNSUPPORTED_REASONING_EFFORT',
-        )
-      }
-    } else {
-      const effective = requested ?? reasoning.defaultEffort
-      if (effective !== undefined) {
-        if (!reasoning.efforts.some(effort => effort.id === effective)) {
-          throw new LlmError(
-            `provider "${config.provider}" model "${config.model}" does not support reasoning effort "${effective}"`,
-            'UNSUPPORTED_REASONING_EFFORT',
-          )
-        }
-        if (requested !== effective) resolvedConfig = { ...defaulted, reasoningEffort: effective }
-      }
+    if (requested !== undefined
+      && !STANDARD_MODEL_REASONING.efforts.some(effort => effort.id === requested)) {
+      throw new LlmError(
+        `unknown standard reasoning effort "${requested}" for provider "${config.provider}" model "${config.model}"`,
+        'UNSUPPORTED_REASONING_EFFORT',
+      )
     }
     return {
-      config: resolvedConfig,
+      config: defaulted,
       ...info.context === undefined ? {} : { context: info.context },
       modelInfo: info,
     }
@@ -927,9 +883,6 @@ export class LlmRuntime extends Service {
       ? undefined
       : deepFreeze(structuredClone(resolved.context))
     const adapterDefaults = deepFreeze<LlmCallConfigAdapterDefaults>({
-      ...config.reasoningEffort === undefined && resolvedConfig.reasoningEffort !== undefined
-        ? { reasoningEffort: true }
-        : {},
       ...config.maxTokens === undefined && resolvedConfig.maxTokens !== undefined
         ? { maxTokens: true }
         : {},

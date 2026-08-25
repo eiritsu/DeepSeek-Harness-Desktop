@@ -51,12 +51,12 @@ export function ProviderRequestId(id: string): ProviderRequestId {
   return id as ProviderRequestId
 }
 
-/** Adapter-owned identifier for one model's selectable reasoning effort. */
+/** Standard identifier for one selectable reasoning effort. */
 export type ReasoningEffortId = Branded<'ReasoningEffortId'>
 
 /**
- * Brand an adapter-owned reasoning-effort identifier.
- * @param id - the opaque identifier exposed by one model capability.
+ * Brand a standard reasoning-effort identifier.
+ * @param id - the identifier exposed by the core reasoning controls.
  * @returns the same string, branded; no validation is performed.
  */
 export function ReasoningEffortId(id: string): ReasoningEffortId {

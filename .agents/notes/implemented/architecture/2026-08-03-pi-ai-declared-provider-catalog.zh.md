@@ -32,11 +32,11 @@ Status: implemented
 
 可配置提供方目录现在是已安装 catalog **与**当前 profile 声明的每条路由的并集，并在该集合变化时重新登记。没有这个并集，手工声明的路由就没有 settings 地址，任何配置界面都无法展示或编辑它。
 
-### 唯一档位什么也做不到的能力，报告为不可用
+### 推理元数据配置派发，不决定可用性
 
-pi-ai 把没有推理元数据的模型报告为只支持 `off` 一档，而适配器此前原样透传。它抵达 seam 时是一个单元素的 effort 列表，任何界面都会把它渲染成一个只有一项可选控件的选择器——而这个控件在撒谎：`off` 在派发时变成被*省略*的推理选项，与「不点名任何档位」产出的请求逐字节相同。自身默认就在思考的提供方会继续思考，界面却显示 `off` 已选中。
+LLM runtime 为每个已解析模型提供 `off`、`low`、`high` 和 `max`，Composer 再加入 `Default`。因此 pi-ai catalog 元数据不能隐藏或新增选择器条目。pi-ai descriptor 不含推理元数据的模型在 `Default` 调用中保持原样；显式标准选项会要求适配器启用推理，并由提供方接受或拒绝翻译后的请求。
 
-因此只要 `model.reasoning` 为假，`reasoningInfo` 就省略 Service Definition 的 `reasoning` 字段。判据是模型自身的元数据，而非模型的来源，所以它覆盖条目未声明 `reasoningEfforts` 的每一个手工声明模型（[[2026-08-08-pi-ai-per-model-reasoning-declarations]] 让声明的档位携带这份元数据）**以及** pi-ai 标记为不具备推理能力的那 251 个已安装 catalog 模型。它们此前提供那个孤零零的 `off`，现在什么也不提供，界面只剩提供方默认。携带推理元数据的模型不受影响——其档位列表仍不经筛选地穿过 seam、`off` 也在内，因为在那里它是在真实备选之间做选择。
+`reasoningEfforts` 仍可作为逐模型协议配置（[[2026-08-08-pi-ai-per-model-reasoning-declarations]]）：它能把标准选项映射为私有网关需要的词汇，但不再充当能力声明。这样，UI 可用性不依赖提供方归属和 catalog 新鲜度，派发时仍保留精确协议拼写。
 
 ### 凭据留在 pi-ai 之外
 
@@ -51,7 +51,7 @@ pi-ai 的 `Models` 自带一套凭据概念——按提供方 ID 索引的 `Cred
 - **保留 `createProvider()` 但不建 `Models` 集合**，改由 `provider.streamSimple(model, ctx, {apiKey})` 发起。改动最小且凭据路径原封不动，但 `createProvider` 的 `auth` 是必填字段，这条路上它永远不会被调用——一份因签名而必填、却没有调用方的实现。它还让 `refreshModels` 需要手工构造 `RefreshModelsContext`，并使适配器始终不在 pi-ai 真正支持的运行时上。
 - **catalog 路由复用已安装提供方，只有声明式路由走 `createProvider()`**，且两者不共享解析。对 catalog 行为零风险，但 catalog 物化、端点覆盖与每模型配置这三件事都要各写两遍，而改指协议的 catalog 路由还得在解析中途跳到另一条路径。已采纳的拆法把不对称收敛在提供方构造这一处——那里的不对称是 pi-ai 不暴露已构造提供方的 API 实现所强加的。
 - **让每条路由都经 `createProvider()` 重建**，包括 catalog 路由。完全对称，但已构造的 `Provider` 不暴露自己的 `api`，于是协议表会成为「哪些提供方能用」的天花板——Bedrock 经独立入口加载其 Smithy 模块，会因此静默失效。
-- **完整暴露 pi-ai 的 `Model` 形状**（成本、输入模态、`thinkingLevelMap`、`compat`）。可配置性最大，但这些字段当时没有任何读取方，因此配了价格或模态什么也不会改变，却看起来像是受支持的。这条否决里由消费方驱动的那一半后来逐字段兑现了，每次都等到出现真实读取方：[[2026-08-08-pi-ai-per-model-reasoning-declarations]] 在选择器与分派真正消费之后开放了推理（以 `reasoningEfforts` 的形态，而非裸 `thinkingLevelMap`）和两个推理分派 `compat` 开关；[[2026-08-12-pi-ai-route-default-input-modalities]] 在图片准入点开始读取之后开放了模态（以 `input` 与 `defaultInput` 的形态，而非裸 `Model.input` 直通）。成本仍因原有理由保持关闭。
+- **完整暴露 pi-ai 的 `Model` 形状**（成本、输入模态、`thinkingLevelMap`、`compat`）。可配置性最大，但 harness 只应通过具体消费方开放字段。`reasoningEfforts` 与两个推理派发 `compat` 开关提供协议控制，但不会让 catalog 元数据拥有选择器可用性（[[2026-08-08-pi-ai-per-model-reasoning-declarations]]）。模态使用 `input` 和 `defaultInput`，而不是裸 `Model.input` 直通（[[2026-08-12-pi-ai-route-default-input-modalities]]）。成本因为没有消费方报告而继续保持关闭。
 
 - **保留单个可变 `Models` 集合并重新同步。** 分配更少，且对每个同步完成解析的操作都是正确的；唯独对那个不同步的操作恰恰是错的：`stream()` 会在捕获模型与派发模型之间 await 一次凭据。
 - **用「先 dispose 再注册」模拟目录原子替换。** 无需改 seam，且在新集合有效时确实可用——而那正是从不需要原子性的那种情形。

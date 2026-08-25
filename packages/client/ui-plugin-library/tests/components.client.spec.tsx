@@ -122,7 +122,7 @@ describe('PluginLibraryOverlay', () => {
     controller.show()
     render(<PluginLibraryOverlay {...({ bridge, controller, t: zhT } as PluginLibraryOverlayProps)} />)
 
-    expect(await screen.findByText('模型能力目录')).toBeTruthy()
+    expect(await screen.findByText('dsh-model-catalog')).toBeTruthy()
     expect(screen.queryByText('Model Capabilities')).toBeNull()
   })
 
@@ -134,7 +134,7 @@ describe('PluginLibraryOverlay', () => {
 
     expect(await screen.findByText('Fixture plugin')).toBeTruthy()
     expect(screen.getByText('Deepseek-Files')).toBeTruthy()
-    expect(screen.getByText('Model Capabilities')).toBeTruthy()
+    expect(screen.getByText('dsh-model-catalog')).toBeTruthy()
     expect(screen.getByText('@legacy/dsh-plugin')).toBeTruthy()
     expect(screen.getAllByText(en.defaultInstalled)).toHaveLength(2)
     expect(screen.getAllByRole('button', { name: en.remove })).toHaveLength(2)

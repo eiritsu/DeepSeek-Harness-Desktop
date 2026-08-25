@@ -195,7 +195,9 @@ export function apply(ctx: Context, config: Config): void {
   const adapter = new PiAiAdapter({
     profiles,
     resolveApiKey,
-    resolveInputModalities: (provider, model, signal) => ctx.llm.resolveModelInput(provider, model, signal),
+    resolveInputModalities: (provider, model, signal, ownedBy) => (
+      ctx.llm.resolveModelInput(provider, model, signal, ownedBy)
+    ),
     auth,
     resolveAttachments: () => ctx.get('attachments'),
     onReplayDegrade: ({ provider, model, reason }) => {

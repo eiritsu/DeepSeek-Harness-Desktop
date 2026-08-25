@@ -12,6 +12,7 @@ import LlmRuntime, {
   ProviderRequestId,
   ReasoningEffortId,
   resolveRetryPolicy,
+  STANDARD_MODEL_REASONING,
   StreamChunk,
   createMessage,
   createUserMessage,
@@ -551,7 +552,7 @@ describe('LlmRuntime', () => {
     await expect(ctx.llm.listModels('plain')).resolves.toEqual([])
     await expect(ctx.llm.listModels('missing')).rejects.toMatchObject({ code: 'NO_ADAPTER' })
     await expect(ctx.llm.resolveModelInfo('plain', 'unlisted')).resolves.toEqual({
-      provider: 'plain', id: 'unlisted', name: 'unlisted',
+      provider: 'plain', id: 'unlisted', name: 'unlisted', reasoning: STANDARD_MODEL_REASONING,
     })
     await expect(ctx.llm.resolveModelInfo('missing', 'm')).rejects.toMatchObject({ code: 'NO_ADAPTER' })
   })
@@ -596,6 +597,7 @@ describe('LlmRuntime', () => {
     await expect(ctx.llm.resolveModelInfo('route', 'model')).resolves.toEqual({
       provider: 'route', id: 'model', name: 'Model',
       inputModalities: ['text', 'image'],
+      reasoning: STANDARD_MODEL_REASONING,
     })
   })
 
@@ -614,11 +616,11 @@ describe('LlmRuntime', () => {
     source.contextWindow = 64_000
     expect(resolved.context).toEqual({ contextWindow: 32_000 })
     await expect(ctx.llm.resolveModelInfo('route', 'other')).resolves.toEqual({
-      provider: 'route', id: 'other', name: 'other',
+      provider: 'route', id: 'other', name: 'other', reasoning: STANDARD_MODEL_REASONING,
     })
   })
 
-  it('resolves detached adapter-owned reasoning metadata and materializes its default', async () => {
+  it('publishes the fixed reasoning controls independently of adapter metadata', async () => {
     const ctx = new Context()
     await ctx.plugin(LlmRuntime)
     const source = {
@@ -641,15 +643,21 @@ describe('LlmRuntime', () => {
     ))
 
     const resolved = await ctx.llm.resolveModelInfo('route', 'model')
-    expect(resolved.reasoning).toEqual(source)
+    expect(resolved.reasoning).toEqual({
+      efforts: [
+        { id: ReasoningEffortId('off'), name: 'Off' },
+        { id: ReasoningEffortId('low'), name: 'Low' },
+        { id: ReasoningEffortId('high'), name: 'High' },
+        { id: ReasoningEffortId('max'), name: 'Max' },
+      ],
+    })
     source.efforts[0]!.name = 'mutated'
-    expect(resolved.reasoning?.efforts[0]?.name).toBe('Standard')
+    expect(resolved.reasoning?.efforts[0]?.name).toBe('Off')
     await expect(ctx.llm.resolveCallConfig({ provider: 'route', model: 'model' })).resolves.toEqual({
       provider: 'route',
       model: 'model',
-      reasoningEffort: ReasoningEffortId('standard'),
     })
-    const explicit = { provider: 'route', model: 'model', reasoningEffort: ReasoningEffortId('ultra') }
+    const explicit = { provider: 'route', model: 'model', reasoningEffort: ReasoningEffortId('max') }
     await expect(ctx.llm.resolveCallConfig(explicit)).resolves.toBe(explicit)
     const providerDefault = { provider: 'route', model: 'providerDefault' }
     await expect(ctx.llm.resolveCallConfig(providerDefault)).resolves.toBe(providerDefault)
@@ -699,24 +707,17 @@ describe('LlmRuntime', () => {
     },
   )
 
-  it.each([
-    [{ efforts: [] }, 'empty effort list'],
-    [{ efforts: [{ id: '', name: 'Empty' }] }, 'empty id'],
-    [{ efforts: [{ id: 'valid', name: '' }] }, 'empty name'],
-    [{ efforts: [{ id: 'valid', name: 'Valid', description: 1 }] }, 'non-string description'],
-    [{ efforts: [{ id: 'same', name: 'One' }, { id: 'same', name: 'Two' }] }, 'duplicate id'],
-    [{ efforts: [{ id: 'valid', name: 'Valid' }], defaultEffort: 'other' }, 'unknown default'],
-  ] as const)('rejects invalid model reasoning metadata (%s: %s)', async (metadata, _label) => {
+  it('ignores adapter reasoning declarations when publishing standard controls', async () => {
     const ctx = new Context()
     await ctx.plugin(LlmRuntime)
     ctx.llm.registerAdapter(['route'], new CatalogAdapter(
       { id: 'route', name: 'Route' },
       [],
       {},
-      { model: metadata as unknown as LlmModelReasoningInfo },
+      { model: { efforts: [] } },
     ))
     await expect(ctx.llm.resolveModelInfo('route', 'model'))
-      .rejects.toMatchObject({ code: 'INVALID_MODEL_REASONING' })
+      .resolves.toMatchObject({ reasoning: { efforts: [{ id: 'off' }, { id: 'low' }, { id: 'high' }, { id: 'max' }] } })
   })
 
   it('rejects unsupported reasoning efforts without clamping', async () => {
@@ -741,7 +742,7 @@ describe('LlmRuntime', () => {
     })).rejects.toMatchObject({ code: 'UNSUPPORTED_REASONING_EFFORT' })
   })
 
-  it('resolves reasoning defaults at the final adapter boundary after routing middleware', async () => {
+  it('preserves provider default reasoning after routing middleware', async () => {
     const ctx = new Context()
     await ctx.plugin(LlmRuntime)
     const adapter = new class extends RecordingAdapter {
@@ -770,7 +771,7 @@ describe('LlmRuntime', () => {
       messages: [],
     })) { /* drain */ }
 
-    expect(adapter.lastOptions?.reasoningEffort).toBe(ReasoningEffortId('standard'))
+    expect(adapter.lastOptions?.reasoningEffort).toBeUndefined()
     disposeRouting()
 
     const frozenRequest: GenerateOptions = Object.freeze({
@@ -779,7 +780,7 @@ describe('LlmRuntime', () => {
       messages: [],
     })
     for await (const _chunk of ctx.llm.stream(frozenRequest)) { /* drain */ }
-    expect(adapter.lastOptions?.reasoningEffort).toBe(ReasoningEffortId('standard'))
+    expect(adapter.lastOptions?.reasoningEffort).toBeUndefined()
     expect(Object.isFrozen(adapter.lastOptions)).toBe(true)
   })
 
@@ -822,7 +823,7 @@ describe('LlmRuntime', () => {
     })
     await draining
 
-    expect(first.lastOptions?.reasoningEffort).toBe(ReasoningEffortId('high'))
+    expect(first.lastOptions?.reasoningEffort).toBeUndefined()
     expect(second.lastOptions).toBeUndefined()
   })
 
@@ -844,7 +845,7 @@ describe('LlmRuntime', () => {
     const prepared = await ctx.llm.prepareCall({ provider: 'route', model: 'model' })
     expect(Object.isFrozen(prepared.config)).toBe(true)
     expect(Object.isFrozen(prepared.adapterDefaults)).toBe(true)
-    expect(prepared.adapterDefaults).toEqual({ reasoningEffort: true })
+    expect(prepared.adapterDefaults).toEqual({})
     expect(() => prepared.stream({
       ...prepared.config,
       model: 'other',
@@ -902,7 +903,7 @@ describe('LlmRuntime', () => {
 
     const prepared = await ctx.llm.prepareCall({ provider: 'route', model: 'model' })
     source.contextWindow = 64_000
-    expect(prepared.config.reasoningEffort).toBe(ReasoningEffortId('high'))
+    expect(prepared.config.reasoningEffort).toBeUndefined()
     expect(prepared.context).toEqual({ contextWindow: 128_000 })
     expect(Object.isFrozen(prepared.context)).toBe(true)
     for await (const _chunk of prepared.stream({
@@ -984,7 +985,7 @@ describe('LlmRuntime', () => {
     expect(waterfall[0]?.messages[0]?.content).toEqual([{ type: 'image', attachment }])
     expect(seen[0]?.messages[0]?.content).toEqual([{
       type: 'text',
-      text: '[image omitted because this model accepts text only; attachment sha256:aaaaaaaa]',
+      text: '[image represented as text because this model accepts text only; attachment sha256:aaaaaaaa]',
     }])
 
     const frozen = Object.freeze({

@@ -23,10 +23,10 @@ const t: ComponentProps<typeof ModelSelect>['t'] = (key, params) => {
 const reasoning = {
   efforts: [
     { id: 'off', name: 'Off' },
+    { id: 'low', name: 'Low' },
     { id: 'high', name: 'High' },
     { id: 'max', name: 'Max', description: 'Largest budget' },
   ],
-  defaultEffort: 'high',
 }
 
 function state(overrides: Partial<ModelDirectoryState> = {}): ModelDirectoryState {
@@ -64,12 +64,12 @@ describe('ModelSelect reasoning effort', () => {
     />)
 
     const trigger = screen.getByRole('button', {
-      name: '选择模型，当前 DeepSeek-V4-Flash，推理等级 High',
+      name: '选择模型，当前 DeepSeek-V4-Flash，推理等级 Default',
     })
     fireEvent.click(trigger)
     fireEvent.click(screen.getByRole('menuitem', { name: /推理等级/ }))
     expect(screen.getAllByRole('menuitemradio').map(item => item.textContent))
-      .toEqual(['Off', 'High', 'MaxLargest budget'])
+      .toEqual(['Default', 'Off', 'Low', 'High', 'MaxLargest budget'])
 
     fireEvent.click(screen.getByRole('menuitemradio', { name: /Max/ }))
     await waitFor(() => {
@@ -82,7 +82,7 @@ describe('ModelSelect reasoning effort', () => {
     })
   })
 
-  it('offers provider default only when the adapter does not configure a model default', () => {
+  it('always offers provider default before the four standard efforts', () => {
     const directory = createSnapshotStore(state({
       groups: [{
         id: 'provider',
@@ -90,7 +90,7 @@ describe('ModelSelect reasoning effort', () => {
         models: [{
           id: 'model',
           name: 'Model',
-          reasoning: { efforts: [{ id: 'standard', name: 'Standard' }] },
+          reasoning,
         }],
       }],
       current: { provider: 'provider', model: 'model' },
@@ -109,7 +109,7 @@ describe('ModelSelect reasoning effort', () => {
     }))
     fireEvent.click(screen.getByRole('menuitem', { name: /推理等级/ }))
     expect(screen.getAllByRole('menuitemradio').map(item => item.textContent))
-      .toEqual(['Default', 'Standard'])
+      .toEqual(['Default', 'Off', 'Low', 'High', 'MaxLargest budget'])
   })
 
   it('prompts for a selection when the current model is no longer advertised', () => {

@@ -113,24 +113,19 @@ describe('hand-declared providers', () => {
     })
   })
 
-  it('offers no reasoning control it could not honour', async () => {
+  it('reports the same standard reasoning controls without catalog metadata', async () => {
     const server = await mockServer([])
     const ctx = await harness(gateway(`${server.url}/v1`))
 
-    // pi-ai reports a model with no reasoning metadata as supporting the single
-    // level `off`, but `off` is translated to *omitting* the reasoning option —
-    // byte-for-byte the same request as naming no effort — so a provider whose
-    // own default is to think would keep thinking with `off` selected. The
-    // capability is reported unavailable instead of offering that control.
-    expect((await ctx.llm.resolveModelInfo('acme-gateway', 'acme-large')).reasoning).toBeUndefined()
+    const standard = ['off', 'low', 'high', 'max']
+    expect((await ctx.llm.resolveModelInfo('acme-gateway', 'acme-large')).reasoning?.efforts.map(e => e.id))
+      .toEqual(standard)
 
-    // A catalog route is unaffected: its models carry the metadata that makes
-    // `off` actually disable thinking.
     const withCatalog = await harness({ providers: { deepseek: { baseURL: server.url } } })
     const [catalogModel] = getBuiltinModels('deepseek')
     if (catalogModel === undefined) throw new Error('the installed catalog ships no deepseek model')
     expect((await withCatalog.llm.resolveModelInfo('deepseek', catalogModel.id)).reasoning?.efforts.map(e => e.id))
-      .toContain('off')
+      .toEqual(standard)
   })
 
   it('joins the configurable-provider directory so a settings surface can reach it', async () => {
@@ -670,7 +665,7 @@ describe('per-model reasoning efforts', () => {
     expect(model.thinkingLevelMap).toEqual(catalogModel.thinkingLevelMap)
   })
 
-  it('rejects a declaration that offers nothing or spells a level it cannot send', () => {
+  it('rejects empty or unusable wire declarations while allowing off-only mappings', () => {
     const declare = (efforts: NonNullable<LlmPiAi.PiAiModelProfile['reasoningEfforts']>): (() => unknown) =>
       () => resolveProfiles(declared([{ id: 'm', reasoningEfforts: efforts }]))
 
@@ -678,8 +673,8 @@ describe('per-model reasoning efforts', () => {
     // A YAML `reasoningEfforts:` left valueless arrives as null through the
     // schema union; it declares nothing and is not a spelling of "inherit".
     expect(declare(null as never)).toThrow(/empty reasoningEfforts/)
-    expect(declare({ off: null })).toThrow(/offers no level beyond "off"/)
-    expect(declare({ off: 'none' })).toThrow(/offers no level beyond "off"/)
+    expect(declare({ off: null })).not.toThrow()
+    expect(declare({ off: 'none' })).not.toThrow()
     expect(declare({ high: null })).toThrow(/only "off" may leave it empty/)
     expect(declare({ high: '' })).toThrow(/must not be an empty string/)
   })

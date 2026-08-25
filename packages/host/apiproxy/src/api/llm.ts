@@ -81,6 +81,8 @@ export interface LlmApi {
 export interface DiscoveredModelView {
   /** Model id the endpoint accepts. */
   id: string
+  /** Upstream model owner when the endpoint discloses one. */
+  ownedBy?: string
   /** Human-readable name when the endpoint supplies one. */
   name?: string
   /** Maximum combined request and response context, when disclosed. */

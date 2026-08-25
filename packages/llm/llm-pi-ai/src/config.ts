@@ -216,6 +216,8 @@ export interface ResolvedPiAiProviderProfile
   configuredMaxTokens: ReadonlyMap<string, number>
   /** Complete configured or installed-catalog modalities, keyed by model id. */
   inputModalities: ReadonlyMap<string, readonly PiAiModality[]>
+  /** Upstream owners preserved from discovery, keyed by model id. */
+  modelOwners: ReadonlyMap<string, string>
   /** Model ids whose profile entry permits exact external catalog enrichment. */
   externallyResolvableInputModels: ReadonlySet<string>
 }
@@ -293,6 +295,7 @@ const reasoningEfforts = z.dict(
 
 /** The fields a `models` entry and a `modelOverrides` value share; only the id's home differs. */
 const modelFields = {
+  ownedBy: z.string(),
   name: z.string(),
   contextWindow: z.number().step(1).min(1),
   maxTokens: z.number().step(1).min(1),
@@ -469,6 +472,7 @@ export function resolveProfiles(
       ...rest.thinkingBudgets === undefined ? {} : { thinkingBudgets: { ...rest.thinkingBudgets } },
       configuredMaxTokens: catalog.configuredMaxTokens,
       inputModalities: catalog.inputModalities,
+      modelOwners: catalog.modelOwners,
       externallyResolvableInputModels: catalog.externallyResolvableInputModels,
       piProvider: buildProvider({
         provider,

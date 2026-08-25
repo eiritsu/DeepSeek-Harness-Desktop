@@ -275,6 +275,8 @@ export interface LlmModelInputRequest {
   provider: string
   /** Exact model id sent to the provider. */
   model: string
+  /** Upstream model owner preserved from provider discovery, when disclosed. */
+  ownedBy?: string
   /** Cancellation for asynchronous catalog access. */
   signal?: AbortSignal
 }
@@ -310,9 +312,9 @@ export interface LlmModelContext {
   contextWindow: number
 }
 
-/** Display metadata for one adapter-owned reasoning effort. */
+/** Display metadata for one provider-neutral reasoning effort. */
 export interface LlmReasoningEffortInfo {
-  /** Opaque stable value accepted by {@link GenerateOptions.reasoningEffort}. */
+  /** Stable value accepted by {@link GenerateOptions.reasoningEffort}. */
   id: ReasoningEffortId
   /** Human-readable effort name for selectors and diagnostics. */
   name: string
@@ -320,13 +322,13 @@ export interface LlmReasoningEffortInfo {
   description?: string
 }
 
-/** Selectable reasoning efforts for one exact provider/model route. */
+/** Reasoning metadata normalized by the runtime to the standard controls. */
 export interface LlmModelReasoningInfo {
-  /** Supported efforts in adapter-preferred display order. */
+  /** Standard efforts in core display order after runtime resolution. */
   efforts: readonly LlmReasoningEffortInfo[]
   /**
-   * Adapter-configured default materialized into requests when callers omit
-   * an effort. Absence preserves the provider's own default.
+   * Adapter-local default declaration. The runtime removes it so omission
+   * always represents provider-default behavior to consumers.
    */
   defaultEffort?: ReasoningEffortId
 }
@@ -337,7 +339,7 @@ export interface LlmResolvedModelInfo extends LlmModelInfo {
   context?: LlmModelContext
   /** Adapter-configured per-request output cap materialized when callers omit one. */
   defaultMaxTokens?: number
-  /** Adapter-owned selectable reasoning levels when exposed. */
+  /** Provider-neutral selectable reasoning levels; the runtime publishes its fixed standard set. */
   reasoning?: LlmModelReasoningInfo
 }
 
@@ -403,7 +405,7 @@ export interface GenerateOptions {
   /** Registered provider route selecting the adapter instance. */
   provider: string
   model: string
-  /** Adapter-owned reasoning effort selected for this exact model. */
+  /** Standard reasoning effort selected for this request. */
   reasoningEffort?: ReasoningEffortId
   /**
    * Ordered conversation messages, exactly as the provider sees them (after

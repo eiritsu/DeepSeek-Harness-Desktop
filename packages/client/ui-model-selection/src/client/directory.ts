@@ -89,7 +89,7 @@ export class ModelDirectory {
    * Select the complete provider/model/reasoning selection (both entries submit through here). Success
    * updates the shared current; failure surfaces on the store and throws so
    * each entry's own retry surface engages.
-   * @param selection - provider, provider-owned model id, and optional adapter-owned effort.
+   * @param selection - provider, provider-owned model id, and optional standard effort.
  */
   async select(selection: ModelSelection): Promise<void> {
     this.assertAvailable()

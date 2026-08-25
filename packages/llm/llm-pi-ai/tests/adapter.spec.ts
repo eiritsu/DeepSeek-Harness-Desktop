@@ -473,7 +473,7 @@ describe('provider profile lifecycle', () => {
     expect(typeof info.context?.contextWindow).toBe('number')
   })
 
-  it('exposes pi-ai model thinking levels verbatim without inventing a provider default', async () => {
+  it('exposes the same fixed reasoning levels for every pi-ai model', async () => {
     const ctx = new Context()
     await ctx.plugin(LlmRuntime)
     await ctx.plugin(LlmPiAi, {
@@ -485,65 +485,33 @@ describe('provider profile lifecycle', () => {
         reasoning: {
           efforts: [
             { id: ReasoningEffortId('off'), name: 'Off' },
+            { id: ReasoningEffortId('low'), name: 'Low' },
             { id: ReasoningEffortId('high'), name: 'High' },
             { id: ReasoningEffortId('max'), name: 'Max' },
           ],
         },
       })
-    const extended = await ctx.llm.resolveModelInfo('openai', 'gpt-5.6-sol')
-    expect(extended.reasoning?.efforts.map(effort => effort.id)).toEqual([
+    const standard = [
       ReasoningEffortId('off'),
       ReasoningEffortId('low'),
-      ReasoningEffortId('medium'),
       ReasoningEffortId('high'),
-      ReasoningEffortId('xhigh'),
       ReasoningEffortId('max'),
-    ])
-    // A catalog model without reasoning is the same case as a hand-declared
-    // one: pi-ai reports the single level `off`, which translates to omitting
-    // the reasoning option — exactly what naming no effort already does. The
-    // capability is reported unavailable rather than offering that control.
-    expect((await ctx.llm.resolveModelInfo('openai', 'gpt-4.1')).reasoning).toBeUndefined()
+    ]
+    expect((await ctx.llm.resolveModelInfo('openai', 'gpt-5.6-sol')).reasoning?.efforts.map(effort => effort.id)).toEqual(standard)
+    expect((await ctx.llm.resolveModelInfo('openai', 'gpt-4.1')).reasoning?.efforts.map(effort => effort.id)).toEqual(standard)
   })
 
-  it('uses a supported profile reasoning value as the model default and rejects an unsupported one', async () => {
-    const supported = new Context()
-    await supported.plugin(LlmRuntime)
-    await supported.plugin(LlmPiAi, {
-      providers: { deepseek: { reasoning: 'max' } },
-    })
-    await expect(supported.llm.resolveModelInfo('deepseek', 'deepseek-v4-flash'))
-      .resolves.toMatchObject({ reasoning: { defaultEffort: ReasoningEffortId('max') } })
-
-    // A profile level this model cannot take DESCRIBES as no default rather
-    // than failing: resolveModelInfo builds the model catalog, and a catalog
-    // that throws takes its whole provider out of every picker — one mis-set
-    // field would hide every model on the route, including the ones that do
-    // support the level. The request path below is where it is refused.
-    const unsupported = new Context()
-    await unsupported.plugin(LlmRuntime)
-    await unsupported.plugin(LlmPiAi, {
-      providers: { deepseek: { reasoning: 'medium' } },
-    })
-    const described = await unsupported.llm.resolveModelInfo('deepseek', 'deepseek-v4-flash')
-    expect(described.reasoning?.defaultEffort).toBeUndefined()
-    expect(described.reasoning?.efforts.length).toBeGreaterThan(0)
-    await expect(assemble(unsupported, {
-      provider: 'deepseek', model: 'deepseek-v4-flash', messages: [],
-    })).resolves.toMatchObject({
-      finish: { kind: 'error', failure: { code: 'UNSUPPORTED_REASONING_EFFORT' } },
-    })
-
-    const disabled = new Context()
-    await disabled.plugin(LlmRuntime)
-    await disabled.plugin(LlmPiAi, {
-      providers: { deepseek: { reasoning: 'off' } },
-    })
-    await expect(disabled.llm.resolveModelInfo('deepseek', 'deepseek-v4-flash'))
-      .resolves.toMatchObject({ reasoning: { defaultEffort: ReasoningEffortId('off') } })
+  it('does not expose a profile reasoning value as a model-specific UI default', async () => {
+    for (const reasoning of ['off', 'medium', 'max'] as const) {
+      const ctx = new Context()
+      await ctx.plugin(LlmRuntime)
+      await ctx.plugin(LlmPiAi, { providers: { deepseek: { reasoning } } })
+      const described = await ctx.llm.resolveModelInfo('deepseek', 'deepseek-v4-flash')
+      expect(described.reasoning?.defaultEffort).toBeUndefined()
+    }
   })
 
-  it('serves declared reasoning efforts to selectors and honours the profile default', async () => {
+  it('keeps selector efforts fixed when a model declares wire mappings', async () => {
     const ctx = new Context()
     await ctx.plugin(LlmRuntime)
     await ctx.plugin(LlmPiAi, {
@@ -571,15 +539,15 @@ describe('provider profile lifecycle', () => {
           { id: ReasoningEffortId('off'), name: 'Off' },
           { id: ReasoningEffortId('low'), name: 'Low' },
           { id: ReasoningEffortId('high'), name: 'High' },
+          { id: ReasoningEffortId('max'), name: 'Max' },
         ],
-        defaultEffort: ReasoningEffortId('high'),
       },
     })
   })
 
-  it('sends the declared wire spelling and refuses undeclared levels before network I/O', async () => {
+  it('preserves declared wire spellings and attempts undeclared standard levels', async () => {
     vi.stubEnv('PI_TEST_KEY', 'test-key')
-    const server = await mockServer([{ events: textEvents }])
+    const server = await mockServer([{ events: textEvents }, { events: textEvents }])
     const ctx = new Context()
     await ctx.plugin(LlmRuntime)
     await ctx.plugin(LlmPiAi, {
@@ -607,17 +575,13 @@ describe('provider profile lifecycle', () => {
     // The declared value, not the canonical level name, goes on the wire.
     expect(server.requests[0]).toMatchObject({ reasoning_effort: 'ultra' })
 
-    const undeclared = await assemble(ctx, {
+    await assemble(ctx, {
       provider: 'acme-gateway',
       model: 'acme-think',
       reasoningEffort: ReasoningEffortId('max'),
       messages: [],
     })
-    expect(undeclared.finish).toMatchObject({
-      kind: 'error',
-      failure: { code: 'UNSUPPORTED_REASONING_EFFORT' },
-    })
-    expect(server.requests).toHaveLength(1)
+    expect(server.requests[1]).toMatchObject({ reasoning_effort: 'max' })
   })
 
   it('dispatches the compat-switched dialect on a declared route', async () => {
@@ -951,7 +915,28 @@ describe('provider profile lifecycle', () => {
         })],
       })) { /* drain */ }
     })()).rejects.toThrow(/requires the durable attachment service/)
-    expect(resolveInputModalities).toHaveBeenCalledWith('a6', 'gemini-3.7-flash', undefined)
+    expect(resolveInputModalities).toHaveBeenCalledWith('a6', 'gemini-3.7-flash', undefined, undefined)
+  })
+
+  it('keeps selector controls fixed for owned and pinned models', async () => {
+    const adapter = new PiAiAdapter({
+      profiles: () => resolveProfiles({
+        a6: {
+          api: 'openai-responses',
+          baseURL: 'https://gateway.example/v1',
+          models: [
+            { id: 'grok-4.6', ownedBy: 'xai' },
+            { id: 'pinned', reasoningEfforts: { off: null, high: 'high' } },
+          ],
+        },
+      }),
+      resolveApiKey: () => Promise.resolve('test-key'),
+      auth: memoryAuth(),
+    })
+
+    const standard = [{ id: 'off' }, { id: 'low' }, { id: 'high' }, { id: 'max' }]
+    await expect(adapter.resolveModel('a6', 'grok-4.6')).resolves.toMatchObject({ reasoning: { efforts: standard } })
+    await expect(adapter.resolveModel('a6', 'pinned')).resolves.toMatchObject({ reasoning: { efforts: standard } })
   })
 
   it('validates profiles at the shared resolver boundary', () => {

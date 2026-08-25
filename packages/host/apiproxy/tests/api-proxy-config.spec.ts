@@ -714,6 +714,7 @@ describe('llm.discoverModels', () => {
       return Promise.resolve([
         {
           id: 'acme-large',
+          ownedBy: 'acme',
           name: 'Acme Large',
           contextWindow: 65_536,
           maxTokens: 4096,
@@ -734,6 +735,7 @@ describe('llm.discoverModels', () => {
     expect(value.models).toEqual([
       {
         id: 'acme-large',
+        ownedBy: 'acme',
         name: 'Acme Large',
         contextWindow: 65_536,
         maxTokens: 4096,

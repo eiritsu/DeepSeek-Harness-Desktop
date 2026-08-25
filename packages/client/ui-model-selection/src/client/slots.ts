@@ -18,7 +18,7 @@ export interface ModelSelectInjected {
   load: () => void
   /**
    * Select a complete provider/model/reasoning selection.
-   * @param selection - model selection and optional adapter-owned effort.
+   * @param selection - model selection and optional standard effort.
    * @returns whether the host accepted the selection.
    */
   select: (selection: ModelSelection) => Promise<boolean>

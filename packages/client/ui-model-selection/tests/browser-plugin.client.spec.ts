@@ -32,10 +32,10 @@ const GROUPS = [{
       reasoning: {
         efforts: [
           { id: 'off', name: 'Off' },
+          { id: 'low', name: 'Low' },
           { id: 'high', name: 'High' },
           { id: 'max', name: 'Max' },
         ],
-        defaultEffort: 'high',
       },
     },
     {
@@ -44,10 +44,10 @@ const GROUPS = [{
       reasoning: {
         efforts: [
           { id: 'off', name: 'Off' },
+          { id: 'low', name: 'Low' },
           { id: 'high', name: 'High' },
           { id: 'max', name: 'Max' },
         ],
-        defaultEffort: 'high',
       },
     },
   ],
@@ -195,7 +195,6 @@ describe('ui-model-selection dual entry', () => {
     expect(seatFace.directory.getSnapshot().current).toEqual({
       provider: 'deepseek-official',
       model: 'deepseek-v4-pro',
-      reasoningEffort: 'high',
     })
   })
 

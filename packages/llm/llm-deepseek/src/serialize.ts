@@ -66,7 +66,7 @@ export interface ImageWireLocation {
 
 const TOOL_RESULT_IMAGE_TEXT = 'Attached image(s) from tool result:'
 
-/** Validate the adapter-owned effort before resolving its DeepSeek wire fields. */
+/** Validate the standard effort before resolving its DeepSeek wire fields. */
 function reasoningEffort(effort: NonNullable<GenerateOptions['reasoningEffort']>): 'off' | 'low' | 'high' | 'max' {
   if (effort === 'off' || effort === 'low' || effort === 'high' || effort === 'max') {
     return effort as 'off' | 'low' | 'high' | 'max'

@@ -165,14 +165,14 @@ export const modelSelectionSchema = z.object({
   reasoningEffort: z.string().min(1).optional(),
 }) satisfies z.ZodType<Wire<ModelSelection>>
 
-/** One adapter-owned reasoning effort. */
+/** One standard reasoning effort. */
 export const modelReasoningEffortSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   description: z.string().optional(),
 }) satisfies z.ZodType<Wire<ModelReasoningEffort>>
 
-/** Exact-model reasoning metadata. */
+/** Standard model reasoning metadata. */
 export const modelReasoningSchema = z.object({
   efforts: z.array(modelReasoningEffortSchema).min(1),
   defaultEffort: z.string().min(1).optional(),

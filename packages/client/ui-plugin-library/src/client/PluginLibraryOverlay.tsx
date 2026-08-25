@@ -50,10 +50,15 @@ function categoryLabel(category: PluginCategory, t: PluginLibraryOverlayProps['t
 
 function installedPluginTitle(
   plugin: InstalledPlugin,
-  t: PluginLibraryOverlayProps['t'],
+  _t: PluginLibraryOverlayProps['t'],
 ): string {
-  if (plugin.name === '@deepseek-ai/dsh-model-catalog') return t('modelCapabilities')
+  if (plugin.name === '@deepseek-ai/dsh-model-catalog') return 'dsh-model-catalog'
   return plugin.displayName.trim() || plugin.name
+}
+
+function installedPluginIdentifier(plugin: InstalledPlugin): string {
+  if (plugin.name === '@deepseek-ai/dsh-model-catalog') return 'dsh-model-catalog'
+  return plugin.name
 }
 
 function installedPluginRemovable(plugin: InstalledPlugin): boolean {
@@ -241,7 +246,7 @@ export function PluginLibraryOverlay({ bridge, controller, t }: PluginLibraryOve
   const filtered = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase()
     if (normalized.length === 0) return plugins
-    return plugins.filter(plugin => `${installedPluginTitle(plugin, t)} ${plugin.name} ${plugin.version}`
+    return plugins.filter(plugin => `${installedPluginTitle(plugin, t)} ${installedPluginIdentifier(plugin)} ${plugin.name} ${plugin.version}`
       .toLocaleLowerCase().includes(normalized))
   }, [plugins, query, t])
 
@@ -413,11 +418,12 @@ export function PluginLibraryOverlay({ bridge, controller, t }: PluginLibraryOve
                 <ul className={css.pluginGrid} data-view={cardView}>
                   {filtered.map((plugin) => {
                     const title = installedPluginTitle(plugin, t)
+                    const identifier = installedPluginIdentifier(plugin)
                     return <li key={plugin.name} className={css.pluginCard}>
                       <span className={css.pluginIcon} aria-hidden="true"><IconCordisPluginOutline14 size={18} /></span>
                       <div className={css.pluginIdentity}>
                         <strong title={plugin.name}>{title}</strong>
-                        {title !== plugin.name ? <span>{plugin.name}</span> : null}
+                        {title !== identifier ? <span>{identifier}</span> : null}
                         <span>{plugin.version}</span>
                       </div>
                       {installedPluginRemovable(plugin) ? (

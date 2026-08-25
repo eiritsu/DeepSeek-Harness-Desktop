@@ -1043,9 +1043,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'disposer withdrawing only this resolver.',
       },
       {
-        signature: 'async resolveModelInput( provider: string, model: string, signal?: AbortSignal, ): Promise<readonly ModelModality[] | undefined>',
+        signature: 'async resolveModelInput( provider: string, model: string, signal?: AbortSignal, ownedBy?: string, ): Promise<readonly ModelModality[] | undefined>',
         description: 'Resolve exact input modalities from registered external catalogs.',
-        parameters: [{ name: 'provider', description: 'configured provider route.' }, { name: 'model', description: 'exact model id sent to the provider.' }, { name: 'signal', description: 'cancellation for asynchronous catalog access.' }],
+        parameters: [{ name: 'provider', description: 'configured provider route.' }, { name: 'model', description: 'exact model id sent to the provider.' }, { name: 'signal', description: 'cancellation for asynchronous catalog access.' }, { name: 'ownedBy', description: 'upstream model owner preserved from discovery, when disclosed.' }],
         returns: 'the first resolver answer, or `undefined` when none knows the model.',
       },
       {
@@ -1070,11 +1070,11 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: 'async resolveModelInfo( provider: string, model: string, signal?: AbortSignal, ): Promise<LlmResolvedModelInfo>',
         description: 'Resolve and validate all metadata from the adapter that owns one exact route. The result is detached from adapter-owned objects; catalog membership remains advisory and does not control request routing.',
         parameters: [{ name: 'provider', description: 'registered provider route to inspect.' }, { name: 'model', description: 'exact model id passed to the adapter.' }, { name: 'signal', description: 'optional cancellation for adapter-owned asynchronous lookup.' }],
-        returns: 'exact model identity plus available context and reasoning metadata.',
+        returns: 'exact model identity plus available context and standard reasoning controls.',
       },
       {
         signature: 'async resolveCallConfig(config: LlmCallConfig, signal?: AbortSignal): Promise<LlmCallConfig>',
-        description: 'Validate a conversation call config against its exact model capability and materialize adapter-configured defaults. Unsupported explicit efforts reject before provider I/O; no clamping or aliasing is performed. This standalone query does not bind a later dispatch; use prepareCall when logging and streaming must share one adapter registration.',
+        description: 'Validate a conversation call config against the standard reasoning levels and materialize adapter-configured output defaults. Unknown effort ids reject before provider I/O. This standalone query does not bind a later dispatch; use prepareCall when logging and streaming must share one adapter registration.',
         parameters: [{ name: 'config', description: 'provider/model route and optional request controls.' }, { name: 'signal', description: 'optional cancellation for adapter-owned capability lookup.' }],
         returns: 'a detached config only when a default must be materialized.',
       },
@@ -3731,7 +3731,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'LlmModelInputRequest',
-    declaration: 'export interface LlmModelInputRequest {\n    provider: string;\n    model: string;\n    signal?: AbortSignal;\n}',
+    declaration: 'export interface LlmModelInputRequest {\n    provider: string;\n    model: string;\n    ownedBy?: string;\n    signal?: AbortSignal;\n}',
   },
   {
     name: 'LlmModelInputResolver',
@@ -3755,7 +3755,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'LlmRuntime',
-    declaration: 'export class LlmRuntime extends Service {\n    constructor(ctx: Context);\n    registerAdapter(providers: string[], adapter: LlmAdapter): AdapterRegistrationHandle;\n    listProviders(): LlmProviderInfo[];\n    registerConfigurableProviders(entries: readonly LlmConfigurableProvider[]): DirectoryRegistrationHandle;\n    listConfigurableProviders(): LlmConfigurableProvider[];\n    registerModelDiscovery(settingsNs: string, discover: (request: LlmModelDiscoveryRequest) => Promise<readonly LlmDiscoveredModel[]>): () => void;\n    registerModelDiscoveryEnricher(enrich: LlmModelDiscoveryEnricher): () => void;\n    registerModelInputResolver(resolve: LlmModelInputResolver): () => void;\n    async resolveModelInput(provider: string, model: string, signal?: AbortSignal): Promise<readonly ModelModality[] | undefined>;\n    async discoverModels(settingsNs: string, request: LlmModelDiscoveryRequest): Promise<LlmDiscoveredModel[]>;\n    providerRetryPolicy(provider: string): ResolvedRetryPolicy;\n    async listModels(provider: string): Promise<LlmModelInfo[]>;\n    async resolveModelInfo(provider: string, model: string, signal?: AbortSignal): Promise<LlmResolvedModelInfo>;\n    async resolveCallConfig(config: LlmCallConfig, signal?: AbortSignal): Promise<LlmCallConfig>;\n    async prepareCall(config: LlmCallConfig, signal?: AbortSignal): Promise<PreparedLlmCall>;\n    stream(options: GenerateOptions): AsyncIterable<StreamChunk>;\n}',
+    declaration: 'export class LlmRuntime extends Service {\n    constructor(ctx: Context);\n    registerAdapter(providers: string[], adapter: LlmAdapter): AdapterRegistrationHandle;\n    listProviders(): LlmProviderInfo[];\n    registerConfigurableProviders(entries: readonly LlmConfigurableProvider[]): DirectoryRegistrationHandle;\n    listConfigurableProviders(): LlmConfigurableProvider[];\n    registerModelDiscovery(settingsNs: string, discover: (request: LlmModelDiscoveryRequest) => Promise<readonly LlmDiscoveredModel[]>): () => void;\n    registerModelDiscoveryEnricher(enrich: LlmModelDiscoveryEnricher): () => void;\n    registerModelInputResolver(resolve: LlmModelInputResolver): () => void;\n    async resolveModelInput(provider: string, model: string, signal?: AbortSignal, ownedBy?: string): Promise<readonly ModelModality[] | undefined>;\n    async discoverModels(settingsNs: string, request: LlmModelDiscoveryRequest): Promise<LlmDiscoveredModel[]>;\n    providerRetryPolicy(provider: string): ResolvedRetryPolicy;\n    async listModels(provider: string): Promise<LlmModelInfo[]>;\n    async resolveModelInfo(provider: string, model: string, signal?: AbortSignal): Promise<LlmResolvedModelInfo>;\n    async resolveCallConfig(config: LlmCallConfig, signal?: AbortSignal): Promise<LlmCallConfig>;\n    async prepareCall(config: LlmCallConfig, signal?: AbortSignal): Promise<PreparedLlmCall>;\n    stream(options: GenerateOptions): AsyncIterable<StreamChunk>;\n}',
   },
   {
     name: 'LspHover',
