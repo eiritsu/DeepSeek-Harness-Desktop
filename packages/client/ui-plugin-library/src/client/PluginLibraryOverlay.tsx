@@ -290,6 +290,23 @@ export function PluginLibraryOverlay({ bridge, controller, t }: PluginLibraryOve
     }
   }
 
+  const chooseDirectory = async (): Promise<void> => {
+    if (busy !== undefined) return
+    setBusy('select-directory')
+    setError(undefined)
+    try {
+      const reply = await bridge.request({ action: 'selectDirectory' })
+      if (reply.path !== undefined) {
+        setSource(reply.path)
+        setReport(undefined)
+      }
+    } catch (reason) {
+      setError(errorMessage(reason))
+    } finally {
+      setBusy(undefined)
+    }
+  }
+
   const install = async (force: boolean): Promise<void> => {
     if (report?.reviewId === undefined || !report.installable || busy !== undefined) return
     setBusy('install')
@@ -320,6 +337,8 @@ export function PluginLibraryOverlay({ bridge, controller, t }: PluginLibraryOve
 
   const reviewRepository = async (plugin: CommunityPlugin): Promise<void> => {
     if (!plugin.installable || busy !== undefined) return
+    setTab('review')
+    setSource(plugin.htmlUrl)
     setBusy(`catalog:${plugin.repository}`)
     setError(undefined)
     setReport(undefined)
@@ -337,11 +356,31 @@ export function PluginLibraryOverlay({ bridge, controller, t }: PluginLibraryOve
 
   const reviewThirdParty = async (plugin: ThirdPartyPlugin): Promise<void> => {
     if (busy !== undefined) return
+    setTab('review')
+    setSource(plugin.repositoryUrl)
     setBusy(`third-party:${plugin.id}`)
     setError(undefined)
     setReport(undefined)
     try {
       const reply = await bridge.request({ action: 'reviewThirdParty', id: plugin.id })
+      setSource(reply.report.source)
+      setReport(reply.report)
+      setLogs((await bridge.request({ action: 'logs' })).records)
+    } catch (reason) {
+      setError(errorMessage(reason))
+    } finally {
+      setBusy(undefined)
+    }
+  }
+
+  const reviewUpdate = async (plugin: InstalledPlugin): Promise<void> => {
+    if (plugin.latestVersion === undefined || busy !== undefined) return
+    setTab('review')
+    setBusy(`update:${plugin.name}`)
+    setError(undefined)
+    setReport(undefined)
+    try {
+      const reply = await bridge.request({ action: 'reviewUpdate', package: plugin.name })
       setSource(reply.report.source)
       setReport(reply.report)
       setLogs((await bridge.request({ action: 'logs' })).records)
@@ -426,17 +465,31 @@ export function PluginLibraryOverlay({ bridge, controller, t }: PluginLibraryOve
                         {title !== identifier ? <span>{identifier}</span> : null}
                         <span>{plugin.version}</span>
                       </div>
-                      {installedPluginRemovable(plugin) ? (
-                        <button
-                          type="button"
-                          className={css.remove}
-                          disabled={busy !== undefined}
-                          onClick={() => { void remove(plugin) }}
-                        >
-                          <IconTrashOutline16 size={14} />
-                          {busy === `remove:${plugin.name}` ? t('removing') : t('remove')}
-                        </button>
-                      ) : <span className={css.defaultInstalled}>{t('defaultInstalled')}</span>}
+                      <div className={css.pluginActions}>
+                        {plugin.latestVersion !== undefined ? (
+                          <button
+                            type="button"
+                            className={css.update}
+                            disabled={busy !== undefined}
+                            onClick={() => { void reviewUpdate(plugin) }}
+                          >
+                            {busy === `update:${plugin.name}`
+                              ? t('reviewingUpdate')
+                              : t('update', { version: plugin.latestVersion })}
+                          </button>
+                        ) : null}
+                        {installedPluginRemovable(plugin) ? (
+                          <button
+                            type="button"
+                            className={css.remove}
+                            disabled={busy !== undefined}
+                            onClick={() => { void remove(plugin) }}
+                          >
+                            <IconTrashOutline16 size={14} />
+                            {busy === `remove:${plugin.name}` ? t('removing') : t('remove')}
+                          </button>
+                        ) : <span className={css.defaultInstalled}>{t('defaultInstalled')}</span>}
+                      </div>
                     </li>
                   })}
                 </ul>
@@ -458,12 +511,15 @@ export function PluginLibraryOverlay({ bridge, controller, t }: PluginLibraryOve
                       setReport(undefined)
                     }}
                   />
-                  <button type="button" disabled={busy !== undefined} onClick={() => { void review() }}>
+                  <button type="button" className={css.chooseSource} disabled={busy !== undefined} onClick={() => { void chooseDirectory() }}>
+                    {busy === 'select-directory' ? t('choosingDirectory') : t('chooseDirectory')}
+                  </button>
+                  <button type="button" disabled={busy !== undefined || source.trim().length === 0} onClick={() => { void review() }}>
                     {busy === 'review' ? t('reviewing') : t('startReview')}
                   </button>
                 </div>
                 <p className={css.notice}>{t('reviewNotice')}</p>
-                {report === undefined ? <p className={css.note}>{t('noReview')}</p> : (
+                {report === undefined ? <p className={css.note}>{busy?.startsWith('catalog:') === true || busy?.startsWith('third-party:') === true ? t('reviewingCommunity') : t('noReview')}</p> : (
                   <div className={css.reviewResult}>
                     <div className={css.reviewHeading}>
                       <div>

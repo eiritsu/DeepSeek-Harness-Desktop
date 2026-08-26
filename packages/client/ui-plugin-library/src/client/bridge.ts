@@ -5,6 +5,7 @@ export interface InstalledPlugin {
   readonly name: string
   readonly displayName: string
   readonly version: string
+  readonly latestVersion?: string
   readonly removable: boolean
 }
 
@@ -61,7 +62,7 @@ export type ThirdPartySort = 'stars' | 'npmDownloads7d' | 'installs' | 'newest' 
 export interface PluginReviewReport {
   readonly reviewId?: string
   readonly source: string
-  readonly kind: 'npm' | 'github'
+  readonly kind: 'npm' | 'github' | 'local'
   readonly subject: string
   readonly category: PluginCategory
   readonly installable: boolean
@@ -91,6 +92,8 @@ export type PluginBridgeRequest =
     readonly sort: ThirdPartySort
   }
   | { readonly action: 'review'; readonly source: string }
+  | { readonly action: 'reviewUpdate'; readonly package: string }
+  | { readonly action: 'selectDirectory' }
   | { readonly action: 'reviewRepository'; readonly repository: string }
   | { readonly action: 'reviewThirdParty'; readonly id: string }
   | { readonly action: 'install'; readonly reviewId: string; readonly force: boolean }
@@ -113,6 +116,8 @@ export interface PluginBridgeReplies {
     readonly categories: readonly ThirdPartyCategory[]
   }
   readonly review: { readonly report: PluginReviewReport }
+  readonly reviewUpdate: { readonly report: PluginReviewReport }
+  readonly selectDirectory: { readonly path?: string }
   readonly reviewRepository: { readonly report: PluginReviewReport }
   readonly reviewThirdParty: { readonly report: PluginReviewReport }
   readonly install: { readonly ok: true }

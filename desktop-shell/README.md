@@ -44,13 +44,13 @@ Custom provider names are redacted in this documentation screenshot. Public prov
 
 ![Community plugin discovery with categories, search, and sorting](docs/images/plugin-discovery.png)
 
-Community discovery is separate from URL installation. GitHub's [`dsh-plugin` topic](https://github.com/topics/dsh-plugin) and [deepseek1024.com](https://deepseek1024.com/) are independent, untrusted catalogs with their own search, filters, pagination state, and 15-minute cache. Catalog presence is only a discovery signal and never grants installation permission.
+Community discovery is separate from reviewed installation. GitHub's [`dsh-plugin` topic](https://github.com/topics/dsh-plugin) and [deepseek1024.com](https://deepseek1024.com/) are independent, untrusted catalogs with their own search, filters, pagination state, and 15-minute cache. Catalog presence is only a discovery signal and never grants installation permission. A card's Review action carries its pinned source into Review & install.
 
-### URL review and compatibility classification
+### Source review and compatibility classification
 
-![Plugin URL review in the fixed desktop canvas](docs/images/plugin-review.png)
+![Plugin source review in the fixed desktop canvas](docs/images/plugin-review.png)
 
-URL review accepts an exact npm version or an HTTPS GitHub repository pinned to a commit hash. The reviewer assigns one of four outcomes:
+Review & install accepts an exact npm version, an HTTPS GitHub repository pinned to a commit hash, or a local plugin directory. A local directory is normalized to an absolute path, and its manifest and composition entry are checked again immediately before installation; its contents remain mutable trusted local code. The reviewer assigns one of four outcomes:
 
 - **Direct install:** the package has a root manifest, declares `dsh.bundle.patch`, and references an existing package-internal YAML composition entry.
 - **Needs adaptation:** the repository is related to Harness but does not satisfy the installable DSH Bundle structure.
@@ -80,7 +80,7 @@ The build script recreates `desktop-shell/dist/DeepSeek Harness.app`, generates 
 
 To replace an older installed build, quit DeepSeek Harness and copy the newly built application to `/Applications/DeepSeek Harness.app`. A sibling path ending in `.previous` is a recoverable backup of the replaced application, not Harness user data.
 
-Run `scripts/package-dmg.sh` to create `dist/DeepSeek-Harness-macOS.dmg`. The distribution build uses `ai.deepseek.harness.desktop`, removes the developer checkout path, and embeds a source snapshot assembled only from tracked and non-ignored worktree files. Development builds keep the separate `ai.deepseek.harness.desktop.local` identity so their source-root preference cannot affect an installed distribution. Application Support data, profiles, API keys, sessions, logs, ignored `.env` files, and package caches are not build inputs. The disk image remains ad-hoc signed and is not notarized.
+Run `scripts/package-dmg.sh` to create `dist/DeepSeek-Harness-macOS.dmg`. The distribution build uses `ai.deepseek.harness.desktop`, removes the developer checkout path, and embeds a source snapshot assembled only from tracked files. The packaged plugin-library source and desktop bridge replace their upstream counterparts in that snapshot, so the installed application uses the reviewed installer without modifying the upstream checkout. When the application build changes, an existing managed source snapshot is atomically replaced before dependency installation while profiles, API keys, sessions, and logs remain in Application Support. Development builds keep the separate `ai.deepseek.harness.desktop.local` identity so their source-root preference cannot affect an installed distribution. Ignored `.env` files and package caches are not build inputs. The disk image remains ad-hoc signed and is not notarized.
 
 The distributed application accepts an existing `node` and same-directory `npx` when the Node.js version satisfies `^22.19.0 || >=24.0.0`. If no compatible pair exists, startup downloads the official Node.js 24.16.0 ARM64 archive, verifies its pinned SHA-256 digest, and installs it at `tools/node` under the application support directory. This managed installation requires no administrator access and does not replace a system Node.js installation. The first source dependency installation still requires network access.
 
@@ -103,6 +103,8 @@ The runtime is the repository's built `apps/cli/lib/bin.js`, launched with `--no
 ## Plugin installation and trust
 
 The standard Plugin menu delegates add, update, remove, and list operations to the official `dsh plugin --profile web` command. The desktop plugin library adds review and discovery, then delegates approved installation and removal to the same command using the repository-pinned pnpm version.
+
+If one sideloaded Profile Bundle prevents the runtime from reaching readiness, the desktop shell identifies the owning profile dependency and retries through a temporary recovery profile that omits only that Bundle. The installed package, `web` profile, and plugin files remain unchanged; the next application launch attempts the normal profile again. Failures in built-in Bundles or failures that cannot be attributed to one sideloaded dependency remain startup errors.
 
 Third-party plugins execute as trusted local code. Agent file operations may use the Harness sandbox, but that does not automatically confine plugin processes, configured MCP servers, network access, or host process visibility. Review every source and treat a plugin update as a code update.
 

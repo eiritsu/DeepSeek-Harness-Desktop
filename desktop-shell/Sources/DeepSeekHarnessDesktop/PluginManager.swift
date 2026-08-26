@@ -5,7 +5,59 @@ struct DesktopInstalledPlugin: Sendable {
   let name: String
   let displayName: String
   let version: String
+  let latestVersion: String?
   let removable: Bool
+}
+
+private struct DesktopPluginVersion: Comparable {
+  private enum Identifier: Equatable {
+    case number(Int)
+    case text(String)
+  }
+
+  private let core: [Int]
+  private let prerelease: [Identifier]?
+
+  init?(_ value: String) {
+    let components = value.split(separator: "-", maxSplits: 1, omittingEmptySubsequences: false)
+    let core = components[0].split(separator: ".", omittingEmptySubsequences: false)
+    guard core.count == 3,
+          core.allSatisfy({ !$0.isEmpty && $0.allSatisfy(\.isNumber) }),
+          core.compactMap({ Int($0) }).count == 3
+    else { return nil }
+    self.core = core.compactMap { Int($0) }
+    if components.count == 1 {
+      prerelease = nil
+      return
+    }
+    let parts = components[1].split(separator: ".", omittingEmptySubsequences: false)
+    guard !parts.isEmpty, parts.allSatisfy({ !$0.isEmpty }) else { return nil }
+    prerelease = parts.map { part in
+      if part.allSatisfy(\.isNumber), let number = Int(part) { return .number(number) }
+      return .text(String(part))
+    }
+  }
+
+  static func < (lhs: DesktopPluginVersion, rhs: DesktopPluginVersion) -> Bool {
+    for index in lhs.core.indices where lhs.core[index] != rhs.core[index] {
+      return lhs.core[index] < rhs.core[index]
+    }
+    switch (lhs.prerelease, rhs.prerelease) {
+    case (nil, nil): return false
+    case (nil, _): return false
+    case (_, nil): return true
+    case let (.some(left), .some(right)):
+      for index in 0..<min(left.count, right.count) where left[index] != right[index] {
+        switch (left[index], right[index]) {
+        case let (.number(a), .number(b)): return a < b
+        case (.number, .text): return true
+        case (.text, .number): return false
+        case let (.text(a), .text(b)): return a < b
+        }
+      }
+      return left.count < right.count
+    }
+  }
 }
 
 struct DesktopPluginReview: Sendable {
@@ -31,6 +83,20 @@ struct DesktopPluginAuditRecord: Codable, Sendable {
   let message: String
 }
 
+struct NormalizedPluginSource: Sendable {
+  let source: String
+  let installSource: String
+  let kind: String
+  let subject: String
+  let pinFinding: String
+}
+
+struct DesktopRecoveryProfile: Sendable {
+  let name: String
+  let directory: URL
+  let disabledPackage: String
+}
+
 final class PluginManager: @unchecked Sendable {
   private struct CatalogCacheKey: Hashable {
     let page: Int
@@ -48,6 +114,8 @@ final class PluginManager: @unchecked Sendable {
 
   private struct PendingReview {
     let source: String
+    let installSource: String
+    let kind: String
     let subject: String
     let requiresForceInstall: Bool
     let expiresAt: Date
@@ -96,6 +164,33 @@ final class PluginManager: @unchecked Sendable {
     }
   }
 
+  func prepareRecoveryProfile(
+    disabling package: String,
+    completion: @escaping @Sendable (Result<DesktopRecoveryProfile?, Error>) -> Void
+  ) {
+    queue.async {
+      do {
+        completion(.success(try self.makeRecoveryProfile(disabling: package)))
+      } catch {
+        completion(.failure(error))
+      }
+    }
+  }
+
+  func removeRecoveryProfile(
+    _ profile: DesktopRecoveryProfile,
+    completion: @escaping @Sendable () -> Void = {}
+  ) {
+    queue.async {
+      do {
+        try self.removeRecoveryDirectory(profile.directory)
+      } catch {
+        LogStore.shared.append("plugin recovery cleanup failed: \(error.localizedDescription)")
+      }
+      completion()
+    }
+  }
+
   func list(
     sourceRoot: URL,
     completion: @escaping @Sendable (Result<[DesktopInstalledPlugin], Error>) -> Void
@@ -114,11 +209,21 @@ final class PluginManager: @unchecked Sendable {
           "@deepseek-ai/dsh-file-recognizer-office": "Deepseek-Files",
           "@deepseek-ai/dsh-model-catalog": "dsh-model-catalog",
         ]
-        var plugins = dependencies.map {
-          DesktopInstalledPlugin(
-            name: $0.key,
-            displayName: displayNames[$0.key] ?? $0.key,
-            version: $0.value,
+        var plugins = dependencies.map { dependency in
+          let latestVersion: String?
+          if let current = DesktopPluginVersion(dependency.value),
+             let latest = try? self.catalogClient.latestNPMVersion(package: dependency.key),
+             let candidate = DesktopPluginVersion(latest),
+             candidate > current {
+            latestVersion = latest
+          } else {
+            latestVersion = nil
+          }
+          return DesktopInstalledPlugin(
+            name: dependency.key,
+            displayName: displayNames[dependency.key] ?? dependency.key,
+            version: dependency.value,
+            latestVersion: latestVersion,
             removable: true
           )
         }
@@ -146,6 +251,7 @@ final class PluginManager: @unchecked Sendable {
             name: bundle.name,
             displayName: bundle.displayName,
             version: version,
+            latestVersion: nil,
             removable: false
           ))
         }
@@ -168,6 +274,52 @@ final class PluginManager: @unchecked Sendable {
         completion(.failure(error))
       }
     }
+  }
+
+  func reviewUpdate(
+    package: String,
+    completion: @escaping @Sendable (Result<DesktopPluginReview, Error>) -> Void
+  ) {
+    queue.async {
+      do {
+        guard Self.isPackageName(package) else {
+          throw DesktopError.message("插件包名格式无效。")
+        }
+        let manifest = self.dshHome.appendingPathComponent("profiles/web/package.json")
+        let data = try Data(contentsOf: manifest)
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let dependencies = root["dependencies"] as? [String: String],
+              let currentText = dependencies[package],
+              let current = DesktopPluginVersion(currentText)
+        else {
+          throw DesktopError.message("该插件不是以 npm 精确版本安装，无法自动检查更新。")
+        }
+        let latestText = try self.catalogClient.latestNPMVersion(package: package)
+        guard let latest = DesktopPluginVersion(latestText), latest > current else {
+          throw DesktopError.message("该插件已经是最新版本。")
+        }
+        let report = try self.makeReview(source: "\(package)@\(latestText)")
+        guard report.packageName == package else {
+          throw DesktopError.message("更新来源的 package 名称与已安装插件不一致。")
+        }
+        completion(.success(report))
+      } catch {
+        self.appendAudit(
+          action: "update-review",
+          subject: package,
+          status: "failure",
+          message: error.localizedDescription
+        )
+        completion(.failure(error))
+      }
+    }
+  }
+
+  static func isNewerVersion(_ candidate: String, than current: String) -> Bool {
+    guard let candidate = DesktopPluginVersion(candidate), let current = DesktopPluginVersion(current) else {
+      return false
+    }
+    return candidate > current
   }
 
   func catalog(
@@ -307,10 +459,19 @@ final class PluginManager: @unchecked Sendable {
         guard !review.requiresForceInstall || force else {
           throw DesktopError.message("该插件包含审查风险；只有用户明确选择“强制安装”后才能继续。")
         }
+        if review.kind == "local" {
+          let current = try self.inspect(Self.preflightSource(review.source))
+          guard current.installable,
+                current.packageName == review.subject,
+                !current.risks.isEmpty == review.requiresForceInstall
+          else {
+            throw DesktopError.message("本地插件目录在审查后发生结构变化，请重新审查。")
+          }
+        }
         self.pendingReviews.removeValue(forKey: reviewID)
         _ = try self.runCommand(
           sourceRoot: sourceRoot,
-          arguments: ["add", "--save-exact", "--ignore-scripts", review.source],
+          arguments: ["add", "--save-exact", "--ignore-scripts", review.installSource],
           progress: progress
         )
         let message = review.requiresForceInstall && force
@@ -337,17 +498,10 @@ final class PluginManager: @unchecked Sendable {
 
   private func makeReview(source: String) throws -> DesktopPluginReview {
     let normalized = try Self.preflightSource(source)
-    let inspection: DesktopPluginInspection
-    if normalized.kind == "github" {
-      let separator = normalized.source.lastIndex(of: "#")!
-      let repository = normalized.subject
-      let commit = String(normalized.source[normalized.source.index(after: separator)...])
-      inspection = try catalogClient.inspectGitHub(repository: repository, reference: commit)
-    } else {
-      let separator = normalized.source.lastIndex(of: "@")!
-      let version = String(normalized.source[normalized.source.index(after: separator)...])
-      inspection = try catalogClient.inspectNPM(package: normalized.subject, version: version)
-    }
+    let inspection = try inspect(normalized)
+    let subject = normalized.kind == "local"
+      ? inspection.packageName ?? normalized.subject
+      : normalized.subject
 
     let expiry = Date().addingTimeInterval(15 * 60)
     pendingReviews = pendingReviews.filter { $0.value.expiresAt > Date() }
@@ -357,7 +511,9 @@ final class PluginManager: @unchecked Sendable {
       let id = UUID().uuidString
       pendingReviews[id] = PendingReview(
         source: normalized.source,
-        subject: normalized.subject,
+        installSource: normalized.installSource,
+        kind: normalized.kind,
+        subject: subject,
         requiresForceInstall: requiresForceInstall,
         expiresAt: expiry
       )
@@ -375,7 +531,7 @@ final class PluginManager: @unchecked Sendable {
       reviewID: reviewID,
       source: normalized.source,
       kind: normalized.kind,
-      subject: normalized.subject,
+      subject: subject,
       category: inspection.category,
       installable: inspection.installable,
       requiresForceInstall: requiresForceInstall,
@@ -386,11 +542,25 @@ final class PluginManager: @unchecked Sendable {
     )
     appendAudit(
       action: "review",
-      subject: normalized.subject,
+      subject: subject,
       status: "review",
       message: (findings + inspection.risks).joined(separator: " ")
     )
     return report
+  }
+
+  private func inspect(_ source: NormalizedPluginSource) throws -> DesktopPluginInspection {
+    if source.kind == "github" {
+      let separator = source.source.lastIndex(of: "#")!
+      let commit = String(source.source[source.source.index(after: separator)...])
+      return try catalogClient.inspectGitHub(repository: source.subject, reference: commit)
+    }
+    if source.kind == "local" {
+      return try catalogClient.inspectLocal(directory: URL(fileURLWithPath: source.source, isDirectory: true))
+    }
+    let separator = source.source.lastIndex(of: "@")!
+    let version = String(source.source[source.source.index(after: separator)...])
+    return try catalogClient.inspectNPM(package: source.subject, version: version)
   }
 
   func remove(
@@ -461,6 +631,89 @@ final class PluginManager: @unchecked Sendable {
     return result
   }
 
+  private func makeRecoveryProfile(disabling package: String) throws -> DesktopRecoveryProfile? {
+    guard Self.isPackageName(package) else { return nil }
+    let profiles = dshHome.appendingPathComponent("profiles", isDirectory: true)
+    try removeStaleRecoveryDirectories(in: profiles)
+    let web = profiles.appendingPathComponent("web", isDirectory: true)
+    let manifestURL = web.appendingPathComponent("package.json")
+    let data = try Data(contentsOf: manifestURL)
+    guard var root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let dependencies = root["dependencies"] as? [String: String],
+          dependencies[package] != nil,
+          var dsh = root["dsh"] as? [String: Any],
+          var profile = dsh["profile"] as? [String: Any],
+          let bundles = profile["bundles"] as? [String],
+          bundles.contains(package)
+    else { return nil }
+
+    profile["bundles"] = bundles.filter { $0 != package }
+    dsh["profile"] = profile
+    root["dsh"] = dsh
+    let name = "desktop-recovery-\(UUID().uuidString.lowercased())"
+    let directory = profiles.appendingPathComponent(name, isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+    do {
+      let recoveryManifest = try JSONSerialization.data(
+        withJSONObject: root,
+        options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+      ) + Data("\n".utf8)
+      try recoveryManifest.write(to: directory.appendingPathComponent("package.json"), options: .atomic)
+      for filename in ["cordis.yml", "cordis.patch.yml"] {
+        let source = web.appendingPathComponent(filename)
+        let destination = directory.appendingPathComponent(filename)
+        if FileManager.default.fileExists(atPath: source.path) {
+          try FileManager.default.copyItem(at: source, to: destination)
+        } else {
+          try Data("[]\n".utf8).write(to: destination, options: .atomic)
+        }
+      }
+      let nodeModules = web.appendingPathComponent("node_modules", isDirectory: true)
+      guard FileManager.default.fileExists(atPath: nodeModules.path) else {
+        throw DesktopError.message("Web profile 尚未安装插件依赖，无法创建临时恢复环境。")
+      }
+      try FileManager.default.createSymbolicLink(
+        at: directory.appendingPathComponent("node_modules", isDirectory: true),
+        withDestinationURL: nodeModules
+      )
+    } catch {
+      try? removeRecoveryDirectory(directory)
+      throw error
+    }
+    appendAudit(
+      action: "startup-isolation",
+      subject: package,
+      status: "success",
+      message: "侧载插件仅在本次桌面运行中临时禁用；Web profile 安装与启用状态未修改。"
+    )
+    return DesktopRecoveryProfile(name: name, directory: directory, disabledPackage: package)
+  }
+
+  private func removeStaleRecoveryDirectories(in profiles: URL) throws {
+    guard FileManager.default.fileExists(atPath: profiles.path) else { return }
+    for item in try FileManager.default.contentsOfDirectory(
+      at: profiles,
+      includingPropertiesForKeys: nil,
+      options: [.skipsHiddenFiles]
+    ) where item.lastPathComponent.hasPrefix("desktop-recovery-") {
+      try removeRecoveryDirectory(item)
+    }
+  }
+
+  private func removeRecoveryDirectory(_ directory: URL) throws {
+    let profiles = dshHome.appendingPathComponent("profiles", isDirectory: true).standardizedFileURL
+    guard directory.deletingLastPathComponent().standardizedFileURL == profiles,
+          directory.lastPathComponent.hasPrefix("desktop-recovery-")
+    else { throw DesktopError.message("拒绝清理非桌面恢复 Profile。") }
+    let modules = directory.appendingPathComponent("node_modules", isDirectory: true)
+    if (try? modules.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true {
+      try FileManager.default.removeItem(at: modules)
+    }
+    if FileManager.default.fileExists(atPath: directory.path) {
+      try FileManager.default.removeItem(at: directory)
+    }
+  }
+
   private func appendAudit(action: String, subject: String, status: String, message: String) {
     do {
       try FileManager.default.createDirectory(
@@ -489,9 +742,7 @@ final class PluginManager: @unchecked Sendable {
     }
   }
 
-  static func preflightSource(_ raw: String) throws -> (
-    source: String, kind: String, subject: String, pinFinding: String
-  ) {
+  static func preflightSource(_ raw: String) throws -> NormalizedPluginSource {
     let source = raw.trimmingCharacters(in: .whitespacesAndNewlines)
     if let components = URLComponents(string: source), components.scheme == "https", components.host == "github.com" {
       guard components.user == nil, components.password == nil, components.port == nil, components.query == nil else {
@@ -509,17 +760,54 @@ final class PluginManager: @unchecked Sendable {
         throw DesktopError.message("GitHub 仓库地址格式无效。")
       }
       let normalized = "https://github.com/\(parts[0])/\(repository).git#\(commit.lowercased())"
-      return (normalized, "github", "\(parts[0])/\(repository)", "来源固定到 commit \(commit.lowercased())。")
+      return NormalizedPluginSource(
+        source: normalized,
+        installSource: normalized,
+        kind: "github",
+        subject: "\(parts[0])/\(repository)",
+        pinFinding: "来源固定到 commit \(commit.lowercased())。"
+      )
+    }
+
+    let localURL: URL?
+    if source.hasPrefix("/") {
+      localURL = URL(fileURLWithPath: source, isDirectory: true)
+    } else if let fileURL = URL(string: source), fileURL.isFileURL {
+      localURL = fileURL
+    } else {
+      localURL = nil
+    }
+    if let localURL {
+      let normalized = localURL.standardizedFileURL.resolvingSymlinksInPath()
+      var isDirectory: ObjCBool = false
+      guard FileManager.default.fileExists(atPath: normalized.path, isDirectory: &isDirectory),
+            isDirectory.boolValue
+      else {
+        throw DesktopError.message("本地插件目录不存在或不可读取。")
+      }
+      return NormalizedPluginSource(
+        source: normalized.path,
+        installSource: "file:\(normalized.path)",
+        kind: "local",
+        subject: normalized.lastPathComponent,
+        pinFinding: "本地目录已解析为绝对路径；安装前会再次检查插件结构。"
+      )
     }
 
     let pattern = "^(?:@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*@[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"
     guard source.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil,
           let separator = source.lastIndex(of: "@"), separator != source.startIndex
     else {
-      throw DesktopError.message("请输入 npm 精确版本，或固定 commit 的 HTTPS GitHub URL。")
+      throw DesktopError.message("请输入 npm 精确版本、固定 commit 的 HTTPS GitHub URL，或本地插件目录。")
     }
     let package = String(source[..<separator])
-    return (source, "npm", package, "npm 来源固定到精确版本 \(source[source.index(after: separator)...])。")
+    return NormalizedPluginSource(
+      source: source,
+      installSource: source,
+      kind: "npm",
+      subject: package,
+      pinFinding: "npm 来源固定到精确版本 \(source[source.index(after: separator)...])。"
+    )
   }
 
   private static func isPackageName(_ value: String) -> Bool {

@@ -31,6 +31,7 @@ function makeBridge(options: { readonly riskyReview?: boolean } = {}) {
         name: '@fixture/dsh-plugin',
         displayName: 'Fixture plugin',
         version: '1.2.3',
+        latestVersion: '1.3.0',
         removable: true,
       }, {
         name: '@deepseek-ai/dsh-file-recognizer-office',
@@ -90,6 +91,20 @@ function makeBridge(options: { readonly riskyReview?: boolean } = {}) {
       catalogTotal: 9_222,
       categories: [{ id: 'memory', englishName: 'Memory', chineseName: '记忆', count: 271 }],
       }
+      case 'selectDirectory': return { path: '/tmp/dsh-fixtures/local-plugin' }
+      case 'reviewUpdate': return { report: {
+        reviewId: 'review-update',
+        source: '@fixture/dsh-plugin@1.3.0',
+        kind: 'npm' as const,
+        subject: '@fixture/dsh-plugin',
+        category: 'profile-bundle' as const,
+        installable: true,
+        requiresForceInstall: false,
+        packageName: '@fixture/dsh-plugin',
+        findings: ['Exact update version pinned.'],
+        risks: [],
+        expiresAt: '2026-08-23T08:15:00Z',
+      } }
       case 'review':
       case 'reviewRepository':
       case 'reviewThirdParty': return { report: {
@@ -126,7 +141,24 @@ describe('PluginLibraryOverlay', () => {
     expect(screen.queryByText('Model Capabilities')).toBeNull()
   })
 
-  it('renders low detailed cards, compact cards, URL review, and audit records', async () => {
+  it('reviews an available npm update before installation', async () => {
+    const controller = new PluginLibraryController()
+    const { bridge, request } = makeBridge()
+    controller.show()
+    render(<PluginLibraryOverlay {...({ bridge, controller, t } as PluginLibraryOverlayProps)} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Update to 1.3.0' }))
+
+    await vi.waitFor(() => {
+      expect(request).toHaveBeenCalledWith({ action: 'reviewUpdate', package: '@fixture/dsh-plugin' })
+    })
+    expect(await screen.findByText(en.reviewReady)).toBeTruthy()
+    expect((screen.getByLabelText(en.sourceLabel) as HTMLInputElement).value)
+      .toBe('@fixture/dsh-plugin@1.3.0')
+    expect(screen.getByRole('button', { name: en.install })).toBeTruthy()
+  })
+
+  it('renders low detailed cards, compact cards, source review, and audit records', async () => {
     const controller = new PluginLibraryController()
     const { bridge, request } = makeBridge()
     controller.show()
@@ -145,10 +177,20 @@ describe('PluginLibraryOverlay', () => {
 
     fireEvent.click(screen.getByRole('button', { name: en.review }))
     expect(screen.queryByRole('heading', { name: en.communityTitle })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: en.chooseDirectory }))
+    await vi.waitFor(() => {
+      expect(request).toHaveBeenCalledWith({ action: 'selectDirectory' })
+      expect((screen.getByLabelText(en.sourceLabel) as HTMLInputElement).value).toBe('/tmp/dsh-fixtures/local-plugin')
+    })
     fireEvent.click(screen.getByRole('button', { name: en.discovery }))
     expect(await screen.findByText('fixture/direct-plugin')).toBeTruthy()
     expect(request).toHaveBeenCalledWith({ action: 'catalog', page: 1, pageSize: 12, query: '' })
     expect(screen.queryByText('fixture/python-service')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: en.reviewThis }))
+    expect(request).toHaveBeenCalledWith({ action: 'reviewRepository', repository: 'fixture/direct-plugin' })
+    expect(await screen.findByText(en.reviewReady)).toBeTruthy()
+    expect(screen.getByRole('button', { name: en.review }).getAttribute('aria-current')).toBe('page')
+    fireEvent.click(screen.getByRole('button', { name: en.discovery }))
     fireEvent.click(screen.getByRole('button', { name: new RegExp(en.categoryExternal) }))
     expect(screen.getByText('fixture/python-service')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: new RegExp(en.categoryBundle) }))
@@ -181,10 +223,8 @@ describe('PluginLibraryOverlay', () => {
       action: 'reviewThirdParty',
       id: 'MemTensor/MemOS/apps/memos-local-plugin',
     })
-    fireEvent.click(screen.getByRole('button', { name: en.review }))
-    await vi.waitFor(() => {
-      expect(screen.getByRole('button', { name: en.startReview }).hasAttribute('disabled')).toBe(false)
-    })
+    expect(await screen.findByText(en.reviewReady)).toBeTruthy()
+    expect(screen.getByRole('button', { name: en.review }).getAttribute('aria-current')).toBe('page')
     fireEvent.change(screen.getByLabelText(en.sourceLabel), {
       target: { value: '@fixture/manual@1.2.3' },
     })
@@ -206,11 +246,12 @@ describe('PluginLibraryOverlay', () => {
     render(<PluginLibraryOverlay {...({ bridge, controller, t } as PluginLibraryOverlayProps)} />)
 
     fireEvent.click(screen.getByRole('button', { name: en.review }))
-    await vi.waitFor(() => {
-      expect(screen.getByRole('button', { name: en.startReview }).hasAttribute('disabled')).toBe(false)
-    })
+    expect(screen.getByRole('button', { name: en.startReview }).hasAttribute('disabled')).toBe(true)
     fireEvent.change(screen.getByLabelText(en.sourceLabel), {
       target: { value: '@fixture/risky@1.2.3' },
+    })
+    await vi.waitFor(() => {
+      expect(screen.getByRole('button', { name: en.startReview }).hasAttribute('disabled')).toBe(false)
     })
     fireEvent.click(screen.getByRole('button', { name: en.startReview }))
 

@@ -62,6 +62,7 @@ struct DesktopPluginInspection: Sendable {
 enum DesktopPluginManifestOrigin {
   case repository
   case npmRegistry
+  case localDirectory
 }
 
 struct PluginHTTPPayload: Sendable {
@@ -302,22 +303,26 @@ final class PluginCatalogClient: @unchecked Sendable {
     guard Self.isNPMName(candidate) else {
       throw DesktopError.message("第三方条目的安装目标不是受支持的 npm package，未生成安装来源。")
     }
-    let encoded = candidate.addingPercentEncoding(
+    return "\(candidate)@\(try latestNPMVersion(package: candidate))"
+  }
+
+  func latestNPMVersion(package: String) throws -> String {
+    let encoded = package.addingPercentEncoding(
       withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))
-    ) ?? candidate
-    let latestResponse = try fetch(requireURL("https://registry.npmjs.org/\(encoded)/latest"))
-    guard latestResponse.status == 200 else {
-      throw DesktopError.message("npm registry 返回 HTTP \(latestResponse.status)，无法固定第三方条目的版本。")
+    ) ?? package
+    let response = try fetch(requireURL("https://registry.npmjs.org/\(encoded)/latest"))
+    guard response.status == 200 else {
+      throw DesktopError.message("npm registry 返回 HTTP \(response.status)，无法检查 \(package) 的最新版本。")
     }
-    guard let latest = try? JSONDecoder().decode(NPMLatest.self, from: latestResponse.data),
+    guard let latest = try? JSONDecoder().decode(NPMLatest.self, from: response.data),
           latest.version.range(
             of: "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$",
             options: .regularExpression
           ) != nil
     else {
-      throw DesktopError.message("无法把第三方条目的 npm 来源固定到可验证的精确版本。")
+      throw DesktopError.message("npm registry 没有返回 \(package) 的有效精确版本。")
     }
-    return "\(candidate)@\(latest.version)"
+    return latest.version
   }
 
   func resolveHead(repository: String, defaultBranch: String?) throws -> String {
@@ -371,17 +376,37 @@ final class PluginCatalogClient: @unchecked Sendable {
     }
   }
 
+  func inspectLocal(directory: URL) throws -> DesktopPluginInspection {
+    let root = directory.standardizedFileURL.resolvingSymlinksInPath()
+    var isDirectory: ObjCBool = false
+    guard FileManager.default.fileExists(atPath: root.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+      throw DesktopError.message("本地插件目录不存在或不可读取。")
+    }
+    let manifestURL = root.appendingPathComponent("package.json", isDirectory: false)
+    let manifest = try? Data(contentsOf: manifestURL)
+    return try Self.inspectManifest(manifest, origin: .localDirectory) { patch in
+      let candidate = root.appendingPathComponent(patch, isDirectory: false)
+        .standardizedFileURL.resolvingSymlinksInPath()
+      let rootPrefix = root.path.hasSuffix("/") ? root.path : "\(root.path)/"
+      guard candidate.path.hasPrefix(rootPrefix) else { return false }
+      var patchIsDirectory: ObjCBool = false
+      return FileManager.default.fileExists(atPath: candidate.path, isDirectory: &patchIsDirectory)
+        && !patchIsDirectory.boolValue
+    }
+  }
+
   static func inspectManifest(
     _ data: Data?,
     origin: DesktopPluginManifestOrigin,
     patchExists: (String) throws -> Bool
   ) throws -> DesktopPluginInspection {
     guard let data else {
+      let location = origin == .localDirectory ? "本地目录" : "仓库根目录"
       return DesktopPluginInspection(
         category: .externalProject,
         installable: false,
         packageName: nil,
-        findings: ["仓库根目录没有 package.json，不能作为 DSH Profile Bundle 直接安装。"],
+        findings: ["\(location)没有 package.json，不能作为 DSH Profile Bundle 直接安装。"],
         risks: []
       )
     }
@@ -404,7 +429,7 @@ final class PluginCatalogClient: @unchecked Sendable {
         risks: []
       )
     }
-    let risks = origin == .npmRegistry ? publishedWorkspaceDependencyRisks(root) : []
+    let risks = origin == .repository ? [] : publishedWorkspaceDependencyRisks(root)
     guard let dsh = root["dsh"] as? [String: Any],
           let bundle = dsh["bundle"] as? [String: Any],
           let patch = bundle["patch"] as? String
@@ -413,7 +438,7 @@ final class PluginCatalogClient: @unchecked Sendable {
         category: .needsAdapter,
         installable: false,
         packageName: packageName,
-        findings: ["npm package 未声明 dsh.bundle.patch；安装后只会成为普通依赖，不会激活为 Profile Bundle。"],
+        findings: ["package 未声明 dsh.bundle.patch；安装后只会成为普通依赖，不会激活为 Profile Bundle。"],
         risks: risks
       )
     }
