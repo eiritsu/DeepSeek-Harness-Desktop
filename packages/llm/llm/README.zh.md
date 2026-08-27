@@ -21,7 +21,9 @@
 - `ctx.llm.registerModelDiscovery(settingsNs: string, discover): () => void` 为本插件拥有的 settings namespace 提供查询提供方端点的能力。每个 namespace 只能有一个（`INVALID_DISCOVERY`/`DUPLICATE_DISCOVERY`），并随调用 fiber dispose。
 - `ctx.llm.registerModelDiscoveryEnricher(enrich: LlmModelDiscoveryEnricher): () => void` 补充端点列表省略的元数据，但不替换提供方或更早插件已经给出的值。
 - `ctx.llm.registerModelInputResolver(resolve: LlmModelInputResolver): () => void` 注册有序的外部精确模型模态查询；首个给出答案的解析器胜出，dispose 会撤回该注册。
-- `ctx.llm.resolveModelInput(provider: string, model: string, signal?: AbortSignal, ownedBy?: string): Promise<readonly ModelModality[] | undefined>` 向外部 catalog 查询精确输入模态，不读取或写入提供方 settings；发现到的上游 owner 可进一步精确定位网关路由。
+- `ctx.llm.resolveModelInput(provider: string, model: string, signal?: AbortSignal, ownedBy?: string, baseURL?: string): Promise<readonly ModelModality[] | undefined>` 向外部 catalog 查询精确输入模态，不读取或写入提供方 settings；发现到的上游 owner 或精确端点可进一步定位网关路由。
+- `ctx.llm.registerModelCapacityResolver(resolve: LlmModelCapacityResolver): () => void` 注册有序的外部精确模型容量查询；首个给出答案的解析器胜出，dispose 会撤回该注册。
+- `ctx.llm.resolveModelCapacity(provider: string, model: string, signal?: AbortSignal, ownedBy?: string, baseURL?: string): Promise<LlmModelCapacity | undefined>` 向外部 catalog 查询当前上下文与输出容量，不修改提供方 settings。
 - `ctx.llm.listModelDiscoveryNamespaces(): string[]` 列出可以询问端点的 namespace，让界面只在可用之处提供该动作。
 - `ctx.llm.discoverModels(settingsNs: string, request: LlmModelDiscoveryRequest): Promise<LlmDiscoveredModel[]>` 询问某个端点它公布了哪些模型。
 - `ctx.llm.providerRetryPolicy(provider: string): ResolvedRetryPolicy` 返回注册时捕获的提供方自身的重试策略，并解析 normal 默认值。
@@ -36,6 +38,8 @@
 询问端点属于配置期针对**草稿**的操作，以 settings namespace 而非提供方路由为键——界面正在新增的提供方还不存在，也就没有路由可点名。但请求仍可**点名**它正在编辑的路由，而已经描述该路由的适配器会用自己的知识作答，无需联网；路由名称和 `baseURL` 至少需要提供一项。除此之外，请求携带端点、协议，以及一条 harness 只用于这一次询问、绝不存储的凭据。这里既不读取也不写入 settings 或 credentials；返回内容是界面可以提供给用户采纳的候选元数据，而不是已注册的 catalog。`LlmDiscoveredModel` 除 `id` 外每个字段都是可选的，因为大多数提供方列表只公布 id；明确公布的 owner 与请求模态会随候选返回，让采纳界面无需用户再次声明即可保留。有序 discovery enricher 只能为提供方已经返回的 id 填补缺失字段，因此端点元数据与更早插件始终优先，未知值继续保持未知。重复与不可用的 id 会被丢弃，无人服务的 namespace 以 `NO_DISCOVERY` 失败，既不点名路由也不给端点的请求以 `INVALID_DISCOVERY` 失败。
 
 精确模型输入解析器供自身 profile 与已安装 catalog 都没有模态声明的适配器使用。解析器有序且只补缺：适配器决定元数据是否缺失，首个给出答案的解析器胜出，返回 `undefined` 则继续委托。该查询属于运行时元数据，不修改 settings；适配器必须把结果同时用于能力报告和提供方分发所用的模型描述符。
+
+精确模型容量解析器供已安装元数据可能落后于独立刷新 catalog 的适配器使用。解析器以正整数返回 `contextWindow`、`maxOutputTokens` 或两者。适配器把当前能力同时用于精确模型报告与分发；输出能力仍与 `defaultMaxTokens` 分离，后者是部署选择的单次请求上限。
 
 提供方和模型元数据用于发现，不构成路由白名单。`registerAdapter()` 仍拥有提供方路由的排他性，并为每条路由捕获适配器的重试策略；适配器可以接受未出现在 `listModels()` 中的模型 id，消费方不得仅因模型未列出而拒绝请求。返回的 selector 元数据已分离；无效或重复的适配器条目会以 `INVALID_ADAPTER` 或 `INVALID_CATALOG` 失败。
 

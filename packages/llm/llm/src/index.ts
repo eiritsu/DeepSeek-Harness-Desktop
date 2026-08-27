@@ -13,6 +13,8 @@ import type {
   LlmDiscoveredModel,
   LlmFailure,
   LlmModelContext,
+  LlmModelCapacity,
+  LlmModelCapacityResolver,
   LlmModelDiscoveryRequest,
   LlmModelDiscoveryEnricher,
   LlmModelInputResolver,
@@ -321,6 +323,7 @@ export class LlmRuntime extends Service {
   >()
   private discoveryEnrichers = new Map<symbol, LlmModelDiscoveryEnricher>()
   private modelInputResolvers = new Map<symbol, LlmModelInputResolver>()
+  private modelCapacityResolvers = new Map<symbol, LlmModelCapacityResolver>()
 
   constructor(ctx: Context) {
     super(ctx, 'llm')
@@ -595,6 +598,7 @@ export class LlmRuntime extends Service {
    * @param model - exact model id sent to the provider.
    * @param signal - cancellation for asynchronous catalog access.
    * @param ownedBy - upstream model owner preserved from discovery, when disclosed.
+   * @param baseURL - exact provider endpoint used by the configured route, when available.
    * @returns the first resolver answer, or `undefined` when none knows the model.
    */
   async resolveModelInput(
@@ -602,6 +606,7 @@ export class LlmRuntime extends Service {
     model: string,
     signal?: AbortSignal,
     ownedBy?: string,
+    baseURL?: string,
   ): Promise<readonly ModelModality[] | undefined> {
     signal?.throwIfAborted()
     for (const resolve of this.modelInputResolvers.values()) {
@@ -609,9 +614,72 @@ export class LlmRuntime extends Service {
         provider,
         model,
         ...ownedBy === undefined ? {} : { ownedBy },
+        ...baseURL === undefined ? {} : { baseURL },
         ...signal === undefined ? {} : { signal },
       })
       if (modalities !== undefined) return [...modalities]
+      signal?.throwIfAborted()
+    }
+    return undefined
+  }
+
+  /**
+   * Register one ordered exact-model capacity resolver. External catalog
+   * capacities replace adapter catalog values because they may describe
+   * models released after the installed adapter dependency.
+   * @param resolve - exact route/model lookup.
+   * @returns disposer withdrawing only this resolver.
+   */
+  registerModelCapacityResolver(resolve: LlmModelCapacityResolver): () => void {
+    const registration = Symbol('llm.model-capacity-resolver')
+    const dispose = this.ctx.effect(function* (this: LlmRuntime) {
+      this.modelCapacityResolvers.set(registration, resolve)
+      yield () => {
+        this.modelCapacityResolvers.delete(registration)
+      }
+    }.bind(this), 'llm.registerModelCapacityResolver()')
+    return () => void dispose()
+  }
+
+  /**
+   * Resolve exact capacities from registered external catalogs.
+   * @param provider - configured provider route.
+   * @param model - exact model id sent to the provider.
+   * @param signal - cancellation for asynchronous catalog access.
+   * @param ownedBy - upstream model owner preserved from discovery, when disclosed.
+   * @param baseURL - exact provider endpoint used by the configured route, when available.
+   * @returns the first resolver answer, or `undefined` when none knows the model.
+   */
+  async resolveModelCapacity(
+    provider: string,
+    model: string,
+    signal?: AbortSignal,
+    ownedBy?: string,
+    baseURL?: string,
+  ): Promise<LlmModelCapacity | undefined> {
+    signal?.throwIfAborted()
+    for (const resolve of this.modelCapacityResolvers.values()) {
+      const capacity = await resolve({
+        provider,
+        model,
+        ...ownedBy === undefined ? {} : { ownedBy },
+        ...baseURL === undefined ? {} : { baseURL },
+        ...signal === undefined ? {} : { signal },
+      })
+      if (capacity !== undefined) {
+        const { contextWindow, maxOutputTokens } = capacity
+        if (contextWindow !== undefined && (!Number.isInteger(contextWindow) || contextWindow <= 0)) {
+          throw new LlmError('model capacity contextWindow must be a positive integer', 'INVALID_MODEL_CAPACITY')
+        }
+        if (maxOutputTokens !== undefined && (!Number.isInteger(maxOutputTokens) || maxOutputTokens <= 0)) {
+          throw new LlmError('model capacity maxOutputTokens must be a positive integer', 'INVALID_MODEL_CAPACITY')
+        }
+        if (contextWindow === undefined && maxOutputTokens === undefined) continue
+        return {
+          ...contextWindow === undefined ? {} : { contextWindow },
+          ...maxOutputTokens === undefined ? {} : { maxOutputTokens },
+        }
+      }
       signal?.throwIfAborted()
     }
     return undefined

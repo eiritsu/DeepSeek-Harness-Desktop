@@ -915,7 +915,44 @@ describe('provider profile lifecycle', () => {
         })],
       })) { /* drain */ }
     })()).rejects.toThrow(/requires the durable attachment service/)
-    expect(resolveInputModalities).toHaveBeenCalledWith('a6', 'gemini-3.7-flash', undefined, undefined)
+    expect(resolveInputModalities).toHaveBeenCalledWith(
+      'a6',
+      'gemini-3.7-flash',
+      undefined,
+      undefined,
+      'https://gateway.example/v1',
+    )
+  })
+
+  it('uses current external capacities without turning output capability into a request default', async () => {
+    const resolveModelCapacity = vi.fn(() => Promise.resolve({
+      contextWindow: 1_000_000,
+      maxOutputTokens: 131_072,
+    }))
+    const adapter = new PiAiAdapter({
+      profiles: () => resolveProfiles({
+        'zai-coding-cn': {
+          api: 'openai-completions',
+          baseURL: 'https://open.bigmodel.cn/api/coding/paas/v4',
+          models: [{ id: 'glm-5.3-flash', contextWindow: 131_072, maxTokens: 98_304 }],
+        },
+      }),
+      resolveApiKey: () => Promise.resolve('test-key'),
+      resolveModelCapacity,
+      auth: memoryAuth(),
+    })
+
+    await expect(adapter.resolveModel('zai-coding-cn', 'glm-5.3-flash')).resolves.toMatchObject({
+      context: { contextWindow: 1_000_000 },
+      defaultMaxTokens: 98_304,
+    })
+    expect(resolveModelCapacity).toHaveBeenCalledWith(
+      'zai-coding-cn',
+      'glm-5.3-flash',
+      undefined,
+      undefined,
+      'https://open.bigmodel.cn/api/coding/paas/v4',
+    )
   })
 
   it('keeps selector controls fixed for owned and pinned models', async () => {

@@ -315,6 +315,43 @@ describe('model discovery registry', () => {
     first()
   })
 
+  it('resolves detached exact model capacities through ordered disposable resolvers', async () => {
+    const ctx = await setup()
+    const firstResolver = vi.fn(() => Promise.resolve(undefined))
+    const first = ctx.llm.registerModelCapacityResolver(firstResolver)
+    const answer = { contextWindow: 1_000_000, maxOutputTokens: 131_072 }
+    const second = ctx.llm.registerModelCapacityResolver(() => Promise.resolve(answer))
+
+    const resolved = await ctx.llm.resolveModelCapacity(
+      'zai-coding-cn',
+      'glm-5.3-flash',
+      undefined,
+      'zai',
+      'https://open.bigmodel.cn/api/coding/paas/v4',
+    )
+    expect(resolved).toEqual(answer)
+    expect(resolved).not.toBe(answer)
+    expect(firstResolver).toHaveBeenCalledWith({
+      provider: 'zai-coding-cn',
+      model: 'glm-5.3-flash',
+      ownedBy: 'zai',
+      baseURL: 'https://open.bigmodel.cn/api/coding/paas/v4',
+    })
+
+    second()
+    await expect(ctx.llm.resolveModelCapacity('zai-coding-cn', 'glm-5.3-flash'))
+      .resolves.toBeUndefined()
+    first()
+  })
+
+  it('refuses invalid external model capacities', async () => {
+    const ctx = await setup()
+    ctx.llm.registerModelCapacityResolver(() => Promise.resolve({ contextWindow: 0 }))
+
+    await expect(ctx.llm.resolveModelCapacity('zai-coding-cn', 'glm-5.3-flash'))
+      .rejects.toMatchObject({ code: 'INVALID_MODEL_CAPACITY' })
+  })
+
   it('refuses a namespace nothing serves and a draft with no endpoint', async () => {
     const ctx = await setup()
     ctx.llm.registerModelDiscovery('llm-example', () => Promise.resolve([]))

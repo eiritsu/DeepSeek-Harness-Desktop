@@ -277,6 +277,8 @@ export interface LlmModelInputRequest {
   model: string
   /** Upstream model owner preserved from provider discovery, when disclosed. */
   ownedBy?: string
+  /** Exact provider endpoint used by the configured route, when available. */
+  baseURL?: string
   /** Cancellation for asynchronous catalog access. */
   signal?: AbortSignal
 }
@@ -290,6 +292,39 @@ export interface LlmModelInputResolver {
    * @returns accepted input modalities when known.
    */
   (request: LlmModelInputRequest): Promise<readonly ModelModality[] | undefined>
+}
+
+/** Exact model capacities supplied by an external catalog. */
+export interface LlmModelCapacity {
+  /** Maximum combined request and response context in tokens. */
+  contextWindow?: number
+  /** Maximum generated output in tokens. */
+  maxOutputTokens?: number
+}
+
+/** Exact route/model identity presented to a capacity resolver. */
+export interface LlmModelCapacityRequest {
+  /** Configured provider route. */
+  provider: string
+  /** Exact model id sent to the provider. */
+  model: string
+  /** Upstream model owner preserved from discovery, when disclosed. */
+  ownedBy?: string
+  /** Exact provider endpoint used by the configured route, when available. */
+  baseURL?: string
+  /** Cancellation for asynchronous catalog access. */
+  signal?: AbortSignal
+}
+
+/** One plugin that supplies exact model capacities from an external catalog. */
+export interface LlmModelCapacityResolver {
+  /**
+   * Resolve exact model capacities, or return `undefined` to delegate to the
+   * next resolver and ultimately the adapter's installed metadata.
+   * @param request - exact configured route/model identity.
+   * @returns positive integer capacities when known.
+   */
+  (request: LlmModelCapacityRequest): Promise<LlmModelCapacity | undefined>
 }
 
 /** One adapter-discovered model; catalog membership is advisory, not request validation. */

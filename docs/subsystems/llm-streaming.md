@@ -672,6 +672,8 @@ interface LlmModelInputRequest {
   model: string
   /** Upstream model owner preserved from provider discovery, when disclosed. */
   ownedBy?: string
+  /** Exact provider endpoint used by the configured route, when available. */
+  baseURL?: string
   /** Cancellation for asynchronous catalog access. */
   signal?: AbortSignal
 }
@@ -902,9 +904,30 @@ registerModelInputResolver(resolve: LlmModelInputResolver): () => void
  * @param model - exact model id sent to the provider.
  * @param signal - cancellation for asynchronous catalog access.
  * @param ownedBy - upstream model owner preserved from discovery, when disclosed.
+ * @param baseURL - exact provider endpoint used by the configured route, when available.
  * @returns the first resolver answer, or `undefined` when none knows the model.
  */
-async resolveModelInput( provider: string, model: string, signal?: AbortSignal, ownedBy?: string, ): Promise<readonly ModelModality[] | undefined>
+async resolveModelInput( provider: string, model: string, signal?: AbortSignal, ownedBy?: string, baseURL?: string, ): Promise<readonly ModelModality[] | undefined>
+
+/**
+ * Register one ordered exact-model capacity resolver. External catalog
+ * capacities replace adapter catalog values because they may describe
+ * models released after the installed adapter dependency.
+ * @param resolve - exact route/model lookup.
+ * @returns disposer withdrawing only this resolver.
+ */
+registerModelCapacityResolver(resolve: LlmModelCapacityResolver): () => void
+
+/**
+ * Resolve exact capacities from registered external catalogs.
+ * @param provider - configured provider route.
+ * @param model - exact model id sent to the provider.
+ * @param signal - cancellation for asynchronous catalog access.
+ * @param ownedBy - upstream model owner preserved from discovery, when disclosed.
+ * @param baseURL - exact provider endpoint used by the configured route, when available.
+ * @returns the first resolver answer, or `undefined` when none knows the model.
+ */
+async resolveModelCapacity( provider: string, model: string, signal?: AbortSignal, ownedBy?: string, baseURL?: string, ): Promise<LlmModelCapacity | undefined>
 
 /**
  * Interrogate one provider endpoint for the models it advertises. The

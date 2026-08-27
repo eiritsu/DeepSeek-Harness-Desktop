@@ -1,0 +1,8 @@
+- dialog "上下文已用":
+  - text: 上下文已用 7% ~67.9K / 1M
+  - term: 系统提示词
+  - definition: ~0
+  - term: 工具
+  - definition: ~0
+  - term: 对话消息
+  - definition: ~30

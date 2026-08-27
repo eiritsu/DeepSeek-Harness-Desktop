@@ -102,6 +102,8 @@ pi-ai 依据提供方 id 与 baseURL 决定每个请求的形状：系统提示�
 
 条目与已安装 catalog 都没有给出尺寸的模型，会采用该路由的 `defaultContextWindow`（262,144）与 `defaultMaxTokens`（32,768），因此一份只公布 id 的列表同样能产出可服务的路由。两个回退值本质上都是猜测，这正是它们作为路由字段、供网关服务更小模型的部署一次性更正的原因，而不是埋在适配器里的常量；回退值只用于给模型定尺寸，绝不会变成单次请求上限。
 
+外部精确模型容量解析器可以在准备调用时替换这些已物化的上下文与输出能力。因此，独立刷新的 catalog 能描述刚发布的模型，无需等待已安装 pi-ai 版本，也不改写已保存 settings。解析得到的 `maxOutputTokens` 仍是模型能力元数据；只有 profile 条目显式写出的 `maxTokens` 才会成为 harness 的 `defaultMaxTokens` 请求上限。
+
 请求模态按以下顺序解析：条目的 `input` → 已安装 catalog 条目 → 注册在 `LlmRuntime` 上的外部精确模型解析器 → 路由的 `defaultInput`（默认 `[text]`）。外部查询仅用于已经落到路由回退值的模型，因此显式逐模型更正与 pi-ai 已安装元数据始终优先；其结果会捕获到同一个已准备模型描述符中，并同时用于准入和提供方分发。仍然未知的模型若在某网关上全部接受图片，该网关可以在路由上统一写一次 `[text, image]`。条目的空列表与缺省同义——一个什么都不接受的模型没有给出答案，因此继续向下解析——而路由列表不得为空，因为其下已经没有其他层级可以作答。
 
 `[text]` 是「尚未声明」，而不是对端点的猜测——这也是为什么这里的回退值取保守值，而两个容量回退值只是取一个说得过去的值。这里没有任何环节会去询问网关实际接受什么，而两种猜错的代价并不对等：模态中不含图片时，Harness 会在图片被附加之前就拒绝，因此少声明的代价是一次点名该模型的拒绝；而多声明会接纳一张图片、再由提供方在轮次中途拒绝——此时消息已经持久化，会话便会不断重复一个不可能成功的请求。
@@ -139,7 +141,7 @@ profile 的 `reasoning` 值只在会话保持 `Default` 时作为部署默认值
 
 多数列表只公布 id；`context_window`/`context_length`、`max_output_tokens`/`max_tokens`，以及顶层或 `architecture.input_modalities` 中明确给出的列表，会在网关提供时被读取。系统只保留支持的 `text` 与 `image`，字段缺失或只含不支持的值时保持未知，不会猜测能力；模型页会在采纳候选时自动把已公布模态存入对应模型。没有可用 id 的条目会被跳过，而不是让整份列表失败。回复在四兆字节上限下读取，且上限落在实际收到的字节上——端点是用户自己填的 URL，因此会先看声明长度，但绝不把它当作边界。端点不可达、凭据被拒、响应非 JSON、以及响应没有 `data` 数组，都会以 `DISCOVERY_FAILED` 失败，消息点名端点；仅当 401 或 403 时才点名凭据。读取响应体期间被取消会呈现为 `ABORTED`，与请求发出之前被取消一致。
 
-列表中的 `owned_by` 会作为候选元数据保留，并由模型页写入采用的模型行。Web profile 默认启用的 `@deepseek-ai/dsh-model-catalog` Bundle 会把 `models.dev` 刷新到持久 last-good 快照，并使用可识别 owner 与精确模型 id 补齐完整的 `text`、`image`、`audio`、`video`、`pdf` 声明。owner 为网关自定义值或缺失时，输入声明必须完全一致；动态快照没有该 id 时，再按相同精确匹配规则使用 pi-ai 已安装 catalog。它不依据路由、协议或模型名模式推断。这使通用适配器不依赖任何单一补充 catalog；自定义 profile 可以把该 catalog 作为普通 Bundle 添加。
+列表中的 `owned_by` 会作为候选元数据保留，并由模型页写入采用的模型行。Web profile 默认启用的 `@deepseek-ai/dsh-model-catalog` Bundle 会把 `models.dev` 刷新到持久 last-good 快照，并使用可识别 owner 与精确模型 id 补齐完整输入声明及当前上下文／输出容量。本地 owner 别名也可通过路由 `baseURL` 与 catalog 提供方 API 的精确匹配确定身份。两者都无法确定身份时，每个字段的同 id 声明必须完全一致；动态快照没有覆盖的 id 或字段按相同精确匹配规则使用 pi-ai 已安装 catalog。它不依据路由、协议、部分 URL 或模型名模式推断。这使通用适配器不依赖任何单一补充 catalog；自定义 profile 可以把该 catalog 作为普通 Bundle 添加。
 
 ## 提供方／模型路由与回放
 
@@ -209,7 +211,7 @@ pi-ai 事件会变为 harness 推理、文本、工具调用、usage 与 finish 
 - **settings 能新增或覆盖路由，但不能移除组合路由**：用户层合并在组合 `base` 之上，因此删除 `cordis.yml` 提供的提供方属于组合变更；对该 namespace 执行 `replace` 只会重置用户层。
 - **分层合并对字典键没有删除语义**：settings seam 把组合 `base` 与用户层按键递归合并，因此 base 声明的某个 `reasoningEfforts` 档位、`modelOverrides` 条目或 `compat` 字段，用户层只能覆盖、无法移除——而 `reasoningEfforts` 里缺席本身*就是*语义（「不提供」），于是 base 声明过的档位会一直被提供。只有 `cordis.yml` entry config 为用户层正在编辑的同一模型声明了按模型推理字段才会触发；受支持的姿态是把这些字段留给 settings 文档（shipped 组合以 dormant 方式挂载该适配器），且 `models` 列表是数组、整体替换，这是带内的解决办法。
 - **`headers` 可能承载一条脱敏器看不见的凭据**：profile 的 `headers` 是纯字符串字典，因此设在其中的 `Authorization` 或 `api-key` 会被脱敏后的 `describe()` 原样返回，并被任何配置 UI 渲染出来。请把凭据存为 `apiKeyEnv` 引用；把该字典整体改为只写与其余[协议边界工作](../llm/README.zh.md#known-limitations-and-deferred-work)一并暂缓。
-- **外部元数据不会增加模型**：侧载的精确模型解析器可以为已配置 id 提供模态，但不会改变路由成员、容量、协议或端点。只有 profile 或 pi-ai 已安装 catalog 点名一个模型后，路由才会增加它。
+- **外部元数据不会增加模型**：侧载的精确模型解析器可以为已配置 id 提供模态与容量，但不会改变路由成员、协议、端点或请求默认值。只有 profile 或 pi-ai 已安装 catalog 点名一个模型后，路由才会增加它。
 - **每条路由只有一种协议格式**：`api` 作用于整条路由，因此混合协议的 catalog 路由（跨 Responses 与 Chat Completions 的 OpenAI 式 catalog）无法承载另一种协议的模型，向这类路由添加它未描述的模型必须点名 `api` 并把全部模型一起迁过去。把该提供方拆成两个路由键是变通办法。
 - **模态声明不经验证**：没有任何环节会去询问端点接受什么，因此声明了网关并不提供的 `image` 的模型会在 prompt 准入后被提供方拒绝。持久图片会留在历史中，同一个错误声明的模型可能再次失败。系统仍允许切换到纯文本模型，因为共享 LLM 运行时会在该次请求中把图片引用投影为稳定文本。
 - **未认证路由取决于其协议**：不点名凭据会让路由解析为「已配置但无密钥」，但 pi-ai 的 OpenAI 兼容实现仍要求 API key 或 `Authorization` 标头，因此无鉴权的本地服务需要一个由 `apiKeyEnv` 引用的占位凭据，或在 `headers` 中给出 `Authorization` 条目。

@@ -195,8 +195,11 @@ export function apply(ctx: Context, config: Config): void {
   const adapter = new PiAiAdapter({
     profiles,
     resolveApiKey,
-    resolveInputModalities: (provider, model, signal, ownedBy) => (
-      ctx.llm.resolveModelInput(provider, model, signal, ownedBy)
+    resolveInputModalities: (provider, model, signal, ownedBy, baseURL) => (
+      ctx.llm.resolveModelInput(provider, model, signal, ownedBy, baseURL)
+    ),
+    resolveModelCapacity: (provider, model, signal, ownedBy, baseURL) => (
+      ctx.llm.resolveModelCapacity(provider, model, signal, ownedBy, baseURL)
     ),
     auth,
     resolveAttachments: () => ctx.get('attachments'),

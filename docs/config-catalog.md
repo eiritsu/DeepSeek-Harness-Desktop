@@ -1518,7 +1518,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/llm/model-catalog/src/index.ts:30`](../packages/llm/model-catalog/src/index.ts)
+Source: [`packages/llm/model-catalog/src/index.ts:31`](../packages/llm/model-catalog/src/index.ts)
 
 <a id="deepseek-aidsh-permission-presets"></a>
 

@@ -51,6 +51,7 @@ import type {
   GenerateOptions,
   ContentBlock,
   LlmModelInfo,
+  LlmModelCapacity,
   LlmProviderInfo,
   LlmResolvedModelInfo,
   Message,
@@ -140,7 +141,16 @@ export interface PiAiAdapterOptions {
     model: string,
     signal?: AbortSignal,
     ownedBy?: string,
+    baseURL?: string,
   ) => Promise<readonly ModelModality[] | undefined>
+  /** Resolve current upstream capacities for an exact model. */
+  resolveModelCapacity?: (
+    provider: string,
+    model: string,
+    signal?: AbortSignal,
+    ownedBy?: string,
+    baseURL?: string,
+  ) => Promise<LlmModelCapacity | undefined>
   /**
    * How every collection this adapter builds resolves auth the request-level
    * `apiKey` override does not cover. Required rather than optional: a
@@ -280,18 +290,29 @@ export class PiAiAdapter extends LlmAdapter {
     const resolved = this.modelOf(snapshot, provider, model)
     const fallback = profile.inputModalities.get(model) ?? resolved.input
     const ownedBy = profile.modelOwners.get(model)
-    const external = profile.externallyResolvableInputModels.has(model)
-      ? await this.config.resolveInputModalities?.(provider, model, signal, ownedBy)
-      : undefined
-    const inputModalities = effectiveModalities(resolved.api, external ?? fallback)
+    const [externalInput, externalCapacity] = await Promise.all([
+      profile.externallyResolvableInputModels.has(model)
+        ? this.config.resolveInputModalities?.(provider, model, signal, ownedBy, resolved.baseUrl)
+        : undefined,
+      this.config.resolveModelCapacity?.(provider, model, signal, ownedBy, resolved.baseUrl),
+    ])
+    const inputModalities = effectiveModalities(resolved.api, externalInput ?? fallback)
     const piAiInput = inputModalities.filter((modality): modality is Model<Api>['input'][number] => (
       modality === 'text' || modality === 'image'
     ))
+    const inputUnchanged = piAiInput.length === resolved.input.length
+      && piAiInput.every((modality, index) => modality === resolved.input[index])
+    const capacityUnchanged = (externalCapacity?.contextWindow ?? resolved.contextWindow) === resolved.contextWindow
+      && (externalCapacity?.maxOutputTokens ?? resolved.maxTokens) === resolved.maxTokens
     return {
-      model: piAiInput.length === resolved.input.length
-        && piAiInput.every((modality, index) => modality === resolved.input[index])
+      model: inputUnchanged && capacityUnchanged
         ? resolved
-        : { ...resolved, input: piAiInput },
+        : {
+          ...resolved,
+          input: piAiInput,
+          contextWindow: externalCapacity?.contextWindow ?? resolved.contextWindow,
+          maxTokens: externalCapacity?.maxOutputTokens ?? resolved.maxTokens,
+        },
       inputModalities,
     }
   }
