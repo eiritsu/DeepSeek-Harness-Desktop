@@ -32,6 +32,20 @@ const IMAGE_REF: ImageAttachmentRef = {
   height: 1,
 }
 
+const PDF_REF = {
+  attachmentId: AttachmentId(`sha256:${'b'.repeat(64)}`),
+  mediaType: 'application/pdf' as const,
+  bytes: 1,
+  name: 'brief.pdf',
+}
+
+const UNKNOWN_FILE_REF = {
+  attachmentId: AttachmentId(`sha256:${'c'.repeat(64)}`),
+  mediaType: 'application/octet-stream' as const,
+  bytes: 1,
+  name: 'data.bin',
+}
+
 async function harness(baseURL: string, overrides: Record<string, unknown> = {}): Promise<Context> {
   vi.stubEnv('PI_TEST_KEY', 'test-key')
   const ctx = new Context()
@@ -887,6 +901,34 @@ describe('provider profile lifecycle', () => {
         source: { kind: 'plugin', plugin: 'test' },
       })],
     })).rejects.toMatchObject({ code: 'UNSUPPORTED_CONTENT' })
+    await expect(drain({
+      provider: 'openai',
+      model: 'gpt-4.1',
+      messages: [createUserMessage({
+        content: [{ type: 'file', attachment: UNKNOWN_FILE_REF }],
+        source: { kind: 'plugin', plugin: 'test' },
+      })],
+    })).rejects.toMatchObject({ code: 'UNSUPPORTED_CONTENT' })
+    await expect(drain({
+      provider: 'openai',
+      model: 'gpt-4.1',
+      messages: [createUserMessage({
+        content: [{ type: 'file', attachment: PDF_REF }],
+        source: { kind: 'plugin', plugin: 'test' },
+      })],
+    })).rejects.toMatchObject({ code: 'UNSUPPORTED_CONTENT' })
+    await expect(drain({
+      provider: 'openai',
+      model: 'gpt-4.1',
+      messages: [createUserMessage({
+        content: [{
+          type: 'tool-result',
+          toolCallId: 'call-file' as never,
+          content: [{ type: 'file', attachment: PDF_REF }],
+        }],
+        source: { kind: 'plugin', plugin: 'test' },
+      })],
+    })).rejects.toMatchObject({ code: 'UNSUPPORTED_CONTENT' })
   })
 
   it('uses externally resolved modalities in the prepared adapter dispatch', async () => {
@@ -922,6 +964,71 @@ describe('provider profile lifecycle', () => {
       undefined,
       'https://gateway.example/v1',
     )
+  })
+
+  it('accepts a catalog-resolved file modality on an installed binary provider', async () => {
+    const model = getBuiltinModels('google')[0]!
+    const adapter = new PiAiAdapter({
+      profiles: () => resolveProfiles({ google: {} }),
+      resolveApiKey: () => Promise.resolve('test-key'),
+      resolveInputModalities: () => Promise.resolve(['text', 'image', 'audio', 'video', 'pdf']),
+      auth: memoryAuth(),
+    })
+
+    await expect((async () => {
+      for await (const _chunk of adapter.stream({
+        provider: 'google',
+        model: model.id,
+        messages: [createUserMessage({
+          content: [{ type: 'file', attachment: PDF_REF }],
+          source: { kind: 'plugin', plugin: 'test' },
+        })],
+      })) { /* drain */ }
+    })()).rejects.toThrow(/requires the durable attachment service/)
+  })
+
+  it('falls back to model input metadata when a snapshot lacks its parallel modality entry', async () => {
+    const profiles = resolveProfiles({
+      a6: {
+        api: 'openai-responses',
+        baseURL: 'https://gateway.example/v1',
+        models: [{ id: 'fallback-input', input: ['text'] }],
+      },
+    })
+    const profile = profiles.get('a6')!
+    const incomplete = new Map(profiles)
+    incomplete.set('a6', { ...profile, inputModalities: new Map() })
+    const adapter = new PiAiAdapter({
+      profiles: () => incomplete,
+      resolveApiKey: () => Promise.resolve('test-key'),
+      auth: memoryAuth(),
+    })
+
+    await expect(adapter.resolveModel('a6', 'fallback-input')).resolves.toMatchObject({
+      inputModalities: ['text'],
+    })
+  })
+
+  it('adds an explicit reasoning level when the model declares no thinking map', async () => {
+    const adapter = adapterOf({
+      a6: {
+        api: 'openai-responses',
+        baseURL: 'https://gateway.example/v1',
+        models: [{ id: 'reasoning-without-map', input: ['text'] }],
+      },
+    })
+
+    await expect((async () => {
+      for await (const _chunk of adapter.stream({
+        provider: 'a6',
+        model: 'reasoning-without-map',
+        reasoningEffort: ReasoningEffortId('max'),
+        messages: [createUserMessage({
+          content: [{ type: 'file', attachment: UNKNOWN_FILE_REF }],
+          source: { kind: 'plugin', plugin: 'test' },
+        })],
+      })) { /* drain */ }
+    })()).rejects.toMatchObject({ code: 'UNSUPPORTED_CONTENT' })
   })
 
   it('uses current external capacities without turning output capability into a request default', async () => {

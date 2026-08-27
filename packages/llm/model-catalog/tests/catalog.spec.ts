@@ -222,6 +222,127 @@ describe('pi-ai model-discovery catalog', () => {
     )).resolves.toEqual({ contextWindow: 1_000_000, maxOutputTokens: 131_072 })
   })
 
+  it('normalizes partial metadata and rejects malformed catalog members', async () => {
+    const ctx = new Context()
+    context = ctx
+    await mountRuntime(ctx)
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({
+      ignoredNull: null,
+      ignoredArray: [],
+      missingModels: { api: 'invalid endpoint' },
+      invalidModels: { models: [] },
+      target: {
+        api: 'https://catalog.example/v1/',
+        models: {
+          audio: { modalities: { input: ['audio'] } },
+          context: { limit: { context: 4_096 } },
+          output: { limit: { output: 512 } },
+          unsupported: { modalities: { input: ['tool'] }, limit: { context: 0, output: -1 } },
+          malformed: null,
+          malformedArray: [],
+        },
+      },
+      alternate: { models: {
+        context: { limit: { context: 8_192 } },
+        'alternate-only': { limit: { context: 16_384 } },
+      } },
+    })))))
+    ctx.llm.registerModelDiscovery('llm-partial', () => Promise.resolve([
+      { id: 'context', ownedBy: 'local-route' },
+    ]))
+    await ctx.plugin(ModelCatalogPiAi, {})
+
+    await expect(ctx.llm.resolveModelInput('target', 'audio')).resolves.toEqual(['audio'])
+    await expect(ctx.llm.resolveModelCapacity('target', 'audio')).resolves.toBeUndefined()
+    await expect(ctx.llm.resolveModelCapacity('target', 'context'))
+      .resolves.toEqual({ contextWindow: 4_096 })
+    await expect(ctx.llm.resolveModelCapacity('target', 'output'))
+      .resolves.toEqual({ maxOutputTokens: 512 })
+    await expect(ctx.llm.resolveModelCapacity('target', 'unsupported')).resolves.toBeUndefined()
+    await expect(ctx.llm.resolveModelCapacity(
+      'local-route',
+      'context',
+      undefined,
+      'local-route',
+      'not a URL',
+    )).resolves.toBeUndefined()
+    await expect(ctx.llm.discoverModels('llm-partial', {
+      provider: 'local-route',
+      baseURL: 'https://catalog.example/v1',
+    })).resolves.toEqual([
+      { id: 'context', ownedBy: 'local-route', contextWindow: 4_096 },
+    ])
+    await expect(ctx.llm.resolveModelCapacity(
+      'local-route',
+      'alternate-only',
+      undefined,
+      'local-route',
+      'https://catalog.example/v1',
+    )).resolves.toEqual({ contextWindow: 16_384 })
+  })
+
+  it('reads partial declarations from a fresh format-two cache without provider metadata', async () => {
+    const ctx = new Context()
+    context = ctx
+    await mountRuntime(ctx)
+    await writeFile(join(storageRoot!, 'model_catalog_pi_ai.json'), JSON.stringify({
+      unit: { name: 'model_catalog_pi_ai', version: 0 },
+      global: {
+        format: 2,
+        checkedAt: Date.now(),
+        declarations: [
+          { provider: 'cached', id: 'context-only', contextWindow: 4_096 },
+          { provider: 'cached', id: 'output-only', maxOutputTokens: 512 },
+        ],
+      },
+      tables: {},
+    }))
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    await ctx.plugin(ModelCatalogPiAi, { refreshIntervalMs: 60_000 })
+
+    await expect(ctx.llm.resolveModelCapacity('cached', 'context-only'))
+      .resolves.toEqual({ contextWindow: 4_096 })
+    await expect(ctx.llm.resolveModelCapacity('cached', 'output-only'))
+      .resolves.toEqual({ maxOutputTokens: 512 })
+    await expect(ctx.llm.resolveModelCapacity(
+      'local-route',
+      'missing',
+      undefined,
+      'local-route',
+      'https://catalog.example/v1',
+    )).resolves.toBeUndefined()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('applies implementation defaults when invoked without schema normalization', async () => {
+    const ctx = new Context()
+    context = ctx
+    await mountRuntime(ctx)
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response('{}'))))
+
+    await ModelCatalogPiAi.apply(ctx, {})
+    await expect(ctx.llm.resolveModelCapacity('unknown', 'unknown')).resolves.toBeUndefined()
+  })
+
+  it.each([
+    ['an HTTP error', () => new Response('{}', { status: 503 })],
+    ['a missing response body', () => new Response(null)],
+    ['an oversized response', () => new Response('{}')],
+    ['a non-object catalog', () => new Response('[]')],
+  ])('retains the offline catalog after %s', async (_label, response) => {
+    const ctx = new Context()
+    context = ctx
+    await mountRuntime(ctx)
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(response())))
+    await ctx.plugin(ModelCatalogPiAi, {
+      maxResponseBytes: _label === 'an oversized response' ? 1 : 1_024,
+    })
+
+    await expect(ctx.llm.resolveModelCapacity('openai', 'gpt-5.6-terra'))
+      .resolves.toEqual({ contextWindow: 272_000, maxOutputTokens: 128_000 })
+  })
+
   it('declares one parseable Profile Bundle patch', () => {
     const root = fileURLToPath(new URL('..', import.meta.url))
     const manifest = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as {

@@ -784,6 +784,54 @@ describe('LlmRuntime', () => {
     expect(Object.isFrozen(adapter.lastOptions)).toBe(true)
   })
 
+  it('projects files after applying defaults to frozen and mutable requests', async () => {
+    const ctx = new Context()
+    await ctx.plugin(LlmRuntime)
+    const adapter = new class extends RecordingAdapter {
+      override resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
+        return Promise.resolve({
+          provider,
+          id: model,
+          name: model,
+          defaultMaxTokens: 32,
+          inputModalities: ['text'],
+        })
+      }
+    }(SCRIPT)
+    ctx.llm.registerAdapter(['route'], adapter)
+    const file = {
+      type: 'file' as const,
+      attachment: {
+        attachmentId: AttachmentId(`sha256:${'b'.repeat(64)}`),
+        mediaType: 'application/pdf' as const,
+        bytes: 12,
+        name: 'brief.pdf',
+      },
+    }
+    const message = createUserMessage({
+      content: [file],
+      source: { kind: 'plugin', plugin: 'test' },
+    })
+
+    const frozen = Object.freeze({
+      provider: 'route',
+      model: 'model',
+      messages: [message],
+    })
+    await collect(ctx.llm.stream(frozen))
+    expect(adapter.lastOptions?.maxTokens).toBe(32)
+    expect(adapter.lastOptions?.messages[0]?.content[0]?.type).toBe('text')
+    expect(Object.isFrozen(adapter.lastOptions)).toBe(true)
+
+    await collect(ctx.llm.stream({
+      provider: 'route',
+      model: 'model',
+      messages: [message],
+    }))
+    expect(adapter.lastOptions?.messages[0]?.content[0]?.type).toBe('text')
+    expect(Object.isFrozen(adapter.lastOptions)).toBe(false)
+  })
+
   it('pins one adapter registration across asynchronous exact-model resolution and dispatch', async () => {
     const ctx = new Context()
     await ctx.plugin(LlmRuntime)
