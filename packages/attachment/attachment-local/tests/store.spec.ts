@@ -156,6 +156,14 @@ describe('local attachment store', () => {
       name: 'sample.bin',
     })
     await expect(readFileAttachment(storageRoot, ref)).resolves.toEqual({ ref, data })
+    await expect(readFileAttachment(storageRoot, { ...ref, bytes: ref.bytes + 1 }))
+      .rejects.toMatchObject({ code: 'ATTACHMENT_CORRUPT' })
+
+    const unnamed = await saveFileAttachment(storageRoot, {
+      data,
+      mediaType: 'application/octet-stream',
+    })
+    expect(unnamed).not.toHaveProperty('name')
   })
 
   it('stores the normalized image of an oversized source and reads it back verified', async () => {
