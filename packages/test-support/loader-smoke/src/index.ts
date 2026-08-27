@@ -22,10 +22,11 @@ export {
   type FixtureTurnResult,
 } from './agent-turn.ts'
 
-const DEFAULT_PROCESS_TIMEOUT_MS = 30_000
+/** Default deadline for a Loader smoke subprocess to exit or reach its diagnostic timeout. */
+export const LOADER_SMOKE_PROCESS_TIMEOUT_MS = 30_000
 
 /** Vitest deadline that leaves room for the subprocess-owned 30-second diagnostic timeout. */
-export const LOADER_SMOKE_TEST_TIMEOUT_MS = DEFAULT_PROCESS_TIMEOUT_MS + 15_000
+export const LOADER_SMOKE_TEST_TIMEOUT_MS = LOADER_SMOKE_PROCESS_TIMEOUT_MS + 15_000
 
 /** Which artifact an example bin is booted from: unbuilt `src` via tsx, or built `lib` via plain Node. */
 export type ExampleMode = 'src' | 'lib'
@@ -173,7 +174,7 @@ export interface LoaderSmokeResult {
  */
 export async function runLoaderSmoke(options: LoaderSmokeOptions): Promise<LoaderSmokeResult> {
   const cwd = await mkdtemp(join(tmpdir(), options.tempDirPrefix))
-  const processTimeoutMs = options.processTimeoutMs ?? DEFAULT_PROCESS_TIMEOUT_MS
+  const processTimeoutMs = options.processTimeoutMs ?? LOADER_SMOKE_PROCESS_TIMEOUT_MS
   try {
     await options.prepare?.(cwd)
     const launch = resolveExampleLaunch({

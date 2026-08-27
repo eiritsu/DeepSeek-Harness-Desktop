@@ -50,6 +50,27 @@ function ensureReference(ref: Pick<AttachmentRef, 'attachmentId'>): string {
   return match[1]
 }
 
+async function readAttachmentObject(
+  root: string,
+  ref: Pick<AttachmentRef, 'attachmentId'>,
+  signal: AbortSignal | undefined,
+  failureMessage: string,
+): Promise<{ data: Uint8Array; sha256: string }> {
+  signal?.throwIfAborted()
+  const sha256 = ensureReference(ref)
+  try {
+    const data = new Uint8Array(await readFile(objectPath(root, sha256), { signal }))
+    signal?.throwIfAborted()
+    return { data, sha256 }
+  } catch (error) {
+    signal?.throwIfAborted()
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+      throw new AttachmentError('Attachment object is missing.', 'ATTACHMENT_NOT_FOUND')
+    }
+    throw new AttachmentError(failureMessage, 'ATTACHMENT_READ_FAILED', { cause: error })
+  }
+}
+
 /** Prepare one generic file reference without interpreting or transforming its bytes. */
 function prepareFileAttachment(input: SaveFileAttachment): { data: Uint8Array; ref: FileAttachmentRef } {
   const sha256 = digest(input.data)
@@ -313,17 +334,7 @@ export async function readImageFile(
   ref: ImageAttachmentRef,
   signal?: AbortSignal,
 ): Promise<StoredImageAttachment> {
-  signal?.throwIfAborted()
-  const sha256 = ensureReference(ref)
-  let data: Uint8Array
-  try {
-    data = new Uint8Array(await readFile(objectPath(root, sha256), { signal }))
-  } catch (error) {
-    signal?.throwIfAborted()
-    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') throw new AttachmentError('Attachment object is missing.', 'ATTACHMENT_NOT_FOUND')
-    throw new AttachmentError('Unable to read image attachment.', 'ATTACHMENT_READ_FAILED', { cause: error })
-  }
-  signal?.throwIfAborted()
+  const { data, sha256 } = await readAttachmentObject(root, ref, signal, 'Unable to read image attachment.')
   if (digest(data) !== sha256) throw new AttachmentError('Stored attachment failed integrity verification.', 'ATTACHMENT_CORRUPT')
   // The digest proves these are the exact bytes admission fully decoded, so
   // the read path only re-derives the header fields (no raster decode, no
@@ -349,19 +360,7 @@ export async function readFileAttachment(
   ref: FileAttachmentRef,
   signal?: AbortSignal,
 ): Promise<StoredFileAttachment> {
-  signal?.throwIfAborted()
-  const sha256 = ensureReference(ref)
-  let data: Uint8Array
-  try {
-    data = new Uint8Array(await readFile(objectPath(root, sha256), { signal }))
-  } catch (error) {
-    signal?.throwIfAborted()
-    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-      throw new AttachmentError('Attachment object is missing.', 'ATTACHMENT_NOT_FOUND')
-    }
-    throw new AttachmentError('Unable to read file attachment.', 'ATTACHMENT_READ_FAILED', { cause: error })
-  }
-  signal?.throwIfAborted()
+  const { data, sha256 } = await readAttachmentObject(root, ref, signal, 'Unable to read file attachment.')
   if (digest(data) !== sha256 || data.byteLength !== ref.bytes) {
     throw new AttachmentError('Stored attachment metadata does not match its reference.', 'ATTACHMENT_CORRUPT')
   }

@@ -2,5 +2,11 @@
   - treeitem "workspace" [expanded]:
     - img
     - text: workspace
-  - treeitem "Explain event sourcing in one (1) now" [selected]
-  - treeitem "Ask a research subagent to now"
+  - treeitem "Explain event sourcing in one (1) now Session actions for Explain event sourcing in one (1)" [selected]:
+    - text: Explain event sourcing in one (1) now
+    - button "Session actions for Explain event sourcing in one (1)":
+      - img
+  - treeitem "Ask a research subagent to now Session actions for Ask a research subagent to":
+    - text: Ask a research subagent to now
+    - button "Session actions for Ask a research subagent to":
+      - img

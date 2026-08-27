@@ -13,7 +13,7 @@ import SessionStore from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import UserQuestionService from '@deepseek-ai/dsh-user-questions'
-import LlmRuntime, { LlmAdapter } from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { LlmAdapter, STANDARD_MODEL_REASONING } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, LlmModelInfo, LlmProviderInfo, StreamChunk } from '@deepseek-ai/dsh-llm'
 import { SettingsProvider, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
@@ -683,8 +683,8 @@ describe('llm domain', () => {
       id: 'deepseek-official',
       name: 'DeepSeek',
       models: [
-        { id: 'deepseek-v4-flash', name: 'deepseek-v4-flash' },
-        { id: 'deepseek-v4-pro', name: 'deepseek-v4-pro' },
+        { id: 'deepseek-v4-flash', name: 'deepseek-v4-flash', reasoning: STANDARD_MODEL_REASONING },
+        { id: 'deepseek-v4-pro', name: 'deepseek-v4-pro', reasoning: STANDARD_MODEL_REASONING },
       ],
     }])
     expect(value.failures).toEqual([{ id: 'broken', name: 'Broken', message: 'catalog backend down' }])

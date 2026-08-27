@@ -1,11 +1,16 @@
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { LOADER_SMOKE_TEST_TIMEOUT_MS, runLoaderSmoke } from '@deepseek-ai/dsh-loader-smoke'
+import {
+  LOADER_SMOKE_PROCESS_TIMEOUT_MS,
+  LOADER_SMOKE_TEST_TIMEOUT_MS,
+  runLoaderSmoke,
+} from '@deepseek-ai/dsh-loader-smoke'
 const binScript = fileURLToPath(new URL('./fixtures/dsh-badge/snapshot.ts', import.meta.url))
 const configPath = fileURLToPath(new URL('./fixtures/dsh-badge/cordis.yml', import.meta.url))
 const defaultConfigPath = fileURLToPath(new URL('./fixtures/dsh-badge/default.cordis.yml', import.meta.url))
 const tsconfigPath = fileURLToPath(new URL('../../../tsconfig.json', import.meta.url))
 const badgeAssetsPath = fileURLToPath(new URL('../../../packages/skill/skill-badge/assets/', import.meta.url))
+const PRODUCT_SNAPSHOT_PROCESS_TIMEOUT_MS = LOADER_SMOKE_PROCESS_TIMEOUT_MS * 2
 
 describe('dsh badge assembled snapshot', () => {
   it('advertises and loads the opt-in bundled skill through the shipped app', async () => {
@@ -15,6 +20,7 @@ describe('dsh badge assembled snapshot', () => {
       binScript,
       libBinScript: binScript,
       configPath: defaultConfigPath,
+      processTimeoutMs: PRODUCT_SNAPSHOT_PROCESS_TIMEOUT_MS,
       tsconfigPath,
     })
     const enabled = await runLoaderSmoke({
@@ -23,6 +29,7 @@ describe('dsh badge assembled snapshot', () => {
       binScript,
       libBinScript: binScript,
       configPath,
+      processTimeoutMs: PRODUCT_SNAPSHOT_PROCESS_TIMEOUT_MS,
       tsconfigPath,
     })
     const disabledSnapshot = JSON.parse(disabled.stdout) as unknown

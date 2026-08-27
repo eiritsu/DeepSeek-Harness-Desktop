@@ -1520,7 +1520,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/llm/model-catalog/src/index.ts:30`](../packages/llm/model-catalog/src/index.ts)
+来源：[`packages/llm/model-catalog/src/index.ts:31`](../packages/llm/model-catalog/src/index.ts)
 
 <a id="deepseek-aidsh-permission-presets"></a>
 

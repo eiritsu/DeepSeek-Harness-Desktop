@@ -4,7 +4,11 @@ import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { execa } from 'execa'
 import { describe, expect, it } from 'vitest'
-import { LOADER_SMOKE_TEST_TIMEOUT_MS, resolveExampleLaunch } from '@deepseek-ai/dsh-loader-smoke'
+import {
+  LOADER_SMOKE_PROCESS_TIMEOUT_MS,
+  LOADER_SMOKE_TEST_TIMEOUT_MS,
+  resolveExampleLaunch,
+} from '@deepseek-ai/dsh-loader-smoke'
 
 const dshBinScript = fileURLToPath(new URL('../src/bin.ts', import.meta.url))
 const tsconfigPath = fileURLToPath(new URL('../../../tsconfig.json', import.meta.url))
@@ -93,7 +97,7 @@ async function runHeadlessPtySmoke(): Promise<string> {
         DSH_TEST_SHUTDOWN_ARM_FILE: join(cwd, 'shutdown-armed'),
       },
     })
-    const timeoutMs = 15_000
+    const timeoutMs = LOADER_SMOKE_PROCESS_TIMEOUT_MS
     const result = await execa('python3', [
       '-c',
       POSIX_HEADLESS_PTY_DRIVER,

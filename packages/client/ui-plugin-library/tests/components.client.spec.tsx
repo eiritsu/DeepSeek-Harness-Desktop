@@ -153,7 +153,7 @@ describe('PluginLibraryOverlay', () => {
       expect(request).toHaveBeenCalledWith({ action: 'reviewUpdate', package: '@fixture/dsh-plugin' })
     })
     expect(await screen.findByText(en.reviewReady)).toBeTruthy()
-    expect((screen.getByLabelText(en.sourceLabel) as HTMLInputElement).value)
+    expect(screen.getByLabelText<HTMLInputElement>(en.sourceLabel).value)
       .toBe('@fixture/dsh-plugin@1.3.0')
     expect(screen.getByRole('button', { name: en.install })).toBeTruthy()
   })
@@ -180,7 +180,7 @@ describe('PluginLibraryOverlay', () => {
     fireEvent.click(screen.getByRole('button', { name: en.chooseDirectory }))
     await vi.waitFor(() => {
       expect(request).toHaveBeenCalledWith({ action: 'selectDirectory' })
-      expect((screen.getByLabelText(en.sourceLabel) as HTMLInputElement).value).toBe('/tmp/dsh-fixtures/local-plugin')
+      expect(screen.getByLabelText<HTMLInputElement>(en.sourceLabel).value).toBe('/tmp/dsh-fixtures/local-plugin')
     })
     fireEvent.click(screen.getByRole('button', { name: en.discovery }))
     expect(await screen.findByText('fixture/direct-plugin')).toBeTruthy()

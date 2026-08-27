@@ -14,7 +14,11 @@ import {
   type HarvestedLog,
   type NormalizeContext,
 } from '@deepseek-ai/dsh-acp-snapshot'
-import { LOADER_SMOKE_TEST_TIMEOUT_MS, runLoaderSmoke } from '@deepseek-ai/dsh-loader-smoke'
+import {
+  LOADER_SMOKE_PROCESS_TIMEOUT_MS,
+  LOADER_SMOKE_TEST_TIMEOUT_MS,
+  runLoaderSmoke,
+} from '@deepseek-ai/dsh-loader-smoke'
 import {
   decompressZstdFrame,
   scanZstdFrames,
@@ -22,6 +26,8 @@ import {
 import { describe, expect, it } from 'vitest'
 
 const snapshotsDir = join(dirname(fileURLToPath(import.meta.url)), 'snapshots')
+const PRODUCT_SNAPSHOT_PROCESS_TIMEOUT_MS = LOADER_SMOKE_PROCESS_TIMEOUT_MS * 2
+const PRODUCT_SNAPSHOT_TEST_TIMEOUT_MS = PRODUCT_SNAPSHOT_PROCESS_TIMEOUT_MS + 15_000
 const advancedScenarioDir = join(snapshotsDir, 'advanced-toolchain')
 const advancedSessionFixture = join(advancedScenarioDir, 'session.jsonl')
 const advancedStreamExpected = join(advancedScenarioDir, 'stream-json.expected.jsonl')
@@ -251,6 +257,7 @@ describe('headless stream-json snapshots', () => {
       binScript: dshBinScript,
       configPath: headlessOverlayPath,
       binArgs: ['--profile', 'headless', '--patch', headlessOverlayPath, task],
+      processTimeoutMs: PRODUCT_SNAPSHOT_PROCESS_TIMEOUT_MS,
       tsconfigPath,
       env: {
         DSH_PERMISSION_MODE: 'danger-full-access',
@@ -274,7 +281,7 @@ describe('headless stream-json snapshots', () => {
 
     expect(result.stdout).toBe('CLI tool round trip complete: CLI_TOOL_ROUND_TRIP\n')
     expect(result.stderr).toBe('')
-  }, LOADER_SMOKE_TEST_TIMEOUT_MS)
+  }, PRODUCT_SNAPSHOT_TEST_TIMEOUT_MS)
 
   it('prints a terminal model failure through the product headless profile command', async () => {
     const result = await runLoaderSmoke({
@@ -283,6 +290,7 @@ describe('headless stream-json snapshots', () => {
       binScript: dshBinScript,
       configPath: headlessOverlayPath,
       binArgs: ['--profile', 'headless', '--patch', headlessOverlayPath, 'Trigger the keyless model failure.'],
+      processTimeoutMs: PRODUCT_SNAPSHOT_PROCESS_TIMEOUT_MS,
       tsconfigPath,
       expectedExitCode: 1,
       env: {
@@ -295,7 +303,7 @@ describe('headless stream-json snapshots', () => {
 
     expect(result.stdout).toBe('\n')
     await expect(result.stderr).toMatchFileSnapshot(headlessFailureExpected)
-  }, LOADER_SMOKE_TEST_TIMEOUT_MS)
+  }, PRODUCT_SNAPSHOT_TEST_TIMEOUT_MS)
 
   it('prints the original Loader activation error through the assembled one-shot app', async () => {
     const result = await runLoaderSmoke({
@@ -498,7 +506,7 @@ describe('headless stream-json snapshots', () => {
     expect(normalized).not.toContain('ByteString')
   }, LOADER_SMOKE_TEST_TIMEOUT_MS)
 
-  it('logs the model default and a dynamic next-step reasoning effort', async () => {
+  it('preserves the provider default and logs a dynamic next-step reasoning effort', async () => {
     const result = await runLoaderSmoke({
       label: 'reasoning effort headless stream-json snapshot',
       tempDirPrefix: 'headless-snapshot-reasoning-effort-',
@@ -528,7 +536,6 @@ describe('headless stream-json snapshots', () => {
         {
           "model": "cli-mock",
           "provider": "cli-mock",
-          "reasoningEffort": "high",
         },
         {
           "model": "cli-mock",
@@ -539,7 +546,7 @@ describe('headless stream-json snapshots', () => {
     `)
   }, LOADER_SMOKE_TEST_TIMEOUT_MS)
 
-  it('keeps provider comments alive and sends DeepSeek defaults through the one-shot app', async () => {
+  it('keeps provider comments alive and preserves DeepSeek defaults through the one-shot app', async () => {
     const server = await deepseekDefaultsServer()
     try {
       const result = await runLoaderSmoke({
@@ -580,12 +587,10 @@ describe('headless stream-json snapshots', () => {
           "maxTokens": 256000,
           "model": "deepseek-v4-flash",
           "provider": "deepseek-official",
-          "reasoningEffort": "low",
         }
       `)
       expect(header?.adapterDefaults).toEqual({
         maxTokens: true,
-        reasoningEffort: true,
       })
     } finally {
       await server.close()

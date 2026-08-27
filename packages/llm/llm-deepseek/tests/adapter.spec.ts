@@ -170,10 +170,10 @@ describe('DeepSeekAdapter against a mock server', () => {
     expect(server.requests[0]).toMatchObject({
       model: 'deepseek-v4-flash',
       max_tokens: 256_000,
-      reasoning_effort: 'high',
       stream: true,
       stream_options: { include_usage: true },
     })
+    expect(server.requests[0]).not.toHaveProperty('reasoning_effort')
     // App attribution and DeepSeek request identity are independent wire facts.
     expect(server.headers[0]?.['user-agent']).toBe(userAgent())
     expect(server.headers[0]?.['x-deepseek-harness-user-id']).toBe(getOrCreateAnonymousUserId())
@@ -1031,7 +1031,7 @@ describe('DeepSeekAdapter against a mock server', () => {
     expect(server.requests[1]).toMatchObject({ max_tokens: 8_192 })
   })
 
-  it('publishes only off and omits the wire effort when thinking is disabled', async () => {
+  it('publishes standard controls and omits the wire effort when thinking is disabled', async () => {
     const server = await mockServer([{ kind: 'sse', events: textEvents }])
     const ctx = await harness(server.url, { thinking: 'disabled' })
 
@@ -1049,8 +1049,12 @@ describe('DeepSeekAdapter against a mock server', () => {
     await expect(ctx.llm.resolveModelInfo('deepseek-official', 'deepseek-v4-flash'))
       .resolves.toMatchObject({
         reasoning: {
-          efforts: [{ id: ReasoningEffortId('off'), name: 'Off' }],
-          defaultEffort: ReasoningEffortId('off'),
+          efforts: [
+            { id: ReasoningEffortId('off'), name: 'Off' },
+            { id: ReasoningEffortId('low'), name: 'Low' },
+            { id: ReasoningEffortId('high'), name: 'High' },
+            { id: ReasoningEffortId('max'), name: 'Max' },
+          ],
         },
       })
   })
@@ -1527,7 +1531,6 @@ describe('plugin registration and config', () => {
             { id: ReasoningEffortId('high'), name: 'High' },
             { id: ReasoningEffortId('max'), name: 'Max' },
           ],
-          defaultEffort: ReasoningEffortId('high'),
         },
       })
     await expect(ctx.llm.resolveModelInfo('deepseek-official', 'deepseek-v4-flash-vision-exp'))
@@ -1541,7 +1544,7 @@ describe('plugin registration and config', () => {
       })
   })
 
-  it.each(['off', 'low', 'max'] as const)('uses the configured %s reasoning default', async (effort) => {
+  it.each(['off', 'low', 'max'] as const)('keeps standard controls with configured %s reasoning', async (effort) => {
     const ctx = new Context()
     await ctx.plugin(LlmRuntime)
     await ctx.plugin(LlmDeepSeek, {
@@ -1557,12 +1560,11 @@ describe('plugin registration and config', () => {
             { id: ReasoningEffortId('high'), name: 'High' },
             { id: ReasoningEffortId('max'), name: 'Max' },
           ],
-          defaultEffort: ReasoningEffortId(effort),
         },
       })
   })
 
-  it('accepts off as the default when thinking is deployment-disabled', async () => {
+  it('accepts off as the deployment default while exposing standard controls', async () => {
     const ctx = new Context()
     await ctx.plugin(LlmRuntime)
     await ctx.plugin(LlmDeepSeek, {
@@ -1573,8 +1575,12 @@ describe('plugin registration and config', () => {
     await expect(ctx.llm.resolveModelInfo('deepseek-official', 'unlisted-pass-through'))
       .resolves.toMatchObject({
         reasoning: {
-          efforts: [{ id: ReasoningEffortId('off'), name: 'Off' }],
-          defaultEffort: ReasoningEffortId('off'),
+          efforts: [
+            { id: ReasoningEffortId('off'), name: 'Off' },
+            { id: ReasoningEffortId('low'), name: 'Low' },
+            { id: ReasoningEffortId('high'), name: 'High' },
+            { id: ReasoningEffortId('max'), name: 'Max' },
+          ],
         },
       })
   })

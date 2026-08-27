@@ -1,5 +1,6 @@
 // Web e2e scenario: every model route receives the same reasoning controls.
 import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
@@ -63,7 +64,7 @@ describe.skipIf(MODE === 'record')('web e2e: standard reasoning reaches the comp
     await connectFreshWorkspaceZh(page, scaffold.workspaceCwd)
     const created = await scaffold.ctx.apiProxy.sessions.create({
       rpcId: 'catalog-capacity-create' as never,
-      payload: { sessionId: SessionId('catalog-capacity-web-e2e'), cwd: scaffold.workspaceCwd },
+      payload: { sessionId: SessionId('catalog-capacity-web-e2e'), cwd: join(scaffold.workspaceCwd, 'workspace') },
     })
     if (!created.result.ok) throw new Error(`session.create failed: ${created.result.error.message}`)
     const session = scaffold.ctx.sessions.get(SessionId(created.result.value.sessionId))

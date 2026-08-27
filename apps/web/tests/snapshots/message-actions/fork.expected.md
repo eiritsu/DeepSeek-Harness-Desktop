@@ -2,6 +2,15 @@
   - treeitem "Ungrouped" [expanded]:
     - img
     - text: Ungrouped
-  - treeitem "Use the read tool twice (2) now" [selected]
-  - treeitem "Use the read tool twice (1) now"
-  - treeitem "Use the read tool twice 1min"
+  - treeitem "Use the read tool twice (2) now Session actions for Use the read tool twice (2)" [selected]:
+    - text: Use the read tool twice (2) now
+    - button "Session actions for Use the read tool twice (2)":
+      - img
+  - treeitem "Use the read tool twice (1) now Session actions for Use the read tool twice (1)":
+    - text: Use the read tool twice (1) now
+    - button "Session actions for Use the read tool twice (1)":
+      - img
+  - treeitem "Use the read tool twice 1min Session actions for Use the read tool twice":
+    - text: Use the read tool twice 1min
+    - button "Session actions for Use the read tool twice":
+      - img

@@ -36,10 +36,10 @@
   - img
 - button "2 queued messages"
 - textbox "Cmd/Ctrl+Enter steers all queued messages"
-- button "Commands":
+- button "Add":
   - img
 - 'button "Access mode, current: Workspace Write"': Workspace Write
-- button "Select model, current DeepSeek-V4-Flash":
-  - text: DeepSeek-V4-Flash
+- button "Select model, current DeepSeek-V4-Flash, reasoning effort Default":
+  - text: DeepSeek-V4-Flash Default
   - img
 - button "Stop generating"

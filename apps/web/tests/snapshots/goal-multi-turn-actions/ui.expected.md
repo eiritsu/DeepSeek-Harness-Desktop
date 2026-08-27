@@ -203,11 +203,11 @@
 - tooltip "Branch into a new conversation"
 - text: {{clock}} Ran for {{duration}} TTFT {{duration}} {{throughput}} tok/s
 - textbox "Message the agent"
-- button "Commands":
+- button "Add":
   - img
 - 'button "Access mode, current: Workspace Write"': Workspace Write
-- button "Select model, current DeepSeek-V4-Flash":
-  - text: DeepSeek-V4-Flash
+- button "Select model, current DeepSeek-V4-Flash, reasoning effort Default":
+  - text: DeepSeek-V4-Flash Default
   - img
 - button "9% of context used"
 - button "Send message" [disabled]

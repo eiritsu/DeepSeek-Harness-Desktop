@@ -2,4 +2,7 @@
   - treeitem "workspace" [expanded]:
     - img
     - text: workspace
-  - treeitem "Ask a research subagent to now"
+  - treeitem "Ask a research subagent to now Session actions for Ask a research subagent to":
+    - text: Ask a research subagent to now
+    - button "Session actions for Ask a research subagent to":
+      - img

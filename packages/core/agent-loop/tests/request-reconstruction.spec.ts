@@ -111,7 +111,7 @@ describe('request stability across the loop', () => {
     expectPrefixExtension(adapter.requests[0]!, adapter.requests[1]!)
   })
 
-  it('logs adapter defaults, supports per-turn effort changes, and restores the effective value', async () => {
+  it('preserves provider-default reasoning, supports per-turn effort changes, and restores explicit values', async () => {
     const reasoning = {
       efforts: [
         { id: ReasoningEffortId('high'), name: 'High' },
@@ -133,23 +133,23 @@ describe('request stability across the loop', () => {
     await waitForIdle(ctx, agent)
 
     expect(adapter.requests.map(request => request.reasoningEffort)).toEqual([
-      ReasoningEffortId('high'),
+      undefined,
       ReasoningEffortId('max'),
     ])
     const headers = agent.session.events.filter(event => event.type === 'request/header')
     expect(headers.map(event => event.data.header.config.reasoningEffort)).toEqual([
-      ReasoningEffortId('high'),
+      undefined,
       ReasoningEffortId('max'),
     ])
     expect(headers.map(event => event.data.header.adapterDefaults)).toEqual([
-      { reasoningEffort: true },
+      undefined,
       undefined,
     ])
     expect(headers.map(event => event.data.reason)).toEqual(['initial', 'change'])
 
     for (const [model, effort] of [
       ['mock', ReasoningEffortId('max')],
-      ['replacement', ReasoningEffortId('high')],
+      ['replacement', undefined],
     ] as const) {
       const resumedAdapter = new MockAdapter([textResponse('resumed')], reasoning)
       const resumedCtx = await harness(resumedAdapter)
@@ -294,11 +294,11 @@ describe('request stability across the loop', () => {
     await waitForIdle(ctx, agent)
 
     expect(first.requests.map(request => request.reasoningEffort)).toEqual([
-      ReasoningEffortId('high'),
+      undefined,
     ])
     expect(second.requests).toHaveLength(0)
     const headers = agent.session.events.filter(event => event.type === 'request/header')
-    expect(headers.at(-1)?.data.header.config.reasoningEffort).toBe(ReasoningEffortId('high'))
+    expect(headers.at(-1)?.data.header.config.reasoningEffort).toBeUndefined()
   })
 
   it('aborts a blocked reasoning lookup before quiescent disposal completes', async () => {

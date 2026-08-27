@@ -642,15 +642,26 @@ describe('installLlmReplay (through the real LlmRuntime)', () => {
       inputModalities: ['text', 'image'],
       defaultMaxTokens: 64_000,
       reasoning: {
-        efforts: [{ id: 'off', name: 'off' }, { id: 'max', name: 'max' }],
-        defaultEffort: 'max',
+        efforts: [
+          { id: 'off', name: 'Off' },
+          { id: 'low', name: 'Low' },
+          { id: 'high', name: 'High' },
+          { id: 'max', name: 'Max' },
+        ],
       },
     })
     await expect(ctx.llm.resolveModelInfo('deepseek', 'pro')).resolves.not.toHaveProperty('inputModalities')
     await expect(ctx.llm.resolveModelInfo('deepseek', 'pro')).resolves.not.toHaveProperty('context')
-    // Efforts without a configured default preserve the provider's own default.
+    // Replay declarations do not narrow the runtime's standard controls.
     await expect(ctx.llm.resolveModelInfo('deepseek', 'pro')).resolves.toMatchObject({
-      reasoning: { efforts: [{ id: 'high', name: 'high' }] },
+      reasoning: {
+        efforts: [
+          { id: 'off', name: 'Off' },
+          { id: 'low', name: 'Low' },
+          { id: 'high', name: 'High' },
+          { id: 'max', name: 'Max' },
+        ],
+      },
     })
     await expect(ctx.llm.resolveModelInfo('deepseek', 'pro')).resolves.not.toHaveProperty('defaultMaxTokens')
     await expect(ctx.llm.resolveModelInfo('deepseek', 'unlisted')).resolves.not.toHaveProperty('context')

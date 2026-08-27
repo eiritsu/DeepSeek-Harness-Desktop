@@ -1,6 +1,8 @@
 - listbox "Trigger suggestions":
+  - text: Add
+  - option "Files and folders" [selected]
   - text: Commands
-  - option "compact Compact older conversation history" [selected]
+  - option "compact Compact older conversation history"
   - option "export Download this Session log as a ZIP archive"
   - option "feedback record feedback about this session"
   - option "goal set or view the goal for a long-running task"
