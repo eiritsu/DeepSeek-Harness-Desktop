@@ -161,9 +161,9 @@ Rules:
 - **Version fails loud**: a stored version differing from the spec throws outright; no migration, no rebuild (the data is not regenerable; pre-release rejects old formats).
 - **Change events**: after each write's durability resolves, emit `domain/changed` (`@mode emit`), one per record, no old value (matching the repository's "new snapshot + operation discriminant" convention, template `goal/changed`); the payload `DomainChanged` is a put/deleted discriminated union — domain + table + key (both `''` for global changes) + operation, with the put branch carrying the new snapshot value and the deleted branch carrying none (`packages/storage/storage-domain/src/events.ts`). This is next phase's RPC push-frame event source. The error vocabulary is `DomainError`, codes: `already-open` / `facet-unsupported` / `invalid-record` (with `{ table, key }`) / `missing-key` / `closed`.
 
-### Future work: session-side deletion (design settled, not implemented this phase)
+### Session-side deletion (implemented after this phase)
 
-This section is the settled construction spec; the implementation phase changes code only, not semantics. No session-persistence file is modified this phase.
+This section is the construction spec later delivered by the [permanent Session deletion decision](../../implemented/feature/2026-08-28-session-permanent-deletion.md). The original domain-storage phase did not modify session persistence.
 
 ```ts ignore-check
 export abstract class SessionPersistence extends Service {
@@ -243,7 +243,7 @@ export class WorkspaceRegistry extends Service {
 - **Path canon**: the stored value = `fs.realpath(input)` (trailing slashes, `..`, and symlinks all resolved); uniqueness = string equality after normalization (a symlink resolving to the same directory counts as a collision). A missing directory makes create reject outright (realpath fails — a workspace must point at an existing directory; "Create new = make the directory" is upper-layer interaction: mkdir first, then create). The session cwd in attach checks follows the same canon. Single-valued cwd + unique path ⇒ one session structurally belongs to at most one workspace; double bookkeeping is impossible on the write side.
 - **Title**: a display name, defaults to `basename(path)`, mutable, duplicates allowed. Ownership is never derived from cwd as a fallback — cwd cannot express ordering, and ownership is a workspace-side fact; sessions started headless belong to no workspace.
 - Consumers see only the `Workspace` interface; `WorkspaceEntity` stays inside the package (a single implementation does not pre-split a seam). Entities are unique per id (registry cache); the record snapshot is swapped in place after each write, and the outside sees getters only. Every write funnels through the entity's internal `mutate(fn)` → `table.update`, with `updatedAt` refreshed inside mutate. Domain objects never cross RPC; next phase the wire layer projects records into zod wire schemas.
-- **Session deletion remains future work.** The later [Workspace registration deletion decision](../../implemented/feature/2026-07-27-workspace-registration-deletion.md) ships `ctx.workspaceRegistry.delete(id)` as a metadata-only operation that preserves Sessions and logs. Recursive Session deletion, running checks, and crash-rerun convergence belong to a separate `session.delete` capability.
+- **Session deletion is independent.** The later [Workspace registration deletion decision](../../implemented/feature/2026-07-27-workspace-registration-deletion.md) ships `ctx.workspaceRegistry.delete(id)` as a metadata-only operation that preserves Sessions and logs. The separate `session.delete` capability now owns recursive Session deletion, running checks, and crash-rerun convergence.
 
 Consistency doctrine (the ledger = the only ownership authority; the implementation and test baseline):
 
@@ -279,7 +279,7 @@ The current reuse audit (an account already legible before the migration):
 | registry/mount | duplicate registration, unmounted access, disposer removal | — |
 | domain layer | the six open steps, schema rejection, update serialization (concurrent interleaving stress), `domain/changed` per record, global initial-value lazy materialization, routing and `facet-unsupported` | either (json) |
 | workspace | create/uniqueness/realpath, attach checks (including rejection when sessionPersistence is absent), the four consistency-doctrine cases | mock domain or json |
-| session delete contract (future work, joins runPersistenceContract at implementation) | unknown id, deleted-id reuse, un-materialized intent, serialization with in-flight appends, the deleted event | jsonl, sqlite |
+| session delete contract | unknown id, deleted-id reuse, un-materialized intent, serialization with in-flight appends, the deleted event | jsonl, sqlite |
 
 Snapshots: no model-visible or assembly surface this phase, none added; next phase's RPC wiring brings them with the `workspace.*` domain.
 
@@ -287,7 +287,6 @@ Snapshots: no model-visible or assembly surface this phase, none added; next pha
 
 | Not doing | Trigger | Rework point | Groundwork |
 | --- | --- | --- | --- |
-| Session deletion (`SessionPersistence.delete`, the deleted event, recursive delete, running checks) | a destructive Session-delete product flow starts | implement the session primitive plus `session.delete`; keep it independent from Workspace registration deletion | orchestration rules and rejection table above remain groundwork; Workspace deletion preserves Sessions and logs |
 | The `log` facet and the session-backend migration | any phase after this one | sink the medium operations (the reuse audit table is the work list) | the facet structure is in place; both backends' medium code is organized in sinkable shape already |
 | Multi-process write protection | two host processes writing one medium | JSON backend file locks; SQLite WAL is natively multi-process | all writes already funnel through the domain's single point; locking touches backends only |
 | Cross-process change observation | GUI reconnect awareness | the revision pattern (copy session-persistence) | `domain/changed` already exists in-process |
@@ -298,7 +297,6 @@ Snapshots: no model-visible or assembly surface this phase, none added; next pha
 | Cross-table atomic transactions | one business operation touching two tables of one domain atomically | `domain.transact(fn)`; JSON whole-unit rewrite is naturally atomic, SQLite wraps a transaction | — |
 | Secondary indexes / conditional queries | in-memory filtering stops scaling (tens of thousands of records) | SQLite JSON1 over the value column, a read-only query facet on the seam | the JSON backend does not follow |
 | Moving a session across workspaces | a product need appears | relax the attach check into a "detach first, then attach" orchestration | — |
-| Session-delete RPC/GUI | a destructive Session-delete product flow starts | `session.delete` endpoint, wire schema, and explicit confirmation UI | Workspace RPC/GUI is shipped separately; no cascade coupling remains |
 
 ## Alternatives considered
 

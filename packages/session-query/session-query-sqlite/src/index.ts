@@ -236,6 +236,15 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
       const service = childCtx.sessionPersistence
       const binding = { identity: Symbol(), service }
       this._persistenceBinding = binding
+      childCtx.on('session-persistence/deleted', () => {
+        if (this._ready === undefined || this._closed) return
+        void this._serialized(undefined, async () => {
+          await this._ensureReady(undefined)
+          await this._reconcile(undefined)
+        }).catch((error: unknown) => {
+          childCtx.logger.warn(`session-query deletion reconciliation failed: ${String(error)}`)
+        })
+      })
       childCtx.effect(() => () => {
         /* v8 ignore next -- a stale optional-service disposer cannot clear a replacement */
         if (this._persistenceBinding !== binding) return

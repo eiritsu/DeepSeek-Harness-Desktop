@@ -5,7 +5,7 @@
 // trip over the real wire (workspace.rename RPC + durable registry), the
 // duplicate-name pre-check, the
 // flat "In one list" view with its persisted group-by preference, the session
-// hover card and row action menu, and the session archive round trip (row
+// hover card and exact five-action row menu, and the session archive round trip (row
 // menu → workspace.archiveSession RPC → durable global set → row hidden
 // across reload). Zero model calls: workspace.create/rename/archiveSession
 // are host RPCs with no model involvement, and the one session row the
@@ -30,6 +30,7 @@ const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/workspace-man
 const SEED = fileURLToPath(new URL('../../../snapshots/web/seeded-history/session.jsonl', import.meta.url))
 const MODE = webSnapshotMode()
 const BROWSER_EXPECTED = join(SNAPSHOT_DIR, 'directory-browser.expected.md')
+const SESSION_MENU_EXPECTED = join(SNAPSHOT_DIR, 'session-menu.expected.md')
 const SEED_ID = 'workspace-management-web-e2e'
 // Both waits exceed ui-primitives' 200ms POINTER_GRACE_MS. Keep them above
 // that value if the shared setting changes.
@@ -529,6 +530,11 @@ describe('web e2e: workspace management (create / rename / flat view / hover aff
     await clickHoverAction(sessionRow, triggerName)
     const item = page.getByRole('menuitem', { name: 'Rename' })
     await item.waitFor({ timeout: 5_000 })
+    expect(await page.getByRole('menuitem').allTextContents()).toEqual([
+      'Rename', 'Fork', 'Archive', 'Add to workspace', 'Delete session',
+    ])
+    const snapshot = await captureStableAria(page, '[role="menu"]', scaffold.workspaceCwd)
+    await compareOrRefreshGolden(SESSION_MENU_EXPECTED, snapshot, MODE)
     // Into the list, then back up to the trigger across the 4px gap below it:
     // without the gap-crossing grace, that return trip fires the list's
     // pointerleave and closes the menu — a hesitating pointer loses it.
@@ -572,10 +578,10 @@ describe('web e2e: workspace management (create / rename / flat view / hover aff
     await expect.poll(() => sessionRows.count(), { timeout: 10_000 }).toBe(1)
     const sessionRow = sessionRows.first()
     const rowTitle = await sessionRow.locator('[class*="title"]').innerText()
-    // Row menu: hover reveals the actions button; Archive session commits
+    // Row menu: hover reveals the actions button; Archive commits
     // without a confirmation dialog (non-destructive: log + accounting stay).
     await clickHoverAction(sessionRow, `Session actions for ${rowTitle}`)
-    await page.getByRole('menuitem', { name: 'Archive session' }).click()
+    await page.getByRole('menuitem', { name: 'Archive' }).click()
     // The row disappears on the archive-set echo; with no other visible
     // stray, the whole Ungrouped bucket withdraws.
     await expect.poll(() => page.getByText(rowTitle, { exact: true }).count(), { timeout: 10_000 }).toBe(0)
@@ -622,6 +628,8 @@ describe('web e2e: workspace management (create / rename / flat view / hover aff
     expect(tripwire.warnings).toEqual([])
     // The directory-browser aria golden is this spec's one owned artifact;
     // the seed it reuses is owned (and inventory-guarded) by seeded-history.
-    await assertFixtureInventory(SNAPSHOT_DIR, ['.gitkeep', 'directory-browser.expected.md'])
+    await assertFixtureInventory(SNAPSHOT_DIR, [
+      '.gitkeep', 'directory-browser.expected.md', 'session-menu.expected.md',
+    ])
   })
 })

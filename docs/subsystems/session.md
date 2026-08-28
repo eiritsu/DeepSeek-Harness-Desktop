@@ -679,6 +679,13 @@ inspect( sessionId: SessionId, signal?: AbortSignal, ): Promise<{ meta: SessionH
 @Remote('fork') fork(request: SessionForkRequest): Promise<SessionForkValue>
 
 /**
+ * Permanently delete one Session and its requested descendant closure.
+ * @param request - Session identity and recursive-deletion choice.
+ * @returns the deleted Session identities in disposal order.
+ */
+@Remote('delete') delete(request: SessionDeleteRequest): Promise<SessionDeleteValue>
+
+/**
  * Admit one prompt after explicitly resuming its Session.
  * @param request - Session identity, prompt content, source metadata, and delivery mode.
  * @param signal - caller cancellation before prompt admission begins.
@@ -1069,4 +1076,27 @@ Awaited parallel durability checkpoint: every listener runs and the caller await
 Types: [Scoped](scope.md)
 
 Source: [`packages/core/session/src/index.ts`](../../packages/core/session/src/index.ts)
+
+<a id="session-persistence-events"></a>
+
+### `session-persistence/*` events
+
+<a id="session-persistencedeleted--emit"></a>
+
+#### `session-persistence/deleted` — emit
+
+Emitted after one Session identity has left durable storage.
+
+```ts cordis-catalog
+/**
+ * Emitted after one Session identity has left durable storage.
+ * @param id - permanently deleted Session identity.
+ * @mode emit
+ */
+'session-persistence/deleted'(id: SessionId): void
+```
+
+Types: [SessionId](core.md)
+
+Source: [`packages/session/session-persistence/src/index.ts`](../../packages/session/session-persistence/src/index.ts)
 <!-- END GENERATED cordis-surface -->

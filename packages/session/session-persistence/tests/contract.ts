@@ -277,6 +277,36 @@ export function runPersistenceContract(name: string, make: () => Promise<Contrac
       }
     })
 
+    it('permanently deletes materialized logs and releases unmaterialized create intents', async () => {
+      const { persistence, dispose } = await make()
+      try {
+        const materialized = meta('deleted-materialized')
+        await persistence.create(materialized)
+        await persistence.append(materialized.id, oneTurnLog())
+        await persistence.delete(materialized.id)
+        await expect(persistence.load(materialized.id)).rejects.toThrow(/not found/i)
+        expect((await persistence.list()).map(header => header.id)).not.toContain(materialized.id)
+
+        const lazy = meta('deleted-lazy')
+        await persistence.create(lazy)
+        await persistence.delete(lazy.id)
+        await persistence.create(lazy)
+        await persistence.append(lazy.id, oneTurnLog())
+        await expect(persistence.load(lazy.id)).resolves.toMatchObject({ meta: { id: lazy.id } })
+      } finally {
+        await dispose()
+      }
+    })
+
+    it('rejects deletion for an unknown Session identity', async () => {
+      const { persistence, dispose } = await make()
+      try {
+        await expect(persistence.delete(SessionId('missing-delete'))).rejects.toThrow(/not found/i)
+      } finally {
+        await dispose()
+      }
+    })
+
     it('rejects pre-aborted observation reads with the exact cancellation reason', async () => {
       const { persistence, dispose } = await make()
       try {

@@ -27,6 +27,12 @@ describe('agent preset selection projection', () => {
     expect(agentPresetProjectionDefinition.init(header())).toBeNull()
   })
 
+  it('resolves the persisted PTC identity before composition', () => {
+    const definition = agentPresetProjectionDefinition
+    expect(definition.init(header('code'))).toBe('ptc')
+    expect(definition.apply('standard', selected('code', 0))).toBe('ptc')
+  })
+
   it('starts from the header and keeps the latest selected preset', () => {
     const definition = agentPresetProjectionDefinition
     let state = definition.init(header('standard'))

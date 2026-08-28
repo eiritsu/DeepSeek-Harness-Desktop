@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-session-persistence` stores a session's event log durably, reloads it on resume, and lists stored sessions through one backend-neutral service (`ctx.sessionPersistence`) that every persistence backend implements. The persisted unit is the existing `SessionEvent` log — there is no parallel stored message type — and non-replayable metadata (format version, working directory, lineage, seed boundary) travels separately as `SessionHeader`. Backends own their storage, the service owns the semantics: append-only logs, contiguous sequence numbers, crash recovery that preserves an interrupted turn instead of truncating it, and durable writes that resolve only after the batch is safe. Pick a backend (`session-persistence-jsonl` for per-session files, `session-persistence-sqlite` for one database), mount it, and sessions persist and resume without the loop or the model knowing which backend is underneath.
+`dsh-session-persistence` stores a session's event log durably, reloads it on resume, lists stored sessions, and permanently deletes stopped sessions through one backend-neutral service (`ctx.sessionPersistence`) that every persistence backend implements. The persisted unit is the existing `SessionEvent` log — there is no parallel stored message type — and non-replayable metadata (format version, working directory, lineage, seed boundary) travels separately as `SessionHeader`. Backends own their storage, the service owns the semantics: append-only logs, contiguous sequence numbers, crash recovery that preserves an interrupted turn instead of truncating it, durable writes that resolve only after the batch is safe, and deletion serialized after earlier work for the same identity. Pick a backend (`session-persistence-jsonl` for per-session files, `session-persistence-sqlite` for one database), mount it, and sessions persist and resume without the loop or the model knowing which backend is underneath.
 
 ## Table of Contents
 
@@ -41,9 +41,10 @@ await ctx.sessionPersistence.ensureMaterialized(session)   // persist an empty r
 await ctx.sessionPersistence.append(id, events)            // durably persist a batch
 const { meta, events } = await ctx.sessionPersistence.load(id)   // reload on resume
 const headers = await ctx.sessionPersistence.list()        // every stored session
+await ctx.sessionPersistence.delete(id)                     // permanently remove a stopped session
 ```
 
-`append` resolves only after the batch is durable, so a resolved write survives an OS crash or power loss. Ordinary `create` remains lazy; a lifecycle frontend calls `ensureMaterialized` only when an empty session must itself appear in durable listing without inventing an event. `load` returns an immutable balanced log and commits any needed crash recovery; `inspect` reads the same view without committing recovery. Consumers that resume from a watermark can read only the events at or past a sequence number, and a session's artifact location (`locate`) resolves without filesystem I/O.
+`append` resolves only after the batch is durable, so a resolved write survives an OS crash or power loss. Ordinary `create` remains lazy; a lifecycle frontend calls `ensureMaterialized` only when an empty session must itself appear in durable listing without inventing an event. `load` returns an immutable balanced log and commits any needed crash recovery; `inspect` reads the same view without committing recovery. Consumers that resume from a watermark can read only the events at or past a sequence number, and a session's artifact location (`locate`) resolves without filesystem I/O. `delete` waits for prior persistence work, rejects a live Session or unknown stored identity, cancels an unmaterialized create intent, removes the backend artifact, and emits `session-persistence/deleted` so derived indexes can reconcile without persistence depending on them.
 
 ### Resuming and crash recovery
 
@@ -65,7 +66,7 @@ This section explains how the seam realizes durable storage and how backends plu
 
 ### Design concept
 
-The package is the Service Definition of a capability seam with two halves. The abstract `SessionPersistence` service is the public contract; a `PersistenceCoordinator` provides backend-neutral orchestration for buffering, serialization, materialization, repair, adoption, and quiescent disposal. A backend implements the small durable primitives for stored reads, append, repair, and listing, so JSONL and SQLite share lifecycle correctness while keeping different storage primitives.
+The package is the Service Definition of a capability seam with two halves. The abstract `SessionPersistence` service is the public contract; a `PersistenceCoordinator` provides backend-neutral orchestration for buffering, serialization, materialization, repair, adoption, deletion, and quiescent disposal. A backend implements the small durable primitives for stored reads, append, repair, listing, and removal, so JSONL and SQLite share lifecycle correctness while keeping different storage primitives.
 
 ### The invariants every backend honors
 
@@ -73,13 +74,14 @@ The package is the Service Definition of a capability seam with two halves. The 
 - **Contiguous `seq`.** A gap in the middle of the log rejects; `append`'s first `seq` must equal the stored next-seq.
 - **Lossless JSON data.** Batches pass the shared one-pass lossless-JSON boundary; non-serializable payloads reject at the append site.
 - **Durability.** `append` resolves only once the batch is durable.
+- **Cold deletion.** `delete` runs after earlier work for the identity, refuses a live owner, removes the complete stored log, and publishes one deletion event only after storage confirms absence.
 
 ### Source map
 
 | File | Role |
 |---|---|
 | [`src/index.ts`](src/index.ts) | Plugin entry: the abstract `SessionPersistence` service and re-exported metadata types |
-| [`src/coordinator.ts`](src/coordinator.ts) | Shared write orchestration: batching, serialization, repair, adoption, disposal, format refusal |
+| [`src/coordinator.ts`](src/coordinator.ts) | Shared write orchestration: batching, serialization, repair, adoption, deletion, disposal, format refusal |
 | [`src/write-behind.ts`](src/write-behind.ts) | The per-session bounded write controller and flush barrier |
 | [`src/preparations.ts`](src/preparations.ts) | Bounded retention of unpublished Session preparations for resume reuse |
 | [`src/revision.ts`](src/revision.ts) | The branded opaque revision token |

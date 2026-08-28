@@ -40,6 +40,10 @@ export interface WorkspaceErrorDetailsMap {
     readonly sessionId: SessionId
     readonly beforeSessionId?: SessionId
   }
+  'workspace-attach-failed': {
+    readonly workspaceId: WorkspaceId
+    readonly sessionId: SessionId
+  }
   'session-not-found': { readonly sessionId: SessionId }
 }
 
@@ -118,6 +122,12 @@ export interface WorkspaceInsertSessionBeforeRequest {
   readonly workspaceId: WorkspaceId
   readonly sessionId: SessionId
   readonly beforeSessionId?: SessionId
+}
+
+/** Session membership mutation. */
+export interface WorkspaceAttachSessionRequest {
+  readonly workspaceId: WorkspaceId
+  readonly sessionId: SessionId
 }
 
 /** Session requested for archival from Workspace grouping surfaces. */

@@ -6,7 +6,7 @@ English | [中文](2026-07-31-session-archive-global-set.zh.md)
 
 ## Problem
 
-The session row menu in the sidebar workspace browser carried a purely visual "Delete session" placeholder (no handler). The product decision is **archive**, not delete: the session log and its workspace accounting stay untouched; the session merely disappears from every grouping surface (workspace groups, Ungrouped, search, the flat list). The archive record needs a home: an Ungrouped session belongs to no workspace entity, so a per-workspace field cannot carry it.
+The session row menu in the sidebar workspace browser carried a purely visual "Delete session" placeholder (no handler). This change delivered **archive** as the non-destructive action: the session log and its workspace accounting stay untouched; the session merely disappears from every grouping surface (workspace groups, Ungrouped, search, the flat list). The archive record needs a home: an Ungrouped session belongs to no workspace entity, so a per-workspace field cannot carry it. The later [permanent-deletion decision](2026-08-28-session-permanent-deletion.md) adds Delete session as a separate confirmed action instead of changing archive semantics.
 
 ## Decision
 
@@ -30,4 +30,4 @@ The session row menu in the sidebar workspace browser carried a purely visual "D
 
 ## Consequences
 
-Archived sessions have no viewing or unarchive surface yet (this iteration's scope; recorded as a README Known Limitation); data and accounting slots stay intact, so a future restore is one UI surface plus one inverse RPC. The `workspace.list` response shape change is a pre-release direct edit (no compatibility layer). The workspace-management e2e pins the full chain (archive → row disappears → still hidden after reload, log still present); domain tests pin idempotence, unknown-id rejection, restart recovery, and the pre-field media default upgrade.
+Archived sessions have no viewing or unarchive surface yet (recorded as a README Known Limitation); data and accounting slots stay intact, so a future restore is one UI surface plus one inverse RPC. Permanent deletion now exists beside archive and does not change this storage model. The `workspace.list` response shape change is a pre-release direct edit (no compatibility layer). The workspace-management e2e pins the full chain (archive → row disappears → still hidden after reload, log still present); domain tests pin idempotence, unknown-id rejection, restart recovery, and the pre-field media default upgrade.

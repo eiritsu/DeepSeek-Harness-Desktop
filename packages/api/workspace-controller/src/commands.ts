@@ -13,6 +13,7 @@ import { workspaceView } from './feed.ts'
 import type {
   WorkspaceArchiveSessionRequest,
   WorkspaceArchiveValue,
+  WorkspaceAttachSessionRequest,
   WorkspaceCreateRequest,
   WorkspaceCreateValue,
   WorkspaceDeleteRequest,
@@ -142,6 +143,25 @@ export class WorkspaceCommands {
             ? {}
             : { beforeSessionId: request.beforeSessionId },
         },
+      )
+    }
+    return { workspace: workspaceView(workspace) }
+  }
+
+  /**
+   * Add one Session whose stored cwd belongs to a Workspace.
+   * @param request - Workspace and Session identities.
+   * @returns the updated Workspace projection.
+   */
+  async attachSession(request: WorkspaceAttachSessionRequest): Promise<WorkspaceValue> {
+    const workspace = this.requireWorkspace(request.workspaceId)
+    try {
+      await workspace.attachSession(request.sessionId)
+    } catch (error) {
+      throw failure(
+        'workspace-attach-failed',
+        errorMessage(error),
+        { workspaceId: request.workspaceId, sessionId: request.sessionId },
       )
     }
     return { workspace: workspaceView(workspace) }

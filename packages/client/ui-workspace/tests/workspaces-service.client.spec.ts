@@ -136,6 +136,7 @@ class FakeWorkspaces implements IWorkspaces {
   declare readonly delete: IWorkspaces['delete']
   declare readonly insertBefore: IWorkspaces['insertBefore']
   declare readonly insertSessionBefore: IWorkspaces['insertSessionBefore']
+  declare readonly attachSession: IWorkspaces['attachSession']
 
   constructor(initial: WorkspaceSnapshot) {
     this.list = new MutableSource(initial)
@@ -184,6 +185,7 @@ class FakeDirectoryPicker {
 interface BenchOptions {
   readonly workspaces?: WorkspaceSnapshot
   readonly sessions?: SessionListState
+  readonly defaultPreset?: string
 }
 
 function bench(options: BenchOptions = {}) {
@@ -191,9 +193,20 @@ function bench(options: BenchOptions = {}) {
   const directoryPicker = new FakeDirectoryPicker()
   const workspaces = new FakeWorkspaces(options.workspaces ?? workspaceState([], [], 'pending'))
   const sessions = new FakeSessions(options.sessions ?? sessionState([], undefined, 'pending'))
+  const defaultPreset = options.defaultPreset ?? 'standard'
+  const agentPresets = {
+    list: () => Promise.resolve({
+      ok: true as const,
+      value: {
+        presets: [{ id: defaultPreset, trust: 'system' as const, isDefault: true }],
+        authorable: false,
+      },
+    }),
+  } as unknown as ClientRemote['agentPresets']
   const uiWorkspace = new UiWorkspaceService(
     ctx,
     directoryPicker.remote,
+    agentPresets,
     workspaces,
     sessions as unknown as ISessions,
   )
@@ -212,7 +225,11 @@ describe('UiWorkspaceService', () => {
     const archivedBlank = sid('archived-blank')
     const summaries: readonly SessionSummary[] = [
       summary('stray', { blank: true, cwd: '/w/alpha' }),
-      summary('member-blank', { blank: true, cwd: '/w/alpha' }),
+      summary('member-blank', {
+        blank: true,
+        cwd: '/w/alpha',
+        projectionValues: { agentPreset: 'standard' },
+      }),
       summary('active', { cwd: '/w/beta' }),
       summary('archived-blank', { blank: true, cwd: '/w/gamma' }),
     ]
@@ -236,15 +253,42 @@ describe('UiWorkspaceService', () => {
     b.sessions.create.mockImplementation(() => creation.promise)
     const first = b.uiWorkspace.connectWorkspace(wid('beta'))
     const second = b.uiWorkspace.connectWorkspace(wid('beta'))
+    await flush()
     expect(b.sessions.create).toHaveBeenCalledTimes(1)
     creation.resolve(sid('fresh-beta'))
     await expect(Promise.all([first, second])).resolves.toEqual([sid('fresh-beta'), sid('fresh-beta')])
+    const freshBeta = summary('fresh-beta', { blank: true, cwd: '/w/beta' })
+    b.sessions.list.set(sessionState([freshBeta], freshBeta.id))
+    b.workspaces.list.set(workspaceState([
+      workspace('alpha', [memberBlank]),
+      workspace('beta', [freshBeta.id]),
+      workspace('gamma', [archivedBlank]),
+    ], [archivedBlank]))
+    await expect(b.uiWorkspace.connectWorkspace(wid('beta'))).resolves.toBe(freshBeta.id)
+    expect(b.sessions.create).toHaveBeenCalledTimes(1)
 
     b.sessions.create.mockImplementation(async options => sid(`fresh-${String(options?.workspaceId)}`))
     await expect(b.uiWorkspace.connectWorkspace(wid('gamma'))).resolves.toBe(sid('fresh-gamma'))
     expect(b.sessions.create).toHaveBeenLastCalledWith({ workspaceId: wid('gamma') })
     await expect(b.uiWorkspace.connectWorkspace(wid('ghost')))
       .rejects.toThrow('uiWorkspace.connectWorkspace: unknown workspace ghost')
+  })
+
+  it('creates a blank Session when the reusable one belongs to another default preset', async () => {
+    const blank = summary('old-blank', {
+      blank: true,
+      cwd: '/w/alpha',
+      projectionValues: { agentPreset: 'ptc' },
+    })
+    const b = bench({
+      defaultPreset: 'standard',
+      sessions: sessionState([blank], blank.id),
+      workspaces: workspaceState([workspace('alpha', [blank.id])]),
+    })
+
+    await expect(b.uiWorkspace.connectWorkspace(wid('alpha')))
+      .resolves.toBe(sid('created-alpha'))
+    expect(b.sessions.create).toHaveBeenCalledWith({ workspaceId: wid('alpha') })
   })
 
   it('targets an explicit, current-session, then recent Workspace and reports failed starts', async () => {

@@ -145,6 +145,10 @@ export class FakeApiClient {
     }))
   onRename: (payload: unknown) => Promise<RpcResponse<{ title: string; seq: number }>> = () => Promise.resolve(ok({ title: 'fk-renamed', seq: 0 }))
   onFork: (payload: unknown) => Promise<RpcResponse<{ sessionId: SessionId }>> = () => Promise.resolve(ok({ sessionId: 'fk-fork' as SessionId }))
+  onDelete: (payload: unknown) => Promise<RpcResponse<{ deletedSessionIds: readonly SessionId[] }>> =
+    payload => Promise.resolve(ok({
+      deletedSessionIds: [(payload as { sessionId: SessionId }).sessionId],
+    }))
   onHistory: (payload: { sessionId: SessionId; throughSeq?: number; beforeSeq?: number; maxMessages?: number })
   => Promise<RpcResponse<SessionPage & { readonly projections?: SessionProjectionBaseline }>> =
     () => Promise.resolve(ok({ records: [], hasMore: false }))
@@ -196,6 +200,9 @@ export class FakeApiClient {
   onWorkspaceInsertSessionBefore: (payload: unknown) => Promise<RemoteResult<{ workspace: WorkspaceView }>> =
     () => Promise.resolve(remoteOk({ workspace: fakeWorkspace('fk-ws') }))
 
+  onWorkspaceAttachSession: (payload: unknown) => Promise<RemoteResult<{ workspace: WorkspaceView }>> =
+    () => Promise.resolve(remoteOk({ workspace: fakeWorkspace('fk-ws') }))
+
   onWorkspaceArchiveSession: (payload: unknown) => Promise<RemoteResult<{ archivedSessionIds: SessionId[] }>> =
     payload => Promise.resolve(remoteOk({ archivedSessionIds: [(payload as { sessionId: SessionId }).sessionId] }))
 
@@ -232,6 +239,7 @@ export class FakeApiClient {
         ),
         rename: payload => this.remoteResult('session.rename', payload, this.onRename(payload)),
         fork: payload => this.remoteResult('session.fork', payload, this.onFork(payload)),
+        delete: payload => this.remoteResult('session.delete', payload, this.onDelete(payload)),
         prompt: payload => this.remoteResult('session.prompt', payload, this.onPrompt(payload)),
         attachment: payload => this.remoteResult('session.attachment', payload, this.onAttachment(payload)),
         updateQueue: payload => this.remoteResult('session.updateQueue', payload, this.onUpdateQueue(payload)),
@@ -271,6 +279,11 @@ export class FakeApiClient {
           'workspace.insertSessionBefore',
           payload,
           this.onWorkspaceInsertSessionBefore(payload),
+        ),
+        attachSession: payload => this.record(
+          'workspace.attachSession',
+          payload,
+          this.onWorkspaceAttachSession(payload),
         ),
         archiveSession: payload => this.record(
           'workspace.archiveSession',

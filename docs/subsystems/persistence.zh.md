@@ -304,6 +304,12 @@ ensureMaterialized(_session: Session): Promise<void>
 abstract append(id: SessionId, events: readonly SessionEvent[]): Promise<void>
 
 /**
+ * Permanently delete one Session log after its live lifecycle has stopped.
+ * @param _id - Session identity to delete.
+ */
+delete(_id: SessionId): Promise<void>
+
+/**
  * Prepare the exact unpublished Session used by resume. Implementations may
  * reuse object graphs retained by an earlier {@link inspect} after confirming
  * their durable revision is still current; disposal releases an unpublished

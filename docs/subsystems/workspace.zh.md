@@ -226,6 +226,13 @@ Host service backing the generated `ctx.remote.workspace` namespace.
 @Remote('insertSessionBefore') insertSessionBefore(request: WorkspaceInsertSessionBeforeRequest): Promise<WorkspaceValue>
 
 /**
+ * Add one Session to the Workspace that owns its stored cwd.
+ * @param request - Workspace and Session identities.
+ * @returns the updated Workspace projection.
+ */
+@Remote('attachSession') attachSession(request: WorkspaceAttachSessionRequest): Promise<WorkspaceValue>
+
+/**
  * Hide one known Session from Workspace grouping surfaces.
  * @param request - Session identity to archive.
  * @returns the complete resulting archive set.

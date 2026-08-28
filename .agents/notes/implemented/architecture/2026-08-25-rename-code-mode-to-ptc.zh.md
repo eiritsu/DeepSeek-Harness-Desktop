@@ -6,7 +6,7 @@ Status: implemented
 
 ## 问题
 
-通过生成的 SDK 与 `run_code` 传输层向模型呈现工具的注册表模式，发布时用的名字是 Code Mode；而选择该模式的客户端预设早已以「PTC mode」发布（locale `presetPtcName: 'PTC mode'`，中文 `PTC 模式`）。同一功能有两套名字：配置值、插件与事件名、文件与文档写的是 `code`／`code-mode`，用户可见的名字却是「PTC mode」。预发布阶段的更名必须一次性更新所有引用——不加任何兼容别名。
+通过生成的 SDK 与 `run_code` 传输层向模型呈现工具的注册表模式，发布时用的名字是 Code Mode；而选择该模式的客户端预设早已以「PTC mode」发布（locale `presetPtcName: 'PTC mode'`，中文 `PTC 模式`）。同一功能有两套名字：配置值、插件与事件名、文件与文档写的是 `code`／`code-mode`，用户可见的名字却是「PTC mode」。预发布阶段的更名会一次性更新当前配置引用；后续的 [Session 恢复修复](../bug-fix/2026-08-28-new-session-follows-agent-preset-default.zh.md)只为已经写入持久 Session 元数据的旧 id 增加一个范围很窄的别名。
 
 ## 决策
 
@@ -34,4 +34,4 @@ Status: implemented
 
 ## 后果
 
-配置中写 `mode: code`、预设 id 为 `code`，在本构建上不再受支持。会话持久词汇仍为 `tool/code-dispatch*`、`tools-code-mode` 与 `:code:`，因此既有会话日志照常读取，无需 `SESSION_FORMAT_VERSION` 提升。堆叠的持久化 PR 负责重命名该词汇，并被阻塞到 v0→v1 迁移与其一同落地（版本机制见 [session event 词汇 Note](../simplification/2026-08-25-fail-closed-session-event-vocabulary.zh.md)）。无密钥的 snapshot refresh 携带本 PR 的词汇；持久化 PR 刷新包含分发的夹具。本 Note 所更名的已发布决策是 [PTC 基础 Note](../feature/2026-06-15-ptc.zh.md)。
+配置中写 `mode: code`、当前 preset 请求使用 `code`，在本构建上不再受支持。已经在 Session header 或 preset 选择事件中记录的 `code` 会投影为 `ptc`，因此更名前的 Session 可以恢复，而旧 id 不会重新成为可选项。会话持久词汇仍为 `tool/code-dispatch*`、`tools-code-mode` 与 `:code:`，因此既有会话日志照常读取，无需 `SESSION_FORMAT_VERSION` 提升。堆叠的持久化 PR 负责重命名该词汇，并被阻塞到 v0→v1 迁移与其一同落地（版本机制见 [session event 词汇 Note](../simplification/2026-08-25-fail-closed-session-event-vocabulary.zh.md)）。无密钥的 snapshot refresh 携带本 PR 的词汇；持久化 PR 刷新包含分发的夹具。本 Note 所更名的已发布决策是 [PTC 基础 Note](../feature/2026-06-15-ptc.zh.md)。

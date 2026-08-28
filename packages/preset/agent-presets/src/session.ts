@@ -31,14 +31,19 @@ declare module '@deepseek-ai/dsh-session/types' {
 
 const agentPresetSchema = z.union([z.string(), z.null()])
 
+/** Resolve the durable PTC alias retained by Session format version 0. */
+function currentPresetId(agentPreset: string | null): string | null {
+  return agentPreset === 'code' ? 'ptc' : agentPreset
+}
+
 /** Current Session preset, initialized from its header and advanced by selection events. */
 export const agentPresetProjectionDefinition = {
   key: 'agentPreset',
   stateSchema: agentPresetSchema,
-  init: header => header.agentPreset ?? null,
+  init: header => currentPresetId(header.agentPreset ?? null),
   apply: (state, event) => event.type === 'agent-preset/selected'
-    ? event.data.agentPreset
+    ? currentPresetId(event.data.agentPreset)
     : state,
   wire: { viewSchema: agentPresetSchema, view: state => state },
-  stateVersion: 1,
+  stateVersion: 2,
 } satisfies ProjectionDefinition<'agentPreset', string | null>

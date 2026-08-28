@@ -6,7 +6,7 @@ Status: implemented
 
 ## 问题
 
-Sidebar workspace 浏览区的会话行菜单里，「Delete session」一直是纯视觉占位（无 handler）。产品口径定为**归档**而非删除：会话日志与 workspace 记账都不动，只把该会话从所有分组视图（workspace 分组、Ungrouped、搜索、平铺列表）里隐藏。归档记录需要一个落点：Ungrouped 的会话不属于任何 workspace 实体，per-workspace 字段放不下它。
+Sidebar workspace 浏览区的会话行菜单里，「Delete session」一直是纯视觉占位（无 handler）。本次更改交付**归档**这一非破坏性操作：会话日志与 workspace 记账都不动，只把该会话从所有分组视图（workspace 分组、Ungrouped、搜索、平铺列表）里隐藏。归档记录需要一个落点：Ungrouped 的会话不属于任何 workspace 实体，per-workspace 字段放不下它。后续的[永久删除决策](2026-08-28-session-permanent-deletion.zh.md)把「删除会话」作为独立的确认操作加入，而没有改变归档语义。
 
 ## 决策
 
@@ -30,4 +30,4 @@ Sidebar workspace 浏览区的会话行菜单里，「Delete session」一直是
 
 ## 后果
 
-归档后 UI 无查看/取消归档入口（本期口径，记录在 README 的 Known Limitation 中）；数据与 slot 完好，后续加恢复面只是 UI + 一个逆向 RPC。`workspace.list` 响应形状变化是 pre-release 直改（无兼容层）。e2e（workspace-management）钉住了「归档→行消失→reload 后仍隐藏、日志仍在」的全链路；domain 层测试钉住幂等、未知 id 拒绝、跨重启恢复与旧介质默认升级。
+归档后 UI 无查看/取消归档入口（记录在 README 的 Known Limitation 中）；数据与 slot 完好，后续加恢复面只是 UI + 一个逆向 RPC。永久删除现在与归档并存，且不会改变这一存储模型。`workspace.list` 响应形状变化是 pre-release 直改（无兼容层）。e2e（workspace-management）钉住了「归档→行消失→reload 后仍隐藏、日志仍在」的全链路；domain 层测试钉住幂等、未知 id 拒绝、跨重启恢复与旧介质默认升级。

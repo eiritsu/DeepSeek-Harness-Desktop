@@ -161,9 +161,9 @@ export interface KvTable<K extends string, V> {
 - **版本 fail loud**：盘上版本与 spec 不符直接报错，不迁移不重建（数据不可再生，pre-release 拒绝旧格式）。
 - **变更事件**：每次写落盘 resolve 后 emit `domain/changed`（`@mode emit`），逐条发、不带旧值（对齐仓库"新快照 + 操作判别"惯例，范本 `goal/changed`）；payload `DomainChanged` 是 put/deleted 判别联合——域名 + 表名 + key（global 变更两者为 `''`）+ operation，put 支带新快照 value、deleted 支无 value（`packages/storage/storage-domain/src/events.ts`）。此为下期 RPC 推帧的事件源。错误词汇 `DomainError`，码表：`already-open` / `facet-unsupported` / `invalid-record`（带 `{ table, key }`）/ `missing-key` / `closed`。
 
-### Future work：session 侧删除（设计定案，本期不实施）
+### Session 侧删除（在本期之后实施）
 
-本节是定案的施工规范，实施期不动语义只动代码；本期 session-persistence 的任何文件都不修改。
+本节是后来由[永久删除 Session 决策](../../implemented/feature/2026-08-28-session-permanent-deletion.zh.md)交付的施工规范。最初的 domain storage 阶段未修改 session persistence。
 
 ```ts ignore-check
 export abstract class SessionPersistence extends Service {
@@ -243,7 +243,7 @@ export class WorkspaceRegistry extends Service {
 - **path 规范**：落盘值 = `fs.realpath(输入)`（尾斜杠、`..`、符号链接全解析）；唯一性 = 规范化后字符串相等（符号链接指向同一目录算撞）。目录不存在时 create 直接 reject（realpath 失败——workspace 必须指向存在目录；"Create new = 建目录"是上层交互，先 mkdir 再 create）。attach 校验的 session cwd 同口径。cwd 单值 + path 唯一 ⇒ 一个 session 结构上最多归属一个 workspace，双重记账写侧不可能。
 - **title**：显示名，默认 `basename(path)`，可改，允许重复。归属不用 cwd 派生兜底——cwd 表达不了排序，归属是 workspace 侧事实；headless 直开的 session 不属于任何 workspace。
 - 消费方只见 `Workspace` 接口，`WorkspaceEntity` 不出包（单实现不预拆 seam）；实体按 id 唯一（注册表缓存），记录快照写后原地换新，外部只见 getter；所有写收敛到实体内 `mutate(fn)` → `table.update`，`updatedAt` 在 mutate 内统一刷。领域对象不过 RPC，下期 wire 层把记录投影成 zod wire schema。
-- **Session 删除仍属未来工作。** 后续的 [Workspace 注册记录删除决策](../../implemented/feature/2026-07-27-workspace-registration-deletion.zh.md)已将 `ctx.workspaceRegistry.delete(id)` 作为仅删除元数据、保留 Session 与日志的操作交付。递归删除 Session、运行中检查和崩溃重跑收敛属于独立的 `session.delete` 能力。
+- **Session 删除保持独立。** 后续的 [Workspace 注册记录删除决策](../../implemented/feature/2026-07-27-workspace-registration-deletion.zh.md)已将 `ctx.workspaceRegistry.delete(id)` 作为仅删除元数据、保留 Session 与日志的操作交付。独立的 `session.delete` 能力现在拥有递归删除 Session、运行中检查和崩溃重跑收敛。
 
 一致性口径（账 = 归属唯一依据；实现与测试基准）：
 
@@ -279,7 +279,7 @@ export class WorkspaceRegistry extends Service {
 | 注册表/mount | 重复注册、未挂载访问、disposer 摘除 | — |
 | domain 层 | open 六步语义、schema 拒绝、update 串行（并发交错压测）、`domain/changed` 逐条、global 初值懒物化、路由与 `facet-unsupported` | 任一（json） |
 | workspace | create/唯一性/realpath、attach 校验（含 sessionPersistence 缺席拒绝）、一致性口径四情形 | mock domain 或 json |
-| session delete 约定（future work，随实施并入 runPersistenceContract） | 未知 id、已删 id 复用、未物化 intent、与在途 append 串行、deleted 事件 | jsonl、sqlite |
+| session delete 约定 | 未知 id、已删 id 复用、未物化 intent、与在途 append 串行、deleted 事件 | jsonl、sqlite |
 
 快照：本期无模型可见面与组装面，不新增；下期 RPC 接线时随 `workspace.*` 域补。
 
@@ -287,7 +287,6 @@ export class WorkspaceRegistry extends Service {
 
 | 不做 | 触发条件 | 返工点 | 预埋 |
 | --- | --- | --- | --- |
-| Session 删除（`SessionPersistence.delete`、deleted 事件、递归删除、运行中检查） | 破坏性的 Session 删除产品流启动 | 实现 Session 原语及 `session.delete`；与 Workspace 注册记录删除保持独立 | 上文编排规则和拒绝清单仍是基础；Workspace 删除会保留 Session 与日志 |
 | `log` facet 与 session 后端迁移 | 本期后任意期启动 | 介质操作下沉（复用审计表即施工清单） | facet 结构已留位；两后端介质代码本期即按可下沉形状组织 |
 | 多进程并发写保护 | 两 host 进程同写一介质 | JSON 后端文件锁；SQLite WAL 天然多进程 | 写全经 domain 单点串行，加锁只动后端 |
 | 跨进程变更观测 | GUI 断线重连感知 | revision 模式（抄 session-persistence） | 进程内已有 `domain/changed` |
@@ -298,7 +297,6 @@ export class WorkspaceRegistry extends Service {
 | 跨表原子事务 | 同域两表一次原子操作需求 | `domain.transact(fn)`；JSON 天然原子，SQLite 包事务 | — |
 | 二级索引/条件查询 | 内存过滤不动（万级记录） | SQLite JSON1 查 value 列，加只读 query 面 | JSON 后端不陪跑 |
 | session 跨 workspace 移动 | 产品需求出现 | attach 校验放宽为"先 detach 后 attach"编排 | — |
-| Session 删除 RPC／GUI | 破坏性的 Session 删除产品流启动 | `session.delete` 端点、wire schema 与明确的确认 UI | Workspace RPC／GUI 已独立交付，不再存在级联耦合 |
 
 ## 备选方案
 

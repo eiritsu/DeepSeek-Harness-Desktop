@@ -105,6 +105,10 @@ class MemoryPersistence extends SessionPersistence implements PersistenceBackend
     return this.coordinator.append(id, events)
   }
 
+  override delete(id: SessionId): Promise<void> {
+    return this.coordinator.delete(id)
+  }
+
   override prepare(id: SessionId, signal?: AbortSignal): ReturnType<PersistenceCoordinator['prepare']> {
     return this.coordinator.prepare(id, signal)
   }
@@ -172,6 +176,10 @@ class MemoryPersistence extends SessionPersistence implements PersistenceBackend
     /* v8 ignore next -- commitRepair only runs for a materialized (stored) session */
     if (!entry) return
     if (closers.length > 0) entry.events.push(...structuredClone(closers) as SessionEvent[])
+  }
+
+  deleteStored(id: SessionId): Promise<boolean> {
+    return Promise.resolve(this.store.delete(id))
   }
 
   async list(signal?: AbortSignal): Promise<SessionHeader[]> {
@@ -433,6 +441,24 @@ describe('PersistenceCoordinator bounded writes', () => {
 })
 
 describe('PersistenceCoordinator stored identity', () => {
+  it('deletes a cold materialized Session and emits its durable removal', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(MemoryPersistence)
+    const id = SessionId('delete-cold')
+    const deleted: SessionId[] = []
+    ctx.on('session-persistence/deleted', (sessionId) => { deleted.push(sessionId) })
+    await ctx.sessionPersistence.create(meta(id))
+    await ctx.sessionPersistence.append(id, [{
+      type: 'turn/start', seq: 0, time: 1, data: { turn: 1 },
+    }])
+
+    await expect(ctx.sessionPersistence.delete(id)).resolves.toBeUndefined()
+    await expect(ctx.sessionPersistence.load(id)).rejects.toThrow(/not found/)
+    expect(deleted).toEqual([id])
+    await ctx.fiber.dispose()
+  })
+
   it('rejects a mismatched backend header before repair or state publication', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)

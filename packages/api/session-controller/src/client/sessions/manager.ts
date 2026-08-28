@@ -625,6 +625,25 @@ export class SessionManager {
   }
 
   /**
+   * Permanently delete a Session and its durable descendants.
+   * @param sessionId - root Session to delete.
+   * @returns the ordered identities removed by the Host.
+   */
+  async delete(sessionId: SessionId): Promise<ClientResult<{ deletedSessionIds: readonly SessionId[] }>> {
+    try {
+      const result = toSessionResult(await this.remote.session.delete({ sessionId, recursive: true }))
+      if (result.ok) {
+        for (const deleted of result.value.deletedSessionIds) {
+          this.recordMutation({ kind: 'remove', sessionId: deleted })
+        }
+      }
+      return result
+    } catch (error: unknown) {
+      return transportResult(error)
+    }
+  }
+
+  /**
    * Insert-or-enrich a locally synthesized summary: a new id prepends; an
    * existing entry only gains fields it lacks (the session-added frame and the
    * create() echo race — whichever lands second must fill the placeholder's

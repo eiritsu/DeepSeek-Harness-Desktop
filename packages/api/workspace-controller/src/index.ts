@@ -8,6 +8,7 @@ import { WorkspaceFeed } from './feed.ts'
 import type {
   WorkspaceArchiveSessionRequest,
   WorkspaceArchiveValue,
+  WorkspaceAttachSessionRequest,
   WorkspaceCreateRequest,
   WorkspaceCreateValue,
   WorkspaceDeleteRequest,
@@ -97,6 +98,16 @@ export class WorkspaceController extends TypertRemoteService {
   @Remote('insertSessionBefore')
   insertSessionBefore(request: WorkspaceInsertSessionBeforeRequest): Promise<WorkspaceValue> {
     return this.commands.insertSessionBefore(request)
+  }
+
+  /**
+   * Add one Session to the Workspace that owns its stored cwd.
+   * @param request - Workspace and Session identities.
+   * @returns the updated Workspace projection.
+   */
+  @Remote('attachSession')
+  attachSession(request: WorkspaceAttachSessionRequest): Promise<WorkspaceValue> {
+    return this.commands.attachSession(request)
   }
 
   /**

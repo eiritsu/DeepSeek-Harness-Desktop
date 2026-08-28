@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-session-persistence` 通过每个持久化后端都实现的一个后端无关服务（`ctx.sessionPersistence`）持久存储会话的事件日志、在恢复时重新加载并列出已存储会话。持久化单元就是现有 `SessionEvent` 日志——不存在另一套并行的存储消息类型——不可回放的元数据（格式版本、工作目录、血缘、种子边界）作为 `SessionHeader` 单独传输。后端拥有自己的存储，服务拥有语义：仅追加日志、连续序列号、保留中断轮次而非截断的崩溃恢复，以及只在批次安全后才返回的持久写入。选一个后端（按会话存储文件的 `session-persistence-jsonl`，或单库的 `session-persistence-sqlite`），挂载它，会话就会持久化并在恢复时还原，loop 与模型无需知道下面是哪个后端。
+`dsh-session-persistence` 通过每个持久化后端都实现的一个后端无关服务（`ctx.sessionPersistence`）持久存储会话的事件日志、在恢复时重新加载、列出已存储会话，并永久删除已停止的会话。持久化单元就是现有 `SessionEvent` 日志——不存在另一套并行的存储消息类型——不可回放的元数据（格式版本、工作目录、血缘、种子边界）作为 `SessionHeader` 单独传输。后端拥有自己的存储，服务拥有语义：仅追加日志、连续序列号、保留中断轮次而非截断的崩溃恢复、只在批次安全后才返回的持久写入，以及排在同一标识此前工作之后的删除。选一个后端（按会话存储文件的 `session-persistence-jsonl`，或单库的 `session-persistence-sqlite`），挂载它，会话就会持久化并在恢复时还原，loop 与模型无需知道下面是哪个后端。
 
 ## 目录
 
@@ -41,9 +41,10 @@ await ctx.sessionPersistence.ensureMaterialized(session)   // persist an empty r
 await ctx.sessionPersistence.append(id, events)            // durably persist a batch
 const { meta, events } = await ctx.sessionPersistence.load(id)   // reload on resume
 const headers = await ctx.sessionPersistence.list()        // every stored session
+await ctx.sessionPersistence.delete(id)                     // permanently remove a stopped session
 ```
 
-`append` 只在批次持久后返回，因此成功返回的写入在操作系统崩溃或断电后依然存在。普通 `create` 保持惰性；只有当空会话本身必须出现在持久列表中时，生命周期前端才调用 `ensureMaterialized`，且不会虚构事件。`load` 返回不可变的平衡日志并提交任何需要的崩溃恢复；`inspect` 读取同一视图但不提交恢复。从水位恢复的消费方可以只读取该序列号及之后的已存储事件，会话的产物位置（`locate`）不经文件系统 I/O 即可解析。
+`append` 只在批次持久后返回，因此成功返回的写入在操作系统崩溃或断电后依然存在。普通 `create` 保持惰性；只有当空会话本身必须出现在持久列表中时，生命周期前端才调用 `ensureMaterialized`，且不会虚构事件。`load` 返回不可变的平衡日志并提交任何需要的崩溃恢复；`inspect` 读取同一视图但不提交恢复。从水位恢复的消费方可以只读取该序列号及之后的已存储事件，会话的产物位置（`locate`）不经文件系统 I/O 即可解析。`delete` 会等待此前的持久化工作，拒绝活动会话或未知的存储标识，取消尚未物化的创建意图，删除后端产物，并发出 `session-persistence/deleted`，使派生索引无需被持久层依赖即可协调。
 
 ### 恢复与崩溃恢复
 
@@ -65,7 +66,7 @@ const headers = await ctx.sessionPersistence.list()        // every stored sessi
 
 ### 设计理念
 
-本包是能力 seam 的 Service Definition，分两半。抽象的 `SessionPersistence` 服务是公开约定；`PersistenceCoordinator` 为缓冲、串行化、物化、修复、接管与完全停稳的 dispose 提供后端无关编排。后端实现存储读取、追加、修复与列出所需的小型持久原语，因此 JSONL 与 SQLite 共享生命周期正确性，同时保留不同的存储原语。
+本包是能力 seam 的 Service Definition，分两半。抽象的 `SessionPersistence` 服务是公开约定；`PersistenceCoordinator` 为缓冲、串行化、物化、修复、接管、删除与完全停稳的 dispose 提供后端无关编排。后端实现存储读取、追加、修复、列出与移除所需的小型持久原语，因此 JSONL 与 SQLite 共享生命周期正确性，同时保留不同的存储原语。
 
 ### 每个后端必须遵守的不变量
 
@@ -73,13 +74,14 @@ const headers = await ctx.sessionPersistence.list()        // every stored sessi
 - **连续 `seq`。** 日志中间的缺口会被拒绝；`append` 的第一个 `seq` 必须等于已存储 next-seq。
 - **无损 JSON 数据。** 批次经过共享单遍无损 JSON 边界；无法序列化的载荷在 append 处被拒绝。
 - **持久性。** `append` 只在批次持久后返回。
+- **冷态删除。** `delete` 排在该标识此前工作之后执行，拒绝活动 owner，移除完整的已存日志，并仅在存储确认不存在后发布一次删除事件。
 
 ### 源码地图
 
 | 文件 | 职责 |
 |---|---|
 | [`src/index.ts`](src/index.ts) | 插件入口：抽象 `SessionPersistence` 服务与重新导出的元数据类型 |
-| [`src/coordinator.ts`](src/coordinator.ts) | 共享写入编排：批处理、串行化、修复、接管、dispose、格式拒绝 |
+| [`src/coordinator.ts`](src/coordinator.ts) | 共享写入编排：批处理、串行化、修复、接管、删除、dispose、格式拒绝 |
 | [`src/write-behind.ts`](src/write-behind.ts) | 每会话有界写入控制器与 flush 屏障 |
 | [`src/preparations.ts`](src/preparations.ts) | 为恢复复用而有界保留的未发布 Session 准备结果 |
 | [`src/revision.ts`](src/revision.ts) | 带品牌类型的不透明修订值 token |

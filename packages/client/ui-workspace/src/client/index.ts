@@ -61,6 +61,7 @@ const NS = 'workspace'
  */
 export const inject = [
   'slots', 'sessions', 'workspaces', 'locale', 'connection', 'remote', 'remote.directoryPicker',
+  'remote.agentPresets',
 ]
 
 /**
@@ -75,7 +76,7 @@ export function apply(ctx: Context): void {
   const workspaces = ctx.get('workspaces') as IWorkspaces
   const connectionGeneration = connection.generation
   const uiWorkspace = new UiWorkspaceService(
-    ctx, ctx.remote.directoryPicker, workspaces, sessions)
+    ctx, ctx.remote.directoryPicker, ctx.remote.agentPresets, workspaces, sessions)
   ctx.slots.provideRoot({ hooks: { workspaces: workspaces.list } })
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-workspace: dictionaries')
 
@@ -121,6 +122,13 @@ export function apply(ctx: Context): void {
       await workspaces.insertBefore(workspaceId, beforeWorkspaceId)
     },
     archiveSession: async (sessionId) => { await uiWorkspace.archiveSession(sessionId) },
+    attachSessionToWorkspace: async (sessionId) => {
+      const summary = sessions.list.getSnapshot().byId[sessionId]
+      if (summary?.cwd === undefined) throw new Error(`session "${sessionId}" has no working directory`)
+      const workspace = await workspaces.create({ path: summary.cwd })
+      await workspaces.attachSession(workspace.workspaceId, sessionId)
+    },
+    deleteSession: async (sessionId) => { await sessions.delete(sessionId) },
     insertSessionBefore: async (workspaceId, sessionId, beforeSessionId) => {
       await workspaces.insertSessionBefore(workspaceId, sessionId, beforeSessionId)
     },

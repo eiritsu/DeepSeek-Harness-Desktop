@@ -29,6 +29,8 @@ import type {
   SessionControlFrame,
   SessionCreateRequest,
   SessionCreateValue,
+  SessionDeleteRequest,
+  SessionDeleteValue,
   SessionFollowFrame,
   SessionFollowRequest,
   SessionForkRequest,
@@ -88,6 +90,7 @@ export class SessionController extends TypertRemoteService {
     'llm',
     'sessions',
     'sessionProjections',
+    'sessionPersistence',
     'sessionQuery',
     'typert',
     'workspaceRegistry',
@@ -314,6 +317,16 @@ export class SessionController extends TypertRemoteService {
   @Remote('fork')
   fork(request: SessionForkRequest): Promise<SessionForkValue> {
     return this.commands.fork(request)
+  }
+
+  /**
+   * Permanently delete one Session and its requested descendant closure.
+   * @param request - Session identity and recursive-deletion choice.
+   * @returns the deleted Session identities in disposal order.
+   */
+  @Remote('delete')
+  delete(request: SessionDeleteRequest): Promise<SessionDeleteValue> {
+    return this.commands.delete(request)
   }
 
   /**

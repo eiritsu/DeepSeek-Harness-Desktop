@@ -71,6 +71,8 @@ export class DirectoryBrowseError extends Error {
 /** Implements Workspace archive and directory UI operations. */
 class UiWorkspaceService extends Service implements UiWorkspace {
   private readonly connecting = new Map<WorkspaceId, Promise<SessionId>>()
+  /** Defaults used for locally created blank rows before their Host projection frame arrives. */
+  private readonly createdBlankPresets = new Map<SessionId, string>()
 
   /**
    * @param ctx - Client root Context.
@@ -81,6 +83,7 @@ class UiWorkspaceService extends Service implements UiWorkspace {
   constructor(
     ctx: Context,
     private readonly directoryPicker: ClientRemote['directoryPicker'],
+    private readonly agentPresets: ClientRemote['agentPresets'],
     private readonly workspaces: IWorkspaces,
     private readonly sessions: ISessions,
   ) {
@@ -97,17 +100,30 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     const inflight = this.connecting.get(workspaceId)
     if (inflight !== undefined) return inflight
 
-    const archived = this.workspaces.list.getSnapshot().archivedSessionIds
-    const sessions = this.sessions.list.getSnapshot()
-    for (const id of sessions.ids) {
-      const summary = sessions.byId[id]
-      if (summary !== undefined && summary.blank && summary.cwd === workspace.path
-        && workspace.sessionIds.includes(summary.id)
-        && !archived.includes(summary.id)) return summary.id
-    }
-
-    const attempt = this.sessions.create({ workspaceId })
-      .finally(() => { this.connecting.delete(workspaceId) })
+    const attempt = (async () => {
+      const defaultPreset = await this.defaultAgentPreset()
+      const archived = this.workspaces.list.getSnapshot().archivedSessionIds
+      const sessions = this.sessions.list.getSnapshot()
+      const visibleIds = new Set(sessions.ids)
+      for (const id of this.createdBlankPresets.keys()) {
+        if (!visibleIds.has(id)) this.createdBlankPresets.delete(id)
+      }
+      for (const id of sessions.ids) {
+        const summary = sessions.byId[id]
+        if (summary?.projectionValues?.agentPreset !== undefined || summary?.blank === false) {
+          this.createdBlankPresets.delete(id)
+        }
+        if (summary !== undefined && summary.blank && summary.cwd === workspace.path
+          && workspace.sessionIds.includes(summary.id)
+          && !archived.includes(summary.id)
+          && defaultPreset !== undefined
+          && (summary.projectionValues?.agentPreset ?? this.createdBlankPresets.get(summary.id))
+            === defaultPreset) return summary.id
+      }
+      const created = await this.sessions.create({ workspaceId })
+      if (defaultPreset !== undefined) this.createdBlankPresets.set(created, defaultPreset)
+      return created
+    })().finally(() => { this.connecting.delete(workspaceId) })
     this.connecting.set(workspaceId, attempt)
     return attempt
   }
@@ -153,6 +169,17 @@ class UiWorkspaceService extends Service implements UiWorkspace {
     const result = await this.directoryPicker.createDirectory(path, name)
     if (!result.ok) throw new DirectoryBrowseError(result.error)
     return result.value
+  }
+
+  /** Read the Host default that a new Session create will resolve. */
+  private async defaultAgentPreset(): Promise<string | undefined> {
+    try {
+      const result = await this.agentPresets.list()
+      if (!result.ok) return undefined
+      return result.value.presets.find(preset => preset.isDefault)?.id
+    } catch {
+      return undefined
+    }
   }
 
   private watchNavigation(): () => void {

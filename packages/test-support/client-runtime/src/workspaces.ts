@@ -126,6 +126,14 @@ export class TestWorkspaces implements IWorkspaces {
     return { workspaceId, title: '', path: '', sessionIds: [sessionId] } as unknown as WorkspaceView
   }
 
+  /** Attach an accounted Session (recorded). The default echoes a minimal view. */
+  async attachSession(workspaceId: WorkspaceId, sessionId: SessionId): Promise<WorkspaceView> {
+    this.calls.push({ method: 'attachSession', args: [workspaceId, sessionId] })
+    const stub = this.stubs.get('attachSession')
+    if (stub !== undefined) return await (stub(workspaceId, sessionId) as Promise<WorkspaceView>)
+    return { workspaceId, title: '', path: '', sessionIds: [sessionId] } as unknown as WorkspaceView
+  }
+
   /**
    * Archive a session (recorded). The default mirrors the production face's
    * observable effect: the id joins the list state's archive set.

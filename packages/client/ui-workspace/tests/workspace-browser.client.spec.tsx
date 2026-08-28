@@ -81,6 +81,8 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     renameWorkspace: vi.fn(async () => {}),
     deleteWorkspace: vi.fn(async () => {}),
     archiveSession: vi.fn(async () => {}),
+    attachSessionToWorkspace: vi.fn(async () => {}),
+    deleteSession: vi.fn(async () => {}),
     insertWorkspaceBefore: vi.fn(async () => {}),
     insertSessionBefore: vi.fn(async () => {}),
     createWorkspace: vi.fn(async () => workspace('created', [])),
@@ -420,7 +422,7 @@ describe('WorkspaceBrowser', () => {
     })
     fireEvent.click(screen.getByText('alpha'))
     fireEvent.click(screen.getByRole('button', { name: '会话“gone-s”的操作' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: '归档会话' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '归档' }))
     expect(archiveSession).toHaveBeenCalledWith(sid('gone-s'))
 
     // The archive-set echo hides the row in grouped and flat modes.
@@ -444,7 +446,7 @@ describe('WorkspaceBrowser', () => {
       })
       fireEvent.click(screen.getByText('alpha'))
       fireEvent.click(screen.getByRole('button', { name: '会话“alpha-s”的操作' }))
-      fireEvent.click(screen.getByRole('menuitem', { name: '归档会话' }))
+      fireEvent.click(screen.getByRole('menuitem', { name: '归档' }))
       await Promise.resolve()
       await Promise.resolve()
       expect(warn).toHaveBeenCalledWith('session archive rejected:', rejection)
@@ -452,6 +454,30 @@ describe('WorkspaceBrowser', () => {
     } finally {
       warn.mockRestore()
     }
+  })
+
+  it('attaches from the five-item menu and confirms permanent deletion', async () => {
+    const attachSessionToWorkspace = vi.fn(async () => {})
+    const deleteSession = vi.fn(async () => {})
+    mount({
+      useSessions: hook(sessionState([summary('alpha-s', 1)])),
+      useWorkspaces: hook(workspaceState([workspace('alpha', ['alpha-s'])])),
+      attachSessionToWorkspace,
+      deleteSession,
+    })
+    fireEvent.click(screen.getByText('alpha'))
+    fireEvent.click(screen.getByRole('button', { name: '会话“alpha-s”的操作' }))
+    expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual([
+      '重命名', '分叉', '归档', '加入工作区', '删除会话',
+    ])
+    fireEvent.click(screen.getByRole('menuitem', { name: '加入工作区' }))
+    expect(attachSessionToWorkspace).toHaveBeenCalledWith(sid('alpha-s'))
+
+    fireEvent.click(screen.getByRole('button', { name: '会话“alpha-s”的操作' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '删除会话' }))
+    expect(screen.getByText('将永久删除“alpha-s”及其分叉会话。此操作无法撤销。')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '删除会话' }))
+    await waitFor(() => { expect(deleteSession).toHaveBeenCalledWith(sid('alpha-s')) })
   })
 
   it('renders a fork child as a top-level row without a session twist', () => {

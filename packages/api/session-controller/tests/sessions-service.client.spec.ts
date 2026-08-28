@@ -733,6 +733,21 @@ describe('fork', () => {
   })
 })
 
+describe('delete', () => {
+  it('requests recursive deletion, removes every returned row, and clears selection', async () => {
+    const b = bench()
+    await feedList(b, [{ id: 'root' }, { id: 'child', parentId: 'root' }])
+    b.svc.open(sid('root'))
+    b.api.onDelete = () => Promise.resolve(ok({
+      deletedSessionIds: [sid('child'), sid('root')],
+    }))
+
+    await expect(b.svc.delete(sid('root'))).resolves.toEqual([sid('child'), sid('root')])
+    expect(b.api.callsOf('session.delete')).toEqual([{ sessionId: 'root', recursive: true }])
+    expect(b.svc.list.getSnapshot()).toMatchObject({ ids: [], current: undefined })
+  })
+})
+
 describe('scope lifecycle rides the list mirror (entity parity: no client-side pre-birth)', () => {
   it('a session-added frame births the row (blank) and makes the scope resolvable; removal prunes it', async () => {
     const b = bench()

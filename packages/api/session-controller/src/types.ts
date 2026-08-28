@@ -201,6 +201,8 @@ export interface SessionErrorDetailsMap {
   'steer-unavailable': { readonly itemId: MessageId }
   'title-invalid': { readonly sessionId: SessionId }
   'fork-unavailable': { readonly sessionId: SessionId }
+  'session-running': { readonly sessionId: SessionId }
+  'session-has-children': { readonly sessionId: SessionId; readonly childSessionIds: readonly SessionId[] }
   'subagent-not-found': {
     readonly parentSessionId: SessionId
     readonly childSessionId: SessionId
@@ -311,6 +313,17 @@ export interface SessionForkRequest {
 /** Identity of a newly forked Session. */
 export interface SessionForkValue {
   readonly sessionId: SessionId
+}
+
+/** Permanent Session deletion request. */
+export interface SessionDeleteRequest {
+  readonly sessionId: SessionId
+  readonly recursive?: boolean
+}
+
+/** Session identities removed in child-before-parent order. */
+export interface SessionDeleteValue {
+  readonly deletedSessionIds: readonly SessionId[]
 }
 
 /** Session prompt request. */
