@@ -4,6 +4,38 @@ import type { AttachmentId, ImageVariantId } from './brand.ts'
 
 export type { AttachmentId } from './brand.ts'
 
+/** Fallback media type when a transport cannot identify a generic file format. */
+export const UNKNOWN_FILE_MEDIA_TYPE = 'application/octet-stream'
+
+/** Transient generic file bytes offered to an effect-scoped recognition provider. */
+export interface FileRecognitionInput {
+  /** Complete file bytes; recognizers must enforce their own configured limits. */
+  data: Uint8Array
+  /** Transport-declared media type, normalized to a non-empty value by the caller. */
+  mediaType: string
+  /** Optional display name; it is never interpreted as a path. */
+  name?: string
+}
+
+/** Bounded semantic text extracted from one transient file. */
+export interface FileRecognitionResult {
+  /** Plain text suitable for a durable model-visible message. */
+  text: string
+}
+
+/** Effect-scoped recognizer contributed by a trusted attachment plugin. */
+export interface FileRecognizer {
+  /** Stable registration identity. */
+  id: string
+  /** Whether this recognizer owns the offered format. */
+  supports(input: FileRecognitionInput): boolean
+  /** Extract bounded semantic text without retaining the source bytes. */
+  recognize(
+    input: FileRecognitionInput,
+    signal?: AbortSignal,
+  ): Promise<FileRecognitionResult | undefined>
+}
+
 /** Raster image formats accepted by the version-one attachment path. */
 export type ImageMediaType = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'
 

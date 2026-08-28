@@ -44,6 +44,17 @@ pnpm dsh web
 
 `pnpm run build` 会准备仓库产物。`pnpm dsh web` 会直接使用这些已构建产物，不会重新构建。
 
+### 运行 macOS 桌面壳
+
+在 macOS 13 或更新版本、Swift 6 与 librsvg 已安装的环境中，可以在仓库构建后生成原生 WKWebView 桌面壳：
+
+```sh
+desktop-shell/scripts/build-app.sh
+open "desktop-shell/dist/DeepSeek Harness.app"
+```
+
+桌面壳使用相同 Web profile 与数据模型，增加原生生命周期和经过审查的插件安装，并在本地与远端历史分叉时拒绝自动源码更新，以保留本地桌面 commit。详见[桌面指南](desktop-shell/README.zh.md)。
+
 ## 社区与支持
 
 - 通过 [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions) 提交反馈或 bug 报告。

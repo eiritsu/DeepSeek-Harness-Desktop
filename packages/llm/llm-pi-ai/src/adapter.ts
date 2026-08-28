@@ -48,10 +48,12 @@ import {
 import type {
   GenerateOptions,
   ImageAttachmentAccess,
+  LlmModelCapacity,
   LlmModelInfo,
   LlmProviderInfo,
   LlmResolvedModelInfo,
   PreparedAdapterCall,
+  ModelModality,
   ReasoningEffortId as ReasoningEffortIdType,
   ResolvedRetryPolicy,
   StreamChunk,
@@ -70,6 +72,11 @@ interface PiAiSnapshot {
   models: Models
 }
 
+interface ResolvedPiAiModel {
+  readonly model: Model<Api>
+  readonly inputModalities: readonly ModelModality[]
+}
+
 /** Constructor options for {@link PiAiAdapter}: the two resolution hooks the plugin owns. */
 export interface PiAiAdapterOptions {
   /** Current validated profiles by provider route; called once per operation. */
@@ -83,6 +90,22 @@ export interface PiAiAdapterOptions {
    * `MISSING_CREDENTIAL` rather than falling back.
    */
   resolveApiKey: (provider: string, profile: ResolvedPiAiProviderProfile) => Promise<string | undefined>
+  /** Resolve catalog modalities for models whose profile does not pin them. */
+  resolveInputModalities?: (
+    provider: string,
+    model: string,
+    signal?: AbortSignal,
+    ownedBy?: string,
+    baseURL?: string,
+  ) => Promise<readonly ModelModality[] | undefined>
+  /** Resolve current catalog capacities for one exact model route. */
+  resolveModelCapacity?: (
+    provider: string,
+    model: string,
+    signal?: AbortSignal,
+    ownedBy?: string,
+    baseURL?: string,
+  ) => Promise<LlmModelCapacity | undefined>
   /**
    * How every collection this adapter builds resolves auth the request-level
    * `apiKey` override does not cover. Required rather than optional: a
@@ -257,6 +280,37 @@ export class PiAiAdapter extends LlmAdapter {
     return resolved
   }
 
+  /** Resolve external catalog facts while preserving explicit profile modalities. */
+  private async modelForCall(
+    snapshot: PiAiSnapshot,
+    provider: string,
+    model: string,
+    signal?: AbortSignal,
+  ): Promise<ResolvedPiAiModel> {
+    const profile = this.profileOf(snapshot, provider)
+    const resolved = this.modelOf(snapshot, provider, model)
+    const fallback = profile.inputModalities.get(model) ?? resolved.input
+    const ownedBy = profile.modelOwners.get(model)
+    const [externalInput, externalCapacity] = await Promise.all([
+      profile.externallyResolvableInputModels.has(model)
+        ? this.config.resolveInputModalities?.(provider, model, signal, ownedBy, resolved.baseUrl)
+        : undefined,
+      this.config.resolveModelCapacity?.(provider, model, signal, ownedBy, resolved.baseUrl),
+    ])
+    const inputModalities = (externalInput ?? fallback)
+      .filter((modality): modality is Model<Api>['input'][number] => modality === 'text' || modality === 'image')
+    const inputUnchanged = inputModalities.length === resolved.input.length
+      && inputModalities.every((modality, index) => modality === resolved.input[index])
+    const contextWindow = externalCapacity?.contextWindow ?? resolved.contextWindow
+    const maxTokens = externalCapacity?.maxOutputTokens ?? resolved.maxTokens
+    return {
+      model: inputUnchanged && contextWindow === resolved.contextWindow && maxTokens === resolved.maxTokens
+        ? resolved
+        : { ...resolved, input: inputModalities, contextWindow, maxTokens },
+      inputModalities,
+    }
+  }
+
   override providerInfo(provider: string): LlmProviderInfo {
     // The configured name, not the route key: `displayName` exists so a
     // deployment can label a route, and a label only the configuration surface
@@ -268,54 +322,59 @@ export class PiAiAdapter extends LlmAdapter {
     return this.current().profiles.get(provider)?.retryPolicy
   }
 
-  override listModels(provider: string): Promise<readonly LlmModelInfo[]> {
-    return Promise.resolve().then(() => {
-      const snapshot = this.current()
-      this.profileOf(snapshot, provider)
-      return snapshot.models.getModels(provider).map(model => ({
+  override async listModels(provider: string): Promise<readonly LlmModelInfo[]> {
+    const snapshot = this.current()
+    this.profileOf(snapshot, provider)
+    return Promise.all(snapshot.models.getModels(provider).map(async ({ id }) => {
+      const resolved = await this.modelForCall(snapshot, provider, id)
+      return {
         provider,
-        id: model.id,
-        name: model.name,
-        inputModalities: [...model.input],
-      }))
-    })
+        id: resolved.model.id,
+        name: resolved.model.name,
+        inputModalities: [...resolved.inputModalities],
+      }
+    }))
   }
 
-  override resolveModel(
+  override async resolveModel(
     provider: string,
     model: string,
-    _signal?: AbortSignal,
+    signal?: AbortSignal,
   ): Promise<LlmResolvedModelInfo> {
-    return Promise.resolve().then(() => {
-      const snapshot = this.current()
-      return this.modelInfo(snapshot, provider, model)
-    })
+    const snapshot = this.current()
+    const resolved = await this.modelForCall(snapshot, provider, model, signal)
+    return this.modelInfo(snapshot, provider, resolved)
   }
 
-  private modelInfo(snapshot: PiAiSnapshot, provider: string, model: string): LlmResolvedModelInfo {
+  private modelInfo(
+    snapshot: PiAiSnapshot,
+    provider: string,
+    resolved: ResolvedPiAiModel,
+  ): LlmResolvedModelInfo {
     const profile = this.profileOf(snapshot, provider)
-    const resolvedModel = this.modelOf(snapshot, provider, model)
+    const resolvedModel = resolved.model
     const defaultLevel = describableReasoningLevel(resolvedModel, profile.reasoning)
     // Only a cap the deployment configured is a request default; the
     // catalog's `maxTokens` sizes the model and stops there.
-    const configuredMaxTokens = profile.configuredMaxTokens.get(model)
+    const configuredMaxTokens = profile.configuredMaxTokens.get(resolvedModel.id)
     return {
       provider,
-      id: model,
+      id: resolvedModel.id,
       name: resolvedModel.name,
-      inputModalities: [...resolvedModel.input],
+      inputModalities: [...resolved.inputModalities],
       context: { contextWindow: resolvedModel.contextWindow },
       ...configuredMaxTokens === undefined ? {} : { defaultMaxTokens: configuredMaxTokens },
       ...reasoningInfo(resolvedModel, defaultLevel),
     }
   }
 
-  override prepareCall(provider: string, model: string, _signal?: AbortSignal): Promise<PreparedAdapterCall> {
+  override async prepareCall(provider: string, model: string, signal?: AbortSignal): Promise<PreparedAdapterCall> {
     const snapshot = this.current()
-    return Promise.resolve({
-      model: this.modelInfo(snapshot, provider, model),
-      stream: options => this.streamWithSnapshot(options, snapshot),
-    })
+    const resolved = await this.modelForCall(snapshot, provider, model, signal)
+    return {
+      model: this.modelInfo(snapshot, provider, resolved),
+      stream: options => this.streamWithSnapshot(options, snapshot, resolved),
+    }
   }
 
   stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
@@ -325,6 +384,7 @@ export class PiAiAdapter extends LlmAdapter {
   private async * streamWithSnapshot(
     options: GenerateOptions,
     snapshot: PiAiSnapshot,
+    preparedModel?: ResolvedPiAiModel,
   ): AsyncIterable<StreamChunk> {
     if (options.stop !== undefined) {
       throw new LlmError('llm-pi-ai does not support GenerateOptions.stop', 'UNSUPPORTED_OPTION')
@@ -335,7 +395,13 @@ export class PiAiAdapter extends LlmAdapter {
     // mid-request builds a separate snapshot, so this request finishes under
     // the one it started with and the next call picks up the new one.
     const profile = this.profileOf(snapshot, options.provider)
-    const model = this.modelOf(snapshot, options.provider, options.model)
+    const resolved = preparedModel ?? await this.modelForCall(
+      snapshot,
+      options.provider,
+      options.model,
+      options.signal,
+    )
+    const model = resolved.model
     const reasoning = resolveReasoningLevel(
       model,
       options.reasoningEffort ?? profile.reasoning,
@@ -351,7 +417,7 @@ export class PiAiAdapter extends LlmAdapter {
 
     try {
       const containsImage = options.messages.some(message => contentHasImage(message.content))
-      if (containsImage && !model.input.includes('image')) {
+      if (containsImage && !resolved.inputModalities.includes('image')) {
         throw new LlmError(`pi-ai model "${model.id}" does not support image input`, 'UNSUPPORTED_CONTENT')
       }
       const attachments = containsImage ? this.config.resolveAttachments?.() : undefined

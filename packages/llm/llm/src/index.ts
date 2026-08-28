@@ -14,9 +14,15 @@ import type {
   LlmDiscoveredModel,
   LlmFailure,
   LlmImageRequestPricing,
+  LegacyModelModality,
+  LlmModelCapacity,
+  LlmModelCapacityResolver,
+  LlmModelDiscoveryEnricher,
   LlmModelContext,
   LlmModelDiscoveryRequest,
+  LlmModelInputResolver,
   LlmModelInfo,
+  LlmModelMetadataEnricher,
   LlmResolvedModelInfo,
   LlmProviderInfo,
   ModelModality,
@@ -326,6 +332,10 @@ export interface DirectoryRegistrationHandle {
 export class LlmRuntime extends TypertRemoteService {
   private adapters = new Map<string, AdapterRegistration>()
   private directory = new Map<string, LlmConfigurableProvider>()
+  private modelMetadataEnrichers = new Map<string, LlmModelMetadataEnricher>()
+  private discoveryEnrichers = new Map<symbol, LlmModelDiscoveryEnricher>()
+  private modelInputResolvers = new Map<symbol, LlmModelInputResolver>()
+  private modelCapacityResolvers = new Map<symbol, LlmModelCapacityResolver>()
   private discoveries = new Map<
     string,
     (request: LlmModelDiscoveryRequest, signal?: AbortSignal) => Promise<readonly LlmDiscoveredModel[]>
@@ -333,6 +343,25 @@ export class LlmRuntime extends TypertRemoteService {
 
   constructor(ctx: Context) {
     super(ctx, 'llm')
+  }
+
+  /**
+   * Register one exact-route metadata enricher after adapter-owned resolution.
+   * Enrichers fill only fields the adapter or an earlier enricher left absent.
+   * @param id - stable registration identity.
+   * @param enrich - asynchronous exact-route metadata lookup.
+   * @returns disposer withdrawing this exact enricher.
+   */
+  registerModelMetadataEnricher(id: string, enrich: LlmModelMetadataEnricher): () => void {
+    const dispose = this.ctx.effect(function* (this: LlmRuntime) {
+      if (id.length === 0) throw new LlmError('model metadata enricher id must be non-empty', 'INVALID_CATALOG')
+      if (this.modelMetadataEnrichers.has(id)) {
+        throw new LlmError(`model metadata enricher "${id}" is already registered`, 'DUPLICATE_CATALOG')
+      }
+      this.modelMetadataEnrichers.set(id, enrich)
+      yield () => { this.modelMetadataEnrichers.delete(id) }
+    }.bind(this), 'llm.registerModelMetadataEnricher()')
+    return () => void dispose()
   }
 
   /** Notify topology observers without letting one broken listener veto the commit. */
@@ -568,6 +597,138 @@ export class LlmRuntime extends TypertRemoteService {
   }
 
   /**
+   * Register an ordered compatibility enricher for provider discovery results.
+   * Existing candidate fields remain authoritative and patches for unknown ids
+   * are ignored.
+   * @param enrich - candidate metadata lookup retained for previous-version plugins.
+   * @returns disposer withdrawing this registration.
+   */
+  registerModelDiscoveryEnricher(enrich: LlmModelDiscoveryEnricher): () => void {
+    const registration = Symbol('llm.model-discovery-enricher')
+    const dispose = this.ctx.effect(function* (this: LlmRuntime) {
+      this.discoveryEnrichers.set(registration, enrich)
+      yield () => { this.discoveryEnrichers.delete(registration) }
+    }.bind(this), 'llm.registerModelDiscoveryEnricher()')
+    return () => void dispose()
+  }
+
+  /**
+   * Register an ordered compatibility resolver for exact model modalities.
+   * @param resolve - exact route/model lookup retained for previous-version plugins.
+   * @returns disposer withdrawing this registration.
+   */
+  registerModelInputResolver(resolve: LlmModelInputResolver): () => void {
+    const registration = Symbol('llm.model-input-resolver')
+    const dispose = this.ctx.effect(function* (this: LlmRuntime) {
+      this.modelInputResolvers.set(registration, resolve)
+      yield () => { this.modelInputResolvers.delete(registration) }
+    }.bind(this), 'llm.registerModelInputResolver()')
+    return () => void dispose()
+  }
+
+  /**
+   * Resolve exact modalities through previous-version catalog registrations.
+   * @param provider - configured provider route.
+   * @param model - exact model id.
+   * @param signal - operation-local cancellation.
+   * @param ownedBy - upstream owner supplied by discovery.
+   * @param baseURL - exact configured endpoint when available.
+   * @returns the first resolver answer, or `undefined`.
+   */
+  async resolveModelInput(
+    provider: string,
+    model: string,
+    signal?: AbortSignal,
+    ownedBy?: string,
+    baseURL?: string,
+  ): Promise<readonly LegacyModelModality[] | undefined> {
+    signal?.throwIfAborted()
+    for (const resolve of this.modelInputResolvers.values()) {
+      const modalities = await resolve({
+        provider,
+        model,
+        ...ownedBy === undefined ? {} : { ownedBy },
+        ...baseURL === undefined ? {} : { baseURL },
+        ...signal === undefined ? {} : { signal },
+      })
+      if (modalities !== undefined) return [...modalities]
+      signal?.throwIfAborted()
+    }
+    return undefined
+  }
+
+  /**
+   * Register an ordered compatibility resolver for exact model capacities.
+   * @param resolve - exact route/model lookup retained for previous-version plugins.
+   * @returns disposer withdrawing this registration.
+   */
+  registerModelCapacityResolver(resolve: LlmModelCapacityResolver): () => void {
+    const registration = Symbol('llm.model-capacity-resolver')
+    const dispose = this.ctx.effect(function* (this: LlmRuntime) {
+      this.modelCapacityResolvers.set(registration, resolve)
+      yield () => { this.modelCapacityResolvers.delete(registration) }
+    }.bind(this), 'llm.registerModelCapacityResolver()')
+    return () => void dispose()
+  }
+
+  /**
+   * Resolve exact capacities through previous-version catalog registrations.
+   * @param provider - configured provider route.
+   * @param model - exact model id.
+   * @param signal - operation-local cancellation.
+   * @param ownedBy - upstream owner supplied by discovery.
+   * @param baseURL - exact configured endpoint when available.
+   * @returns the first non-empty validated capacity, or `undefined`.
+   */
+  async resolveModelCapacity(
+    provider: string,
+    model: string,
+    signal?: AbortSignal,
+    ownedBy?: string,
+    baseURL?: string,
+  ): Promise<LlmModelCapacity | undefined> {
+    signal?.throwIfAborted()
+    for (const resolve of this.modelCapacityResolvers.values()) {
+      const capacity = await resolve({
+        provider,
+        model,
+        ...ownedBy === undefined ? {} : { ownedBy },
+        ...baseURL === undefined ? {} : { baseURL },
+        ...signal === undefined ? {} : { signal },
+      })
+      if (capacity !== undefined) {
+        const { contextWindow, maxOutputTokens } = capacity
+        if (contextWindow !== undefined && (!Number.isSafeInteger(contextWindow) || contextWindow <= 0)) {
+          throw new LlmError('model capacity contextWindow must be a positive safe integer', 'INVALID_MODEL_CAPACITY')
+        }
+        if (maxOutputTokens !== undefined && (!Number.isSafeInteger(maxOutputTokens) || maxOutputTokens <= 0)) {
+          throw new LlmError('model capacity maxOutputTokens must be a positive safe integer', 'INVALID_MODEL_CAPACITY')
+        }
+        if (contextWindow !== undefined || maxOutputTokens !== undefined) {
+          return {
+            ...contextWindow === undefined ? {} : { contextWindow },
+            ...maxOutputTokens === undefined ? {} : { maxOutputTokens },
+          }
+        }
+      }
+      signal?.throwIfAborted()
+    }
+    return undefined
+  }
+
+  /** Detach discovery metadata before it crosses plugin registrations. */
+  private detachedDiscoveredModel(model: LlmDiscoveredModel): LlmDiscoveredModel {
+    return {
+      id: model.id,
+      ...model.ownedBy === undefined ? {} : { ownedBy: model.ownedBy },
+      ...model.name === undefined ? {} : { name: model.name },
+      ...model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow },
+      ...model.maxTokens === undefined ? {} : { maxTokens: model.maxTokens },
+      ...model.inputModalities === undefined ? {} : { inputModalities: [...model.inputModalities] },
+    }
+  }
+
+  /**
    * Interrogate one provider endpoint for the models it advertises. The
    * request describes a draft, not a stored route, so nothing here reads or
    * writes settings or credentials — the caller owns both, and the reply is
@@ -595,15 +756,39 @@ export class LlmRuntime extends TypertRemoteService {
       ? await discover(request)
       : await discover(request, signal)
     const seen = new Set<string>()
-    const models: LlmDiscoveredModel[] = []
+    let models: LlmDiscoveredModel[] = []
     for (const model of discovered) {
       if (typeof model.id !== 'string' || model.id.length === 0 || seen.has(model.id)) continue
       seen.add(model.id)
-      models.push({
-        id: model.id,
-        ...model.name === undefined ? {} : { name: model.name },
-        ...model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow },
-        ...model.maxTokens === undefined ? {} : { maxTokens: model.maxTokens },
+      models.push(this.detachedDiscoveredModel(model))
+    }
+    for (const enrich of this.discoveryEnrichers.values()) {
+      signal?.throwIfAborted()
+      const patches = await enrich({
+        settingsNs,
+        request: { ...request, ...signal === undefined ? {} : { signal } },
+        models: models.map(model => this.detachedDiscoveredModel(model)),
+      })
+      const byId = new Map<string, LlmDiscoveredModel>()
+      for (const patch of patches) {
+        if (seen.has(patch.id) && !byId.has(patch.id)) byId.set(patch.id, patch)
+      }
+      models = models.map((model) => {
+        const patch = byId.get(model.id)
+        if (patch === undefined) return model
+        const ownedBy = model.ownedBy ?? patch.ownedBy
+        const name = model.name ?? patch.name
+        const contextWindow = model.contextWindow ?? patch.contextWindow
+        const maxTokens = model.maxTokens ?? patch.maxTokens
+        const inputModalities = model.inputModalities ?? patch.inputModalities
+        return this.detachedDiscoveredModel({
+          id: model.id,
+          ...ownedBy === undefined ? {} : { ownedBy },
+          ...name === undefined ? {} : { name },
+          ...contextWindow === undefined ? {} : { contextWindow },
+          ...maxTokens === undefined ? {} : { maxTokens },
+          ...inputModalities === undefined ? {} : { inputModalities },
+        })
       })
     }
     return models
@@ -722,7 +907,27 @@ export class LlmRuntime extends TypertRemoteService {
     signal?: AbortSignal,
   ): Promise<LlmResolvedModelInfo> {
     const resolved = await registration.adapter.resolveModel(registration.provider.id, model, signal)
-    return this.normalizeModelInfo(registration, model, resolved)
+    let info = this.normalizeModelInfo(registration, model, resolved)
+    for (const enrich of this.modelMetadataEnrichers.values()) {
+      signal?.throwIfAborted()
+      const patch = await enrich({
+        provider: registration.provider.id,
+        model,
+        metadata: info,
+        ...signal === undefined ? {} : { signal },
+      })
+      if (patch === undefined) continue
+      info = this.normalizeModelInfo(registration, model, {
+        ...info,
+        ...info.inputModalities === undefined && patch.inputModalities !== undefined
+          ? { inputModalities: patch.inputModalities } : {},
+        ...info.context === undefined && patch.contextWindow !== undefined
+          ? { context: { contextWindow: patch.contextWindow } } : {},
+        ...info.defaultMaxTokens === undefined && patch.maxTokens !== undefined
+          ? { defaultMaxTokens: patch.maxTokens } : {},
+      })
+    }
+    return info
   }
 
   /** Validate and detach one adapter-returned exact model result. */

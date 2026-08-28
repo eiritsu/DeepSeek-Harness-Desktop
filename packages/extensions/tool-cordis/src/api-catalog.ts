@@ -465,6 +465,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [],
       },
       {
+        signature: 'registerFileRecognizer(recognizer: FileRecognizer): () => void',
+        description: 'Register one trusted transient-file recognizer in precedence order.',
+        parameters: [{ name: 'recognizer', description: 'effect-scoped format recognizer.' }],
+        returns: 'disposer removing this exact recognizer.',
+      },
+      {
+        signature: 'recognizeFile( input: FileRecognitionInput, signal?: AbortSignal, ): Promise<FileRecognitionResult | undefined>',
+        description: 'Ask the first supporting recognizer for semantic text without persisting generic file bytes.',
+        parameters: [{ name: 'input', description: 'complete transient file bytes and transport metadata.' }, { name: 'signal', description: 'optional cancellation for recognition work.' }],
+        returns: 'bounded recognized text, or undefined when no recognizer supports or accepts the file.',
+      },
+      {
         signature: 'abstract validateImage(input: SaveImageAttachment): Promise<void>',
         description: 'Validate one image without persisting it. Batch callers validate every member before saving any member.',
         parameters: [{ name: 'input', description: 'encoded bytes, declared media type, and optional display name.' }],
@@ -1094,6 +1106,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'The abstract `llm` service: an adapter registry plus a streaming model-call API, interceptable via the `llm/stream` waterfall.',
     methods: [
       {
+        signature: 'registerModelMetadataEnricher(id: string, enrich: LlmModelMetadataEnricher): () => void',
+        description: 'Register one exact-route metadata enricher after adapter-owned resolution. Enrichers fill only fields the adapter or an earlier enricher left absent.',
+        parameters: [{ name: 'id', description: 'stable registration identity.' }, { name: 'enrich', description: 'asynchronous exact-route metadata lookup.' }],
+        returns: 'disposer withdrawing this exact enricher.',
+      },
+      {
         signature: 'registerAdapter(providers: string[], adapter: LlmAdapter): AdapterRegistrationHandle',
         description: 'Register an adapter for the given provider routes. Throws `LlmError` with code `DUPLICATE_ADAPTER` if any provider already has an adapter (all-or-nothing). Disposed with the fiber.',
         parameters: [{ name: 'providers', description: 'every provider route this adapter should serve.' }, { name: 'adapter', description: 'the adapter that streams calls for those providers.' }],
@@ -1122,6 +1140,36 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Offer to interrogate provider endpoints on behalf of the settings namespace this plugin owns. The namespace is the key because that is what a configuration surface already holds from the configurable-provider directory, and because a provider being *added* has no route to name yet. Disposed with the fiber.',
         parameters: [{ name: 'settingsNs', description: 'the namespace whose profiles this discovery serves.' }, { name: 'discover', description: 'interrogates one endpoint and must honor the supplied signal.' }],
         returns: 'the disposer that withdraws the offer.',
+      },
+      {
+        signature: 'registerModelDiscoveryEnricher(enrich: LlmModelDiscoveryEnricher): () => void',
+        description: 'Register an ordered compatibility enricher for provider discovery results. Existing candidate fields remain authoritative and patches for unknown ids are ignored.',
+        parameters: [{ name: 'enrich', description: 'candidate metadata lookup retained for previous-version plugins.' }],
+        returns: 'disposer withdrawing this registration.',
+      },
+      {
+        signature: 'registerModelInputResolver(resolve: LlmModelInputResolver): () => void',
+        description: 'Register an ordered compatibility resolver for exact model modalities.',
+        parameters: [{ name: 'resolve', description: 'exact route/model lookup retained for previous-version plugins.' }],
+        returns: 'disposer withdrawing this registration.',
+      },
+      {
+        signature: 'async resolveModelInput( provider: string, model: string, signal?: AbortSignal, ownedBy?: string, baseURL?: string, ): Promise<readonly LegacyModelModality[] | undefined>',
+        description: 'Resolve exact modalities through previous-version catalog registrations.',
+        parameters: [{ name: 'provider', description: 'configured provider route.' }, { name: 'model', description: 'exact model id.' }, { name: 'signal', description: 'operation-local cancellation.' }, { name: 'ownedBy', description: 'upstream owner supplied by discovery.' }, { name: 'baseURL', description: 'exact configured endpoint when available.' }],
+        returns: 'the first resolver answer, or `undefined`.',
+      },
+      {
+        signature: 'registerModelCapacityResolver(resolve: LlmModelCapacityResolver): () => void',
+        description: 'Register an ordered compatibility resolver for exact model capacities.',
+        parameters: [{ name: 'resolve', description: 'exact route/model lookup retained for previous-version plugins.' }],
+        returns: 'disposer withdrawing this registration.',
+      },
+      {
+        signature: 'async resolveModelCapacity( provider: string, model: string, signal?: AbortSignal, ownedBy?: string, baseURL?: string, ): Promise<LlmModelCapacity | undefined>',
+        description: 'Resolve exact capacities through previous-version catalog registrations.',
+        parameters: [{ name: 'provider', description: 'configured provider route.' }, { name: 'model', description: 'exact model id.' }, { name: 'signal', description: 'operation-local cancellation.' }, { name: 'ownedBy', description: 'upstream owner supplied by discovery.' }, { name: 'baseURL', description: 'exact configured endpoint when available.' }],
+        returns: 'the first non-empty validated capacity, or `undefined`.',
       },
       {
         signature: 'async discoverModels( settingsNs: string, request: LlmModelDiscoveryRequest, signal?: AbortSignal, ): Promise<LlmDiscoveredModel[]>',
@@ -3975,6 +4023,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface FileLocation {\n    path: string;\n    line?: number;\n}',
   },
   {
+    name: 'FileRecognitionInput',
+    declaration: 'export interface FileRecognitionInput {\n    data: Uint8Array;\n    mediaType: string;\n    name?: string;\n}',
+  },
+  {
+    name: 'FileRecognitionResult',
+    declaration: 'export interface FileRecognitionResult {\n    text: string;\n}',
+  },
+  {
+    name: 'FileRecognizer',
+    declaration: 'export interface FileRecognizer {\n    id: string;\n    supports(input: FileRecognitionInput): boolean;\n    recognize(input: FileRecognitionInput, signal?: AbortSignal): Promise<FileRecognitionResult | undefined>;\n}',
+  },
+  {
     name: 'FileReferenceCandidate',
     declaration: 'export interface FileReferenceCandidate {\n    path: string;\n    kind: \'file\' | \'directory\';\n}',
   },
@@ -4235,6 +4295,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface KvUnitDescriptor {\n    readonly name: string;\n    readonly version: number;\n    readonly tables: readonly string[];\n    readonly hasGlobal: boolean;\n    readonly layout?: \'single\' | \'per-record\';\n}',
   },
   {
+    name: 'LegacyModelModality',
+    declaration: 'export type LegacyModelModality = ModelModality | \'audio\' | \'video\' | \'pdf\';',
+  },
+  {
     name: 'LlmAdapter',
     declaration: 'export abstract class LlmAdapter {\n    providerInfo(provider: string): LlmProviderInfo;\n    providerRetryPolicy(_provider: string): ResolvedRetryPolicy | undefined;\n    imageRequestPricing(_provider: string, _model: string): LlmImageRequestPricing | undefined;\n    listModels(_provider: string): Promise<readonly LlmModelInfo[]>;\n    resolveModel(provider: string, model: string, _signal?: AbortSignal): Promise<LlmResolvedModelInfo>;\n    async prepareCall(provider: string, model: string, signal?: AbortSignal): Promise<PreparedAdapterCall>;\n    abstract stream(options: GenerateOptions): AsyncIterable<StreamChunk>;\n}',
   },
@@ -4252,7 +4316,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'LlmDiscoveredModel',
-    declaration: 'export interface LlmDiscoveredModel {\n    id: string;\n    name?: string;\n    contextWindow?: number;\n    maxTokens?: number;\n}',
+    declaration: 'export interface LlmDiscoveredModel {\n    id: string;\n    ownedBy?: string;\n    name?: string;\n    contextWindow?: number;\n    maxTokens?: number;\n    inputModalities?: readonly LegacyModelModality[];\n}',
   },
   {
     name: 'LlmFailure',
@@ -4267,8 +4331,32 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface LlmImageRequestPricing {\n    priceImages(images: readonly ImageAttachmentRef[]): readonly LlmImageRequestPrice[];\n}',
   },
   {
+    name: 'LlmModelCapacity',
+    declaration: 'export interface LlmModelCapacity {\n    contextWindow?: number;\n    maxOutputTokens?: number;\n}',
+  },
+  {
+    name: 'LlmModelCapacityRequest',
+    declaration: 'export interface LlmModelCapacityRequest extends LlmModelInputRequest {\n}',
+  },
+  {
+    name: 'LlmModelCapacityResolver',
+    declaration: 'export type LlmModelCapacityResolver = (request: LlmModelCapacityRequest) => Promise<LlmModelCapacity | undefined>;',
+  },
+  {
     name: 'LlmModelContext',
     declaration: 'export interface LlmModelContext {\n    contextWindow: number;\n}',
+  },
+  {
+    name: 'LlmModelDiscoveryEnricher',
+    declaration: 'export type LlmModelDiscoveryEnricher = (request: LlmModelDiscoveryEnrichmentRequest) => Promise<readonly LlmDiscoveredModel[]>;',
+  },
+  {
+    name: 'LlmModelDiscoveryEnrichmentRequest',
+    declaration: 'export interface LlmModelDiscoveryEnrichmentRequest {\n    settingsNs: string;\n    request: LlmModelDiscoveryOperation;\n    models: readonly LlmDiscoveredModel[];\n}',
+  },
+  {
+    name: 'LlmModelDiscoveryOperation',
+    declaration: 'export interface LlmModelDiscoveryOperation extends LlmModelDiscoveryRequest {\n    signal?: AbortSignal;\n}',
   },
   {
     name: 'LlmModelDiscoveryRequest',
@@ -4277,6 +4365,26 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'LlmModelInfo',
     declaration: 'export interface LlmModelInfo {\n    provider: string;\n    id: string;\n    name: string;\n    description?: string;\n    inputModalities?: readonly ModelModality[];\n}',
+  },
+  {
+    name: 'LlmModelInputRequest',
+    declaration: 'export interface LlmModelInputRequest {\n    provider: string;\n    model: string;\n    ownedBy?: string;\n    baseURL?: string;\n    signal?: AbortSignal;\n}',
+  },
+  {
+    name: 'LlmModelInputResolver',
+    declaration: 'export type LlmModelInputResolver = (request: LlmModelInputRequest) => Promise<readonly LegacyModelModality[] | undefined>;',
+  },
+  {
+    name: 'LlmModelMetadataEnricher',
+    declaration: 'export type LlmModelMetadataEnricher = (request: LlmModelMetadataEnrichmentRequest) => Promise<LlmModelMetadataPatch | undefined>;',
+  },
+  {
+    name: 'LlmModelMetadataEnrichmentRequest',
+    declaration: 'export interface LlmModelMetadataEnrichmentRequest {\n    provider: string;\n    model: string;\n    metadata: LlmResolvedModelInfo;\n    signal?: AbortSignal;\n}',
+  },
+  {
+    name: 'LlmModelMetadataPatch',
+    declaration: 'export interface LlmModelMetadataPatch {\n    inputModalities?: readonly ModelModality[];\n    contextWindow?: number;\n    maxTokens?: number;\n}',
   },
   {
     name: 'LlmModelReasoningInfo',
@@ -4296,7 +4404,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'LlmRuntime',
-    declaration: 'export class LlmRuntime extends TypertRemoteService {\n    constructor(ctx: Context);\n    registerAdapter(providers: string[], adapter: LlmAdapter): AdapterRegistrationHandle;\n    @Remote\n    listProviders(): LlmProviderInfo[];\n    registerConfigurableProviders(entries: readonly LlmConfigurableProvider[]): DirectoryRegistrationHandle;\n    @Remote\n    listConfigurableProviders(): LlmConfigurableProvider[];\n    registerModelDiscovery(settingsNs: string, discover: (request: LlmModelDiscoveryRequest, signal?: AbortSignal) => Promise<readonly LlmDiscoveredModel[]>): () => void;\n    async discoverModels(settingsNs: string, request: LlmModelDiscoveryRequest, signal?: AbortSignal): Promise<LlmDiscoveredModel[]>;\n    @Remote(\'discoverModels\')\n    async remoteDiscoverModels(settingsNs: string, request: LlmModelDiscoveryRequest, signal: AbortSignal): Promise<LlmDiscoveredModel[]>;\n    providerRetryPolicy(provider: string): ResolvedRetryPolicy;\n    imageRequestPricing(provider: string, model: string): LlmImageRequestPricing | undefined;\n    async listModels(provider: string): Promise<LlmModelInfo[]>;\n    async resolveModelInfo(provider: string, model: string, signal?: AbortSignal): Promise<LlmResolvedModelInfo>;\n    async resolveCallConfig(config: LlmCallConfig, signal?: AbortSignal): Promise<LlmCallConfig>;\n    async prepareCall(config: LlmCallConfig, signal?: AbortSignal): Promise<PreparedLlmCall>;\n    stream(options: GenerateOptions): AsyncIterable<StreamChunk>;\n}',
+    declaration: 'export class LlmRuntime extends TypertRemoteService {\n    constructor(ctx: Context);\n    registerModelMetadataEnricher(id: string, enrich: LlmModelMetadataEnricher): () => void;\n    registerAdapter(providers: string[], adapter: LlmAdapter): AdapterRegistrationHandle;\n    @Remote\n    listProviders(): LlmProviderInfo[];\n    registerConfigurableProviders(entries: readonly LlmConfigurableProvider[]): DirectoryRegistrationHandle;\n    @Remote\n    listConfigurableProviders(): LlmConfigurableProvider[];\n    registerModelDiscovery(settingsNs: string, discover: (request: LlmModelDiscoveryRequest, signal?: AbortSignal) => Promise<readonly LlmDiscoveredModel[]>): () => void;\n    registerModelDiscoveryEnricher(enrich: LlmModelDiscoveryEnricher): () => void;\n    registerModelInputResolver(resolve: LlmModelInputResolver): () => void;\n    async resolveModelInput(provider: string, model: string, signal?: AbortSignal, ownedBy?: string, baseURL?: string): Promise<readonly LegacyModelModality[] | undefined>;\n    registerModelCapacityResolver(resolve: LlmModelCapacityResolver): () => void;\n    async resolveModelCapacity(provider: string, model: string, signal?: AbortSignal, ownedBy?: string, baseURL?: string): Promise<LlmModelCapacity | undefined>;\n    async discoverModels(settingsNs: string, request: LlmModelDiscoveryRequest, signal?: AbortSignal): Promise<LlmDiscoveredModel[]>;\n    @Remote(\'discoverModels\')\n    async remoteDiscoverModels(settingsNs: string, request: LlmModelDiscoveryRequest, si /* …truncated — full shape in source */',
   },
   {
     name: 'LspHover',

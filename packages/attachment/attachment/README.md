@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-You can attach images to prompts and commands, and the harness keeps provider-independent normalized versions durably: each source image is admitted and normalized before your message is processed, reappears in conversation history, and is projected to the selected model route in later turns of the same session. The shipped `dsh` composition enables this with no setup. Attached images survive restarts, while browser paths, provider URLs, local storage paths, and base64 never enter durable session events. Only raster formats (PNG, JPEG, WebP, GIF) are accepted, and unsent composer drafts stay in the browser until you submit. Stored images are never deleted automatically, and non-image files, audio, and video are not supported yet.
+You can attach images to prompts and commands, and the harness keeps provider-independent normalized versions durably: each source image is admitted and normalized before your message is processed, reappears in conversation history, and is projected to the selected model route in later turns of the same session. The shipped `dsh` composition enables this with no setup. Attached images survive restarts, while browser paths, provider URLs, local storage paths, and base64 never enter durable session events. Only raster formats (PNG, JPEG, WebP, GIF) enter durable attachment storage. A deployment may register transient recognizers that turn supported non-image files into bounded logged text; the original generic bytes are not persisted. Unsent composer drafts stay in the browser until you submit, stored images are never deleted automatically, and audio and video are not supported yet.
 
 ## Table of Contents
 
@@ -38,6 +38,10 @@ Attach one or more images to a user prompt in the client UI. Each source is chec
 ### Pass images to commands
 
 Commands that accept image input receive attached images the same way. If a command does not accept images, the harness refuses with an error message instead of silently dropping them.
+
+### Recognize transient files
+
+A trusted transport plugin may pass complete non-image bytes to `recognizeFile`. The first registered recognizer whose `supports` method accepts the input returns semantic text for the transport to log as ordinary message content. The service stores neither the source bytes nor a generic attachment reference; unsupported files return no recognition result.
 
 ### Reuse images across the session
 
@@ -74,7 +78,7 @@ The service family runs one admission-and-storage flow: every entry point enforc
 | File | Role |
 |---|---|
 | [`src/index.ts`](src/index.ts) | Plugin entry: abstract `AttachmentStore` service and re-exports |
-| [`src/types.ts`](src/types.ts) | Durable vocabulary: references, limits, upload and store payloads |
+| [`src/types.ts`](src/types.ts) | Durable image vocabulary and transient file-recognizer inputs and results |
 | [`src/admission.ts`](src/admission.ts) | `admitEncodedImages`: canonical-base64 enforcement, then `saveImages` delegation |
 | [`src/error.ts`](src/error.ts) | `AttachmentError` class and the `isImageAdmissionError` runtime subset |
 | [`src/brand.ts`](src/brand.ts) | `AttachmentId` branded opaque identifier |
@@ -111,7 +115,7 @@ Adding an image changes the provider request and therefore invalidates the affec
 
 These limits describe what image attachments can and cannot do; they are current package constraints, not a task backlog.
 
-- **Raster images only** — PNG, JPEG, WebP, and GIF are accepted; generic files, audio, and video are not supported yet.
+- **Only raster images are durable** — PNG, JPEG, WebP, and GIF are accepted into attachment storage; recognized generic files become logged text and retain no generic-file identity, while audio and video are unsupported.
 - **Images are never deleted** — stored images are retained indefinitely; nothing removes them automatically.
 - **Unsent drafts are not saved** — a composer draft stays in the browser until you submit the message.
 
@@ -129,6 +133,6 @@ Resumed and forked sessions may share immutable objects, so any retention policy
 
 #### Future: non-image attachments and assistant-side output
 
-Generic files, audio, and video would need separate lifecycle and provider contracts, and the role-neutral `ImageBlock` leaves assistant-side image output as forward compatibility — current production adapters declare text-only output, so only user content carries images. Both directions are undecided.
+Durable generic files, audio, and video would need separate lifecycle and provider contracts; transient text recognition does not provide that lifecycle. The role-neutral `ImageBlock` leaves assistant-side image output as forward compatibility — current production adapters declare text-only output, so only user content carries images. Both directions are undecided.
 
 </details>

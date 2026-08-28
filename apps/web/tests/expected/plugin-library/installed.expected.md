@@ -1,0 +1,22 @@
+- region "插件库":
+  - heading "插件库" [level=1]
+  - paragraph: 审查和管理桌面应用侧载的外部插件。Harness 原生组件仍在设置中只读展示。
+  - button "关闭插件库":
+    - img
+  - navigation "插件库":
+    - button "已安装 1"
+    - button "审查安装"
+    - button "社区发现"
+    - button "操作日志"
+  - img
+  - searchbox "已安装"
+  - button "详细" [pressed]
+  - button "简洁"
+  - list:
+    - listitem:
+      - strong: Fixture desktop plugin
+      - text: "@fixture/dsh-desktop-plugin 1.2.3"
+      - button "更新至 1.3.0"
+      - button "卸载":
+        - img
+        - text: 卸载
