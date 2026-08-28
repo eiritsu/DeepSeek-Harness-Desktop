@@ -221,6 +221,28 @@ describe('lazy CJS arrival', () => {
 })
 
 describe('require resolution', () => {
+  it('serves a previous-version plugin through the Client Runtime compatibility row', async () => {
+    const store = {
+      createSnapshotStore: (value: unknown) => ({ getSnapshot: () => value }),
+    }
+    const b = bench([
+      row('legacy-plugin', { external: ['@deepseek-ai/dsh-client-runtime/client'] }),
+      row('@deepseek-ai/dsh-client-runtime'),
+    ], {
+      '@deepseek-ai/dsh-client-runtime': req => ({
+        createSnapshotStore: (req('@deepseek-ai/dsh-client-store') as typeof store).createSnapshotStore,
+      }),
+      'legacy-plugin': (req) => {
+        const runtime = req('@deepseek-ai/dsh-client-runtime/client') as typeof store
+        return { snapshot: runtime.createSnapshotStore({ compatible: true }).getSnapshot() }
+      },
+    }, { seed: { '@deepseek-ai/dsh-client-store': store } })
+
+    await expect(b.loader.import('legacy-plugin', '', {})).resolves.toEqual({
+      snapshot: { compatible: true },
+    })
+  })
+
   it('a factory requiring a registered-but-unmaterialized module materializes it recursively', async () => {
     const order: string[] = []
     const b = bench([row('a'), row('b')], {

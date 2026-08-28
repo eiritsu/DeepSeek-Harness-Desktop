@@ -677,12 +677,16 @@ interface LlmModelDiscoveryRequest {
 interface LlmDiscoveredModel {
   /** Model id the endpoint accepts. */
   id: string
+  /** Provider owner identifier when the endpoint discloses one. */
+  ownedBy?: string
   /** Human-readable name when the endpoint supplies one. */
   name?: string
   /** Maximum combined request and response context, when disclosed. */
   contextWindow?: number
   /** Maximum output tokens, when disclosed. */
   maxTokens?: number
+  /** Accepted request modalities when the provider explicitly discloses them. */
+  inputModalities?: readonly LegacyModelModality[]
 }
 ```
 
@@ -874,6 +878,15 @@ The abstract `llm` service: an adapter registry plus a streaming model-call API,
 
 ```ts cordis-catalog
 /**
+ * Register one exact-route metadata enricher after adapter-owned resolution.
+ * Enrichers fill only fields the adapter or an earlier enricher left absent.
+ * @param id - stable registration identity.
+ * @param enrich - asynchronous exact-route metadata lookup.
+ * @returns disposer withdrawing this exact enricher.
+ */
+registerModelMetadataEnricher(id: string, enrich: LlmModelMetadataEnricher): () => void
+
+/**
  * Register an adapter for the given provider routes. Throws `LlmError` with code
  * `DUPLICATE_ADAPTER` if any provider already has an adapter (all-or-nothing).
  * Disposed with the fiber.
@@ -916,6 +929,51 @@ registerConfigurableProviders(entries: readonly LlmConfigurableProvider[]): Dire
  * @returns the disposer that withdraws the offer.
  */
 registerModelDiscovery( settingsNs: string, discover: ( request: LlmModelDiscoveryRequest, signal?: AbortSignal, ) => Promise<readonly LlmDiscoveredModel[]>, ): () => void
+
+/**
+ * Register an ordered compatibility enricher for provider discovery results.
+ * Existing candidate fields remain authoritative and patches for unknown ids
+ * are ignored.
+ * @param enrich - candidate metadata lookup retained for previous-version plugins.
+ * @returns disposer withdrawing this registration.
+ */
+registerModelDiscoveryEnricher(enrich: LlmModelDiscoveryEnricher): () => void
+
+/**
+ * Register an ordered compatibility resolver for exact model modalities.
+ * @param resolve - exact route/model lookup retained for previous-version plugins.
+ * @returns disposer withdrawing this registration.
+ */
+registerModelInputResolver(resolve: LlmModelInputResolver): () => void
+
+/**
+ * Resolve exact modalities through previous-version catalog registrations.
+ * @param provider - configured provider route.
+ * @param model - exact model id.
+ * @param signal - operation-local cancellation.
+ * @param ownedBy - upstream owner supplied by discovery.
+ * @param baseURL - exact configured endpoint when available.
+ * @returns the first resolver answer, or `undefined`.
+ */
+async resolveModelInput( provider: string, model: string, signal?: AbortSignal, ownedBy?: string, baseURL?: string, ): Promise<readonly LegacyModelModality[] | undefined>
+
+/**
+ * Register an ordered compatibility resolver for exact model capacities.
+ * @param resolve - exact route/model lookup retained for previous-version plugins.
+ * @returns disposer withdrawing this registration.
+ */
+registerModelCapacityResolver(resolve: LlmModelCapacityResolver): () => void
+
+/**
+ * Resolve exact capacities through previous-version catalog registrations.
+ * @param provider - configured provider route.
+ * @param model - exact model id.
+ * @param signal - operation-local cancellation.
+ * @param ownedBy - upstream owner supplied by discovery.
+ * @param baseURL - exact configured endpoint when available.
+ * @returns the first non-empty validated capacity, or `undefined`.
+ */
+async resolveModelCapacity( provider: string, model: string, signal?: AbortSignal, ownedBy?: string, baseURL?: string, ): Promise<LlmModelCapacity | undefined>
 
 /**
  * Interrogate one provider endpoint for the models it advertises. The

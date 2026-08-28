@@ -143,6 +143,21 @@ Immutable binary attachment service. Implementations validate bytes before publi
 
 ```ts cordis-catalog
 /**
+ * Register one trusted transient-file recognizer in precedence order.
+ * @param recognizer - effect-scoped format recognizer.
+ * @returns disposer removing this exact recognizer.
+ */
+registerFileRecognizer(recognizer: FileRecognizer): () => void
+
+/**
+ * Ask the first supporting recognizer for semantic text without persisting generic file bytes.
+ * @param input - complete transient file bytes and transport metadata.
+ * @param signal - optional cancellation for recognition work.
+ * @returns bounded recognized text, or undefined when no recognizer supports or accepts the file.
+ */
+recognizeFile( input: FileRecognitionInput, signal?: AbortSignal, ): Promise<FileRecognitionResult | undefined>
+
+/**
  * Validate one image without persisting it.
  * Batch callers validate every member before saving any member.
  * @param input - encoded bytes, declared media type, and optional display name.

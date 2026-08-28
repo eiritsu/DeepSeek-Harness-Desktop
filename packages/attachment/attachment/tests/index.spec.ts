@@ -135,6 +135,45 @@ describe('AttachmentStore.saveImages', () => {
   })
 })
 
+describe('AttachmentStore file recognition', () => {
+  it('uses the first supporting recognizer and removes it through its disposer', async () => {
+    const store = new RecordingStore(new Context())
+    const calls: string[] = []
+    const dispose = store.registerFileRecognizer({
+      id: 'text',
+      supports: input => input.mediaType === 'text/plain',
+      recognize: (input) => {
+        calls.push(input.name ?? '')
+        return Promise.resolve({ text: new TextDecoder().decode(input.data) })
+      },
+    })
+
+    await expect(store.recognizeFile({
+      data: new TextEncoder().encode('hello'),
+      mediaType: 'text/plain',
+      name: 'note.txt',
+    })).resolves.toEqual({ text: 'hello' })
+    expect(calls).toEqual(['note.txt'])
+
+    dispose()
+    await expect(store.recognizeFile({
+      data: new Uint8Array(),
+      mediaType: 'text/plain',
+    })).resolves.toBeUndefined()
+  })
+
+  it('rejects duplicate recognizer identities', () => {
+    const store = new RecordingStore(new Context())
+    const recognizer = {
+      id: 'duplicate',
+      supports: () => true,
+      recognize: () => Promise.resolve(undefined),
+    }
+    store.registerFileRecognizer(recognizer)
+    expect(() => store.registerFileRecognizer(recognizer)).toThrow('already registered')
+  })
+})
+
 describe('AttachmentStore.readImageRequest', () => {
   it('reports unsupported request projection while preserving cancellation', async () => {
     const store = new UnsupportedProjectionStore(new Context())

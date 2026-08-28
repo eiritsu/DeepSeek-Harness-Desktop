@@ -549,6 +549,8 @@ function assertOfferedCompatFields(
 export interface PiAiModelProfile {
   /** Model id sent to the provider and accepted by {@link GenerateOptions.model}. */
   id: string
+  /** Upstream catalog owner retained when the configured route is an alias. */
+  ownedBy?: string
   /** Display name for selectors; defaults to the catalog name, then the id. */
   name?: string
   /** Maximum combined request and response context in tokens. */
@@ -784,6 +786,12 @@ export interface RouteCatalog {
    * picked, so only an explicit configuration lands here.
    */
   configuredMaxTokens: ReadonlyMap<string, number>
+  /** Complete configured or installed-catalog modalities, keyed by model id. */
+  inputModalities: ReadonlyMap<string, readonly PiAiModality[]>
+  /** Upstream owners preserved from configuration, keyed by model id. */
+  modelOwners: ReadonlyMap<string, string>
+  /** Model ids whose configuration does not pin input modalities. */
+  externallyResolvableInputModels: ReadonlySet<string>
 }
 
 /**
@@ -845,6 +853,9 @@ export function resolveRouteModels(request: RouteCatalogRequest): RouteCatalog {
   }
   const seen = new Set<string>()
   const configuredMaxTokens = new Map<string, number>()
+  const inputModalities = new Map<string, readonly PiAiModality[]>()
+  const modelOwners = new Map<string, string>()
+  const externallyResolvableInputModels = new Set<string>()
   const models = entries.map((entry) => {
     if (entry.id.length === 0) invalid(provider, 'has a model with an empty id')
     if (seen.has(entry.id)) invalid(provider, `lists model "${entry.id}" more than once`)
@@ -874,6 +885,11 @@ export function resolveRouteModels(request: RouteCatalogRequest): RouteCatalog {
     // Only a value the profile named is a deployment choice; the catalog's is
     // the model's capability and stays out of request defaults.
     if (entry.maxTokens !== undefined) configuredMaxTokens.set(entry.id, entry.maxTokens)
+    const declared = declaredInput(entry.input)
+    const input = declared ?? base?.input ?? [...request.defaultInput]
+    inputModalities.set(entry.id, [...input])
+    if (entry.ownedBy !== undefined) modelOwners.set(entry.id, entry.ownedBy)
+    if (declared === undefined) externallyResolvableInputModels.add(entry.id)
     return {
       // The installed entry lays the floor, and the fields below override it.
       // Enumerating instead would silently drop every `Model` field this
@@ -886,7 +902,7 @@ export function resolveRouteModels(request: RouteCatalogRequest): RouteCatalog {
       api,
       provider,
       baseUrl,
-      input: declaredInput(entry.input) ?? base?.input ?? [...request.defaultInput],
+      input,
       cost: base?.cost ?? NO_COST,
       contextWindow,
       maxTokens,
@@ -904,5 +920,5 @@ export function resolveRouteModels(request: RouteCatalogRequest): RouteCatalog {
     invalid(provider, `sets compat "${field}", but no model on the route speaks a protocol that takes it;`
       + ` it exists on ${takers.join(', ')}`)
   }
-  return { models, configuredMaxTokens }
+  return { models, configuredMaxTokens, inputModalities, modelOwners, externallyResolvableInputModels }
 }

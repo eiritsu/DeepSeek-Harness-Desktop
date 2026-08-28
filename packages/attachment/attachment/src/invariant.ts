@@ -9,7 +9,7 @@ const PACKAGE_NAME = '@deepseek-ai/dsh-attachment'
 export const name = 'attachment-invariant'
 /** Service required before package ownership can be reserved. */
 export const inject = ['invariants']
-/** No runtime invariant: this stateless seam owns types while implementations enforce immutable-store checks. */
+/** No runtime invariant: providers own recognition results and immutable-store checks. */
 const install: InvariantInstaller = () => {}
 /**
  * Register the package invariant companion.

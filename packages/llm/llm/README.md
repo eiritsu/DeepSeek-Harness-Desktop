@@ -62,6 +62,7 @@ After a successful mount, `ctx.llm.listProviders()` reports the registered route
 - **Register provider adapters** — an adapter owns one or more provider routes, and its registration captures that route's retry policy; registering the same route twice fails with `DUPLICATE_ADAPTER`.
 - **Expose and activate providers through configuration** — adapters declare configurable-provider routes plus a settings namespace, so configuration surfaces can activate dormant providers and edit connection facts without a restart.
 - **Discover and resolve models** — list the models an adapter advertises, interrogate an endpoint for the models it serves, and resolve one exact model's context window, output default, reasoning efforts, and input modalities.
+- **Extend current and previous catalog plugins** — current plugins register exact-route metadata enrichers that fill only missing adapter fields; previous-version plugins can still enrich discovery results and resolve exact input modalities and capacities through effect-scoped compatibility registrations.
 - **Validate call config** — an explicit or configured reasoning effort is checked against the exact model before any provider I/O, and an adapter-configured output cap is materialized when the request omits one.
 
 ### Failures and recovery

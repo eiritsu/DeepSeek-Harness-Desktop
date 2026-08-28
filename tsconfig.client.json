@@ -47,6 +47,7 @@
     // rules make that path depend on this project reference.
     { "path": "./packages/compaction/compaction" },
     { "path": "./packages/client/store" },
+    { "path": "./packages/client/runtime" },
     { "path": "./packages/client/ui-slots" },
     { "path": "./packages/client/ui-attachment" },
     { "path": "./packages/client/ui-primitives" },
@@ -88,6 +89,7 @@
     { "path": "./packages/client/ui-agent-preset" },
     { "path": "./packages/client/ui-permission-presets" },
     { "path": "./packages/client/ui-plan" },
+    { "path": "./packages/client/ui-plugin-library" },
     { "path": "./packages/client/ui-settings-plugins" },
     { "path": "./packages/client/ui-user-questions" },
     { "path": "./packages/client/ui-trajectory" },

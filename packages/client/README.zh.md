@@ -60,6 +60,8 @@ kind: "package-group"
 | [`ui-model-selection/`](ui-model-selection/README.zh.md) | 在对话界面中提供模型选择 | — |
 | [`ui-permission-presets/`](ui-permission-presets/README.zh.md) | 配置默认权限并切换当前会话的访问模式 | — |
 | [`ui-plan/`](ui-plan/README.zh.md) | 展示生效中的 plan mode 状态及其退出控件 | — |
+| [`ui-plugin-library/`](ui-plugin-library/README.zh.md) | 增加仅桌面版使用的插件发现、来源审查、安装与审计界面 | — |
+| [`runtime/`](runtime/README.zh.md) | 让拆包前构建的浏览器插件继续加载，并将其共享存储与设置导入转发到当前所有者 | — |
 | [`ui-settings-plugins/`](ui-settings-plugins/README.zh.md) | 拥有“插件”设置分区、其标签页扩展点与可配置的宿主平面插件卡片 | — |
 | [`ui-user-questions/`](ui-user-questions/README.zh.md) | 展示 agent 请求的交互式问题 | — |
 | [`ui-agent-preset/`](ui-agent-preset/README.zh.md) | 选择会话的 agent 预设并编写预设组合 | — |

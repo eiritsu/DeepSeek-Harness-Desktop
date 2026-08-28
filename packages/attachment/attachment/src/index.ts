@@ -3,6 +3,9 @@
 import { Context, Service } from '@deepseek-ai/cordis'
 import { AttachmentError } from './error.ts'
 import type {
+  FileRecognitionInput,
+  FileRecognitionResult,
+  FileRecognizer,
   ImageAttachmentLimits,
   ImageAttachmentRef,
   ImageRequestPolicy,
@@ -20,6 +23,9 @@ export type {
   AttachmentId as AttachmentIdType,
   AdmittedPromptContentPart,
   EncodedImageAttachment,
+  FileRecognitionInput,
+  FileRecognitionResult,
+  FileRecognizer,
   ImageAttachmentLimits,
   ImageAttachmentRef,
   ImageRequestPolicy,
@@ -29,6 +35,7 @@ export type {
   SaveImageAttachment,
   StoredImageAttachment,
 } from './types.ts'
+export { UNKNOWN_FILE_MEDIA_TYPE } from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -38,12 +45,45 @@ declare module '@deepseek-ai/cordis' {
 
 /** Immutable binary attachment service. Implementations validate bytes before publishing a reference. */
 export abstract class AttachmentStore extends Service {
+  private readonly fileRecognizers: FileRecognizer[] = []
+
   constructor(ctx: Context) {
     super(ctx, 'attachments')
   }
 
   /** Deployment-resolved image policy used by authoritative and fast-path validation. */
   abstract readonly imageLimits: ImageAttachmentLimits
+
+  /**
+   * Register one trusted transient-file recognizer in precedence order.
+   * @param recognizer - effect-scoped format recognizer.
+   * @returns disposer removing this exact recognizer.
+   */
+  registerFileRecognizer(recognizer: FileRecognizer): () => void {
+    if (this.fileRecognizers.some(candidate => candidate.id === recognizer.id)) {
+      throw new Error(`attachment recognizer "${recognizer.id}" is already registered`)
+    }
+    this.fileRecognizers.push(recognizer)
+    return () => {
+      const index = this.fileRecognizers.indexOf(recognizer)
+      if (index >= 0) this.fileRecognizers.splice(index, 1)
+    }
+  }
+
+  /**
+   * Ask the first supporting recognizer for semantic text without persisting generic file bytes.
+   * @param input - complete transient file bytes and transport metadata.
+   * @param signal - optional cancellation for recognition work.
+   * @returns bounded recognized text, or undefined when no recognizer supports or accepts the file.
+   */
+  recognizeFile(
+    input: FileRecognitionInput,
+    signal?: AbortSignal,
+  ): Promise<FileRecognitionResult | undefined> {
+    signal?.throwIfAborted()
+    const recognizer = this.fileRecognizers.find(candidate => candidate.supports(input))
+    return recognizer === undefined ? Promise.resolve(undefined) : recognizer.recognize(input, signal)
+  }
 
   /**
    * Validate one image without persisting it.

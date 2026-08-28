@@ -157,6 +157,11 @@
     - id: modules
       name: '@deepseek-ai/dsh-client-modules'
 
+    # Compatibility-only browser module for external plugins built before the
+    # snapshot store and settings contracts moved to their current owners.
+    - id: client-runtime-compat
+      name: '@deepseek-ai/dsh-client-runtime'
+
     # Owns both ends of the web transport: node half binds the gateway to the
     # webserver under /api; browser half is the fetch/SSE client.
     - id: connection
@@ -203,6 +208,10 @@
 
     - id: ui-settings-plugin-inventory
       name: '@deepseek-ai/dsh-client-ui-settings-plugin-inventory'
+
+    # Registers only when the macOS shell installs its document-start bridge.
+    - id: ui-plugin-library
+      name: '@deepseek-ai/dsh-client-ui-plugin-library'
 
     - id: ui-conversation
       name: '@deepseek-ai/dsh-client-ui-conversation'
