@@ -7,19 +7,52 @@ export type { AttachmentId } from './brand.ts'
 /** Fallback media type when a transport cannot identify a generic file format. */
 export const UNKNOWN_FILE_MEDIA_TYPE = 'application/octet-stream'
 
-/** Transient generic file bytes offered to an effect-scoped recognition provider. */
-export interface FileRecognitionInput {
-  /** Complete file bytes; recognizers must enforce their own configured limits. */
-  data: Uint8Array
-  /** Transport-declared media type, normalized to a non-empty value by the caller. */
+/** Durable, serializable reference to one immutable file kept byte-for-byte. */
+export interface FileAttachmentRef {
+  attachmentId: AttachmentId
   mediaType: string
-  /** Optional display name; it is never interpreted as a path. */
+  bytes: number
   name?: string
 }
 
-/** Bounded semantic text extracted from one transient file. */
+/** Legacy transient file input retained while callers migrate to durable refs. */
+export interface FileRecognitionInput {
+  data: Uint8Array
+  mediaType: string
+  name?: string
+}
+
+/** Deployment-resolved limits for generic file uploads. */
+export interface FileAttachmentLimits {
+  maxFileBytes: number
+  maxFilesPerMessage: number
+  maxMessageFileBytes: number
+}
+
+/** Base64-encoded generic file upload accompanying one wire request. */
+export interface EncodedFileAttachment {
+  mediaType: string
+  data: string
+  name?: string
+}
+
+/** Request to durably commit one generic file without transforming its bytes. */
+export interface SaveFileAttachment {
+  data: Uint8Array
+  mediaType: string
+  name?: string
+}
+
+/** Stored generic file bytes returned after reference and digest verification. */
+export interface StoredFileAttachment {
+  ref: FileAttachmentRef
+  data: Uint8Array
+  mediaType?: string
+  name?: string
+}
+
+/** Bounded semantic text extracted from one durable file. */
 export interface FileRecognitionResult {
-  /** Plain text suitable for a durable model-visible message. */
   text: string
 }
 
@@ -27,11 +60,11 @@ export interface FileRecognitionResult {
 export interface FileRecognizer {
   /** Stable registration identity. */
   id: string
-  /** Whether this recognizer owns the offered format. */
-  supports(input: FileRecognitionInput): boolean
-  /** Extract bounded semantic text without retaining the source bytes. */
+  /** Whether this recognizer owns the file or normalized image format. */
+  supports(input: FileAttachmentRef | ImageAttachmentRef | FileRecognitionInput): boolean
+  /** Extract bounded semantic text without changing the stored attachment. */
   recognize(
-    input: FileRecognitionInput,
+    input: StoredFileAttachment | StoredImageAttachment | FileRecognitionInput,
     signal?: AbortSignal,
   ): Promise<FileRecognitionResult | undefined>
 }
@@ -117,7 +150,12 @@ export interface SaveImageAttachment {
 export interface StoredImageAttachment {
   ref: ImageAttachmentRef
   data: Uint8Array
+  mediaType?: string
+  name?: string
 }
+
+/** Any durable attachment reference understood by the storage seam. */
+export type AttachmentRef = FileAttachmentRef | ImageAttachmentRef
 
 /** Deterministic request-image policy selected by one exact model route. */
 export interface ImageRequestPolicy {

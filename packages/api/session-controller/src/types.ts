@@ -1,7 +1,7 @@
 /** Browser-safe request, result, and lifecycle vocabulary for the Session Remote service. */
 
 import type {
-  AttachmentIdType, ImageAttachmentLimits, ImageAttachmentRef, ImageMediaType,
+  AttachmentIdType, FileAttachmentLimits, FileAttachmentRef, ImageAttachmentLimits, ImageAttachmentRef, ImageMediaType,
 } from '@deepseek-ai/dsh-attachment'
 import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
@@ -19,6 +19,8 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
     sessionListMetadata: SessionListMetadata
     /** Host state for the boot-constant image-limit view. */
     imageLimits: null
+    /** Host state for generic-file limits. */
+    fileLimits: null
     /** Durable model selection already used by a request and still pending for a later request. */
     modelSelection: ModelSelectionProjectionState
   }
@@ -27,6 +29,8 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
     sessionListMetadata: SessionListMetadata
     /** Image-intake limits enforced by the Session prompt endpoint. */
     imageLimits: ImageAttachmentLimits
+    /** Generic-file intake limits enforced by the Session prompt endpoint. */
+    fileLimits: FileAttachmentLimits
     /** Durable model selection already used and selected for the next request. */
     modelSelection: ModelSelectionProjection
   }
@@ -74,6 +78,12 @@ export type PromptContentPart =
   | {
     readonly type: 'image'
     readonly mediaType: ImageMediaType
+    readonly data: string
+    readonly name?: string
+  }
+  | {
+    readonly type: 'file'
+    readonly mediaType: string
     readonly data: string
     readonly name?: string
   }
@@ -317,6 +327,12 @@ export interface SessionPromptValue {
 export interface SessionAttachmentRequest {
   readonly sessionId: SessionId
   readonly attachmentId: AttachmentIdType
+}
+
+/** Durable generic-file read request. */
+export interface SessionFileAttachmentValue {
+  readonly attachment: FileAttachmentRef
+  readonly data: string
 }
 
 /** Durable image read response value. */

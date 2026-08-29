@@ -90,6 +90,8 @@ interface SaveImageAttachment {
 interface StoredImageAttachment {
   ref: ImageAttachmentRef
   data: Uint8Array
+  mediaType?: string
+  name?: string
 }
 ```
 
@@ -143,19 +145,41 @@ Immutable binary attachment service. Implementations validate bytes before publi
 
 ```ts cordis-catalog
 /**
- * Register one trusted transient-file recognizer in precedence order.
+ * Register one trusted file recognizer in precedence order.
  * @param recognizer - effect-scoped format recognizer.
  * @returns disposer removing this exact recognizer.
  */
 registerFileRecognizer(recognizer: FileRecognizer): () => void
 
 /**
- * Ask the first supporting recognizer for semantic text without persisting generic file bytes.
- * @param input - complete transient file bytes and transport metadata.
+ * Read one durable file and ask the first supporting recognizer for semantic text.
+ * @param input - durable file reference.
  * @param signal - optional cancellation for recognition work.
  * @returns bounded recognized text, or undefined when no recognizer supports or accepts the file.
  */
-recognizeFile( input: FileRecognitionInput, signal?: AbortSignal, ): Promise<FileRecognitionResult | undefined>
+async recognizeFile( input: FileAttachmentRef | FileRecognitionInput, signal?: AbortSignal, ): Promise<FileRecognitionResult | undefined>
+
+/**
+ * Validate and durably commit one ordered generic file batch.
+ * @param inputs - raw files in owning-message order.
+ * @returns durable references in input order.
+ */
+async saveFiles(inputs: readonly SaveFileAttachment[]): Promise<readonly FileAttachmentRef[]>
+
+/**
+ * Durably commit one generic file without changing its bytes.
+ * @param _input - raw bytes and display metadata.
+ * @returns durable content-addressed reference.
+ */
+async saveFile(_input: SaveFileAttachment): Promise<FileAttachmentRef>
+
+/**
+ * Read one generic file and verify its digest and metadata.
+ * @param _ref - durable file reference.
+ * @param _signal - optional cancellation signal.
+ * @returns verified original bytes and reference.
+ */
+async readFile(_ref: FileAttachmentRef, _signal?: AbortSignal): Promise<StoredFileAttachment>
 
 /**
  * Validate one image without persisting it.

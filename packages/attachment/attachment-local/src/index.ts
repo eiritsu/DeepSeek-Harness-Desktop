@@ -3,24 +3,28 @@
 import { join, resolve } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { AttachmentStore } from '@deepseek-ai/dsh-attachment'
+import { AttachmentError, AttachmentStore } from '@deepseek-ai/dsh-attachment'
 import type {
+  FileAttachmentLimits,
+  FileAttachmentRef,
   ImageAttachmentLimits,
   ImageAttachmentRef,
   ImageRequestPolicy,
   RequestImageAttachment,
   SaveImageAttachment,
+  SaveFileAttachment,
+  StoredFileAttachment,
   StoredImageAttachment,
 } from '@deepseek-ai/dsh-attachment'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import type { NormalizationPolicy } from './normalization.ts'
 import { CompressionLimiter } from './compression-limiter.ts'
-import { commitPreparedImageFile, normalizedImagePath, prepareImageFile, readImageFile, validateImageFile } from './store.ts'
+import { commitPreparedImageFile, normalizedImagePath, prepareImageFile, readFileAttachment, readImageFile, saveFileAttachment, validateImageFile } from './store.ts'
 import { readRequestImageFile, requestImageVariantId } from './request-image.ts'
 
 export { canPassThroughNormalization, normalizeImage } from './normalization.ts'
 export type { NormalizedImage, NormalizationPolicy } from './normalization.ts'
-export { commitPreparedImageFile, prepareImageFile, readImageFile, saveImageFile, validateImageFile } from './store.ts'
+export { commitPreparedImageFile, prepareImageFile, readFileAttachment, readImageFile, saveFileAttachment, saveImageFile, validateImageFile } from './store.ts'
 export type { PreparedImageFile } from './store.ts'
 export { readRequestImageFile, requestImageVariantId } from './request-image.ts'
 
@@ -50,6 +54,9 @@ export const DEFAULT_NORMALIZED_IMAGE_MAX_BYTES = 4 * 1024 * 1024
 export const DEFAULT_IMAGE_COMPRESSION_CONCURRENCY = 2
 /** Maximum configurable native image transformations per store. */
 export const MAX_IMAGE_COMPRESSION_CONCURRENCY = 8
+export const DEFAULT_MAX_FILE_BYTES = 50 * 1024 * 1024
+export const DEFAULT_MAX_FILES_PER_MESSAGE = 20
+export const DEFAULT_MAX_MESSAGE_FILE_BYTES = 200 * 1024 * 1024
 
 /** Local attachment backend configuration. */
 export interface Config {
@@ -76,6 +83,9 @@ export interface Config {
   normalizedImageMaxBytes?: number
   /** Maximum simultaneous normalization or request-image transformations in this service instance. */
   imageCompressionConcurrency?: number
+  maxFileBytes?: number
+  maxFilesPerMessage?: number
+  maxMessageFileBytes?: number
 }
 
 function abortReason(signal: AbortSignal): Error {
@@ -153,11 +163,15 @@ export class LocalAttachmentStore extends AttachmentStore {
     normalizedImageMaxBytes: z.number().step(1).min(1).default(DEFAULT_NORMALIZED_IMAGE_MAX_BYTES),
     imageCompressionConcurrency: z.number().step(1).min(1).max(MAX_IMAGE_COMPRESSION_CONCURRENCY)
       .default(DEFAULT_IMAGE_COMPRESSION_CONCURRENCY),
+    maxFileBytes: z.number().step(1).min(1).default(DEFAULT_MAX_FILE_BYTES),
+    maxFilesPerMessage: z.number().step(1).min(1).default(DEFAULT_MAX_FILES_PER_MESSAGE),
+    maxMessageFileBytes: z.number().step(1).min(1).default(DEFAULT_MAX_MESSAGE_FILE_BYTES),
   })
 
   /** Absolute versioned storage root. */
   readonly root: string
   readonly imageLimits: ImageAttachmentLimits
+  override readonly fileLimits: FileAttachmentLimits
   /** Resolved provider-independent normalization policy. */
   readonly normalizationPolicy: Readonly<NormalizationPolicy>
   /** Resolved instance-level compression limit. */
@@ -175,6 +189,11 @@ export class LocalAttachmentStore extends AttachmentStore {
       maxImagePixels: config.maxImagePixels ?? DEFAULT_MAX_IMAGE_PIXELS,
       maxImageDimension: config.maxImageDimension ?? DEFAULT_MAX_IMAGE_DIMENSION,
       mediaTypes: Object.freeze(['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const),
+    })
+    this.fileLimits = Object.freeze({
+      maxFileBytes: config.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES,
+      maxFilesPerMessage: config.maxFilesPerMessage ?? DEFAULT_MAX_FILES_PER_MESSAGE,
+      maxMessageFileBytes: config.maxMessageFileBytes ?? DEFAULT_MAX_MESSAGE_FILE_BYTES,
     })
     this.normalizationPolicy = Object.freeze({
       maxPixels: config.normalizedImageMaxPixels ?? DEFAULT_NORMALIZED_IMAGE_MAX_PIXELS,
@@ -195,6 +214,15 @@ export class LocalAttachmentStore extends AttachmentStore {
 
   async validateImage(input: SaveImageAttachment): Promise<void> {
     await this.compression.run(() => validateImageFile(input, this.imageLimits, this.normalizationPolicy))
+  }
+
+  override async saveFile(input: SaveFileAttachment): Promise<FileAttachmentRef> {
+    if (input.data.byteLength > this.fileLimits.maxFileBytes) throw new AttachmentError('File exceeds the configured byte limit.', 'FILE_TOO_LARGE')
+    return saveFileAttachment(this.root, input)
+  }
+
+  override async readFile(ref: FileAttachmentRef, signal?: AbortSignal): Promise<StoredFileAttachment> {
+    return readFileAttachment(this.root, ref, signal)
   }
 
   override async saveImages(inputs: readonly SaveImageAttachment[]): Promise<readonly ImageAttachmentRef[]> {

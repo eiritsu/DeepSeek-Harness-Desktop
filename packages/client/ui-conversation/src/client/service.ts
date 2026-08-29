@@ -66,10 +66,11 @@ export interface IConversation {
 
 /** Create one browser-only draft descriptor; only its id enters input state. */
 function browserDraftAttachment(file: File): ComposerAttachment {
+  const image = imageMediaTypeOrUndefined(file.type)
   return {
-    kind: 'image',
+    kind: image === undefined ? 'file' : 'image',
     id: randomUUID() as DraftAttachmentId,
-    previewUrl: URL.createObjectURL(file),
+    ...(image === undefined ? {} : { previewUrl: URL.createObjectURL(file) }),
     file,
   }
 }
@@ -83,7 +84,7 @@ function browserDraftAttachment(file: File): ComposerAttachment {
  * does not require a store notification.
  */
 function probeDimensions(attachment: ComposerAttachment): void {
-  if (typeof Image !== 'function') return
+  if (attachment.kind !== 'image' || attachment.previewUrl === undefined || typeof Image !== 'function') return
   const probe = new Image()
   probe.onload = () => {
     attachment.width = probe.naturalWidth
@@ -164,7 +165,7 @@ export class ConversationController extends Service implements IConversation {
     this.blocks = config.blocks
     ctx.effect(() => () => {
       for (const attachment of this.draftAttachments.values()) {
-        revokePreview(attachment.previewUrl)
+        if (attachment.previewUrl !== undefined) revokePreview(attachment.previewUrl)
       }
       this.draftAttachments.clear()
     }, 'conversation draft attachments')
@@ -215,20 +216,24 @@ export class ConversationController extends Service implements IConversation {
       return result.ok ? { kind: 'success' } : { kind: 'error' }
     }
     let finishRetirement: ((retirement: PendingSubmissionRetirement) => void) | undefined
-    const retirement = attachments.length === 0
+    const imageAttachments = attachments.filter(attachment => attachment.kind === 'image' && attachment.previewUrl !== undefined)
+    const retirement = imageAttachments.length === 0
       ? undefined
       : new Promise<PendingSubmissionRetirement>((resolve) => { finishRetirement = resolve })
     const submission = session.beginSubmission({
       mode,
       text,
-      images: attachments.map(attachment => ({
-        previewUrl: attachment.previewUrl,
-        ...(attachment.file.name === '' ? {} : { name: attachment.file.name }),
-        ...(attachment.width === undefined ? {} : { width: attachment.width }),
-        ...(attachment.height === undefined ? {} : { height: attachment.height }),
-      })),
+      images: imageAttachments.map((attachment) => {
+        if (attachment.previewUrl === undefined) throw new Error('image attachment preview is missing')
+        return {
+          previewUrl: attachment.previewUrl,
+          ...(attachment.file.name === '' ? {} : { name: attachment.file.name }),
+          ...(attachment.width === undefined ? {} : { width: attachment.width }),
+          ...(attachment.height === undefined ? {} : { height: attachment.height }),
+        }
+      }),
       onRetire: (settlement) => {
-        this.settleSubmittedImages(session.sessionId, attachments, settlement)
+        this.settleSubmittedImages(session.sessionId, imageAttachments, settlement)
         finishRetirement?.(settlement)
       },
     })
@@ -253,7 +258,6 @@ export class ConversationController extends Service implements IConversation {
    * @returns ordered draft descriptors.
    */
   createDraftImages(files: readonly File[]): readonly ComposerAttachment[] {
-    for (const file of files) imageMediaType(file.type)
     return files.map((file) => {
       const attachment = browserDraftAttachment(file)
       this.draftAttachments.set(attachment.id, attachment)
@@ -299,7 +303,7 @@ export class ConversationController extends Service implements IConversation {
     const attachment = this.draftAttachments.get(id)
     if (attachment === undefined) return
     this.draftAttachments.delete(id)
-    revokePreview(attachment.previewUrl)
+    if (attachment.previewUrl !== undefined) revokePreview(attachment.previewUrl)
   }
 
   /**
@@ -380,14 +384,20 @@ export class ConversationController extends Service implements IConversation {
       if (live === undefined) return
       this.draftAttachments.delete(attachment.id)
       const ref = retirement.attachments[index]
-      if (ref !== undefined && uiConversation?.seedImageUrl(sessionId, ref, attachment.previewUrl) === true) return
-      revokePreview(attachment.previewUrl)
+      if (attachment.kind === 'image' && attachment.previewUrl !== undefined
+        && ref !== undefined && uiConversation?.seedImageUrl(sessionId, ref, attachment.previewUrl) === true) return
+      if (attachment.previewUrl !== undefined) revokePreview(attachment.previewUrl)
     })
   }
 
   /** Convert browser files to canonical base64 prompt parts. */
   private serializeImages(images: readonly File[]): Promise<Parameters<SessionFace['prompt']>[0]> {
-    return Promise.all(images.map(async file => ({ type: 'image' as const, ...await this.encodeImage(file) })))
+    return Promise.all(images.map(async (file) => {
+      const image = imageMediaTypeOrUndefined(file.type)
+      return image === undefined
+        ? { type: 'file' as const, mediaType: file.type || 'application/octet-stream', data: await base64Of(file), ...(file.name === '' ? {} : { name: file.name }) }
+        : { type: 'image' as const, mediaType: image, data: await base64Of(file), ...(file.name === '' ? {} : { name: file.name }) }
+    }))
   }
 
   /** Canonical base64 wire form of one browser image file. */
@@ -398,6 +408,11 @@ export class ConversationController extends Service implements IConversation {
       ...(file.name === '' ? {} : { name: file.name }),
     }
   }
+
+}
+
+function imageMediaTypeOrUndefined(value: string): ImageMediaType | undefined {
+  return value === 'image/png' || value === 'image/jpeg' || value === 'image/webp' || value === 'image/gif' ? value : undefined
 }
 
 function imageMediaType(value: string): ImageMediaType {

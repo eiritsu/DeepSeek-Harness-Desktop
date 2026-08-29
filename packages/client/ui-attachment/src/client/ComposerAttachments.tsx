@@ -21,6 +21,7 @@ export function ComposerAttachments({
   const [preview, setPreview] = useState<ComposerAttachment | null>(null)
   const [dragActive, setDragActive] = useState(false)
   const dragDepth = useRef(0)
+  const pickerRef = useRef<HTMLInputElement | null>(null)
   const closePreview = useCallback(() => { setPreview(null) }, [])
 
   useEffect(() => {
@@ -80,7 +81,7 @@ export function ComposerAttachments({
 
   const railItems = useMemo<ComposerRailItem[]>(() => attachments.map(attachment => ({
     id: attachment.id,
-    previewUrl: attachment.previewUrl,
+    ...(attachment.previewUrl === undefined ? {} : { previewUrl: attachment.previewUrl }),
     alt: attachment.file.name || t('image.pending'),
     removeLabel: t('image.remove', { name: attachment.file.name }),
     attachment,
@@ -88,6 +89,12 @@ export function ComposerAttachments({
 
   return (
     <>
+      <input ref={pickerRef} type="file" multiple hidden onChange={(event) => {
+        const files = [...(event.currentTarget.files ?? [])]
+        if (files.length > 0) onAddImages(files)
+        event.currentTarget.value = ''
+      }} />
+      <button type="button" className={css.add} onClick={() => { pickerRef.current?.click() }}>{t('attachment.add')}</button>
       {dragActive && (
         <DropOverlay
           disabled={!canAcceptDrop}
@@ -105,6 +112,7 @@ export function ComposerAttachments({
         </div>
       )}
       {preview !== null && (
+        preview.previewUrl !== undefined &&
         <ImageLightbox
           src={preview.previewUrl}
           alt={preview.file.name || t('image.original')}

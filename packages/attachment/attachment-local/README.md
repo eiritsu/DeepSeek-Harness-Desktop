@@ -46,7 +46,10 @@ Mount the plugin with no required configuration. The defaults below define what 
 | `normalizedImageMaxPixels` | `2048 × 2048` | Total-pixel budget of the stored normalized image |
 | `normalizedImageMaxDimension` | `8192` | Maximum long edge after applying the total-pixel budget |
 | `normalizedImageMaxBytes` | `4 MiB` | Encoded-byte target; the smallest quality-ladder output is kept when none fits |
-| `imageCompressionConcurrency` | `2` | FIFO limit for concurrent normalization and request transforms |
+  | `imageCompressionConcurrency` | `2` | FIFO limit for concurrent normalization and request transforms |
+| `maxFileBytes` | `50 MiB` | Maximum bytes accepted for one generic file |
+| `maxFilesPerMessage` | `20` | Maximum generic files in one prompt |
+| `maxMessageFileBytes` | `200 MiB` | Maximum aggregate generic-file bytes in one prompt |
 
 The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-attachment-local) is the exhaustive source for every accepted field and its JSDoc.
 

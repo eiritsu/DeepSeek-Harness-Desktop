@@ -2,3 +2,11 @@
   min-width: 0;
   padding: 4px 12px 0;
 }
+
+.add {
+  margin: 4px 12px 0;
+  border: 0;
+  background: transparent;
+  color: var(--dsw-text-secondary);
+  cursor: pointer;
+}
