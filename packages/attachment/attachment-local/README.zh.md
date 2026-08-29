@@ -47,6 +47,9 @@ kind: "package-reference"
 | `normalizedImageMaxDimension` | `8192` | 应用总像素预算后的最大长边 |
 | `normalizedImageMaxBytes` | `4 MiB` | 编码字节目标；没有候选满足时保留质量阶梯中的最小输出 |
 | `imageCompressionConcurrency` | `2` | 并发规范化与请求变换的 FIFO 上限 |
+| `maxFileBytes` | `50 MiB` | 单个通用文件的最大字节数 |
+| `maxFilesPerMessage` | `20` | 一条提示中的通用文件数量上限 |
+| `maxMessageFileBytes` | `200 MiB` | 一条提示中的通用文件总字节上限 |
 
 生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-attachment-local)是每个受支持字段及其 JSDoc 的穷尽式真源。
 

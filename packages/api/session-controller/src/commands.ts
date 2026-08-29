@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent, ModelSelection as AgentModelSelection } from '@deepseek-ai/dsh-agent'
 import { PresetMountError, UnknownPresetError } from '@deepseek-ai/dsh-agent-presets'
-import { AttachmentError, admitEncodedImages } from '@deepseek-ai/dsh-attachment'
+import { AttachmentError, admitEncodedFiles, admitEncodedImages } from '@deepseek-ai/dsh-attachment'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import {
   ReasoningEffortId, createUserMessage, freezeMessage,
@@ -577,12 +577,22 @@ async function durablePromptContent(
   if (content.every(part => part.type === 'text')) {
     return content.map(part => ({ type: 'text', text: part.text }))
   }
-  const refs = await admitEncodedImages(ctx.attachments, content.filter(part => part.type === 'image'))
-  let next = 0
-  return content.map(part => part.type === 'text'
-    ? { type: 'text', text: part.text }
-    // admitEncodedImages returns one reference per image part in order.
-    : { type: 'image', attachment: refs[next++] as ImageAttachmentRef })
+  const images = content.filter(part => part.type === 'image')
+  const files = content.filter(part => part.type === 'file')
+  const imageRefs = await admitEncodedImages(ctx.attachments, images)
+  const fileRefs = await admitEncodedFiles(ctx.attachments, files)
+  const recognized = await Promise.all(fileRefs.map(ref => ctx.attachments.recognizeFile(ref)))
+  let imageIndex = 0
+  let fileIndex = 0
+  return content.map((part) => {
+    if (part.type === 'text') return { type: 'text', text: part.text }
+    if (part.type === 'image') return { type: 'image', attachment: imageRefs[imageIndex++] as ImageAttachmentRef }
+    const index = fileIndex++
+    const ref = fileRefs[index]
+    if (ref === undefined) throw new Error('file attachment admission result is missing')
+    const text = recognized[index]?.text
+    return text === undefined ? { type: 'file', attachment: ref } : { type: 'file', attachment: ref, recognizedText: text }
+  })
 }
 
 function imageBlockIn(

@@ -3,6 +3,8 @@
 import { Context, Service } from '@deepseek-ai/cordis'
 import { AttachmentError } from './error.ts'
 import type {
+  FileAttachmentLimits,
+  FileAttachmentRef,
   FileRecognitionInput,
   FileRecognitionResult,
   FileRecognizer,
@@ -11,17 +13,23 @@ import type {
   ImageRequestPolicy,
   RequestImageAttachment,
   SaveImageAttachment,
+  SaveFileAttachment,
+  StoredFileAttachment,
   StoredImageAttachment,
 } from './types.ts'
 
 export { AttachmentId, ImageVariantId } from './brand.ts'
-export { AttachmentError, isImageAdmissionError } from './error.ts'
-export type { AttachmentErrorCode, ImageAdmissionErrorCode } from './error.ts'
-export { admitEncodedImages } from './admission.ts'
+export { AttachmentError, isFileAdmissionError, isImageAdmissionError } from './error.ts'
+export type { AttachmentErrorCode, FileAdmissionErrorCode, ImageAdmissionErrorCode } from './error.ts'
+export { admitEncodedFiles, admitEncodedImages } from './admission.ts'
 export { requestImageDimensions } from './request-projection.ts'
 export type {
   AttachmentId as AttachmentIdType,
+  AttachmentRef,
   EncodedImageAttachment,
+  EncodedFileAttachment,
+  FileAttachmentLimits,
+  FileAttachmentRef,
   FileRecognitionInput,
   FileRecognitionResult,
   FileRecognizer,
@@ -29,9 +37,11 @@ export type {
   ImageAttachmentRef,
   ImageRequestPolicy,
   ImageMediaType,
+  SaveFileAttachment,
   RequestImageAttachment,
   SaveImageAttachment,
   StoredImageAttachment,
+  StoredFileAttachment,
 } from './types.ts'
 export { UNKNOWN_FILE_MEDIA_TYPE } from './types.ts'
 
@@ -52,8 +62,15 @@ export abstract class AttachmentStore extends Service {
   /** Deployment-resolved image policy used by authoritative and fast-path validation. */
   abstract readonly imageLimits: ImageAttachmentLimits
 
+  /** Deployment-resolved generic file policy used by authoritative validation. */
+  readonly fileLimits: FileAttachmentLimits = Object.freeze({
+    maxFileBytes: 50 * 1024 * 1024,
+    maxFilesPerMessage: 20,
+    maxMessageFileBytes: 200 * 1024 * 1024,
+  })
+
   /**
-   * Register one trusted transient-file recognizer in precedence order.
+   * Register one trusted file recognizer in precedence order.
    * @param recognizer - effect-scoped format recognizer.
    * @returns disposer removing this exact recognizer.
    */
@@ -69,18 +86,60 @@ export abstract class AttachmentStore extends Service {
   }
 
   /**
-   * Ask the first supporting recognizer for semantic text without persisting generic file bytes.
-   * @param input - complete transient file bytes and transport metadata.
+   * Read one durable file and ask the first supporting recognizer for semantic text.
+   * @param input - durable file reference.
    * @param signal - optional cancellation for recognition work.
    * @returns bounded recognized text, or undefined when no recognizer supports or accepts the file.
    */
-  recognizeFile(
-    input: FileRecognitionInput,
+  async recognizeFile(
+    input: FileAttachmentRef | FileRecognitionInput,
     signal?: AbortSignal,
   ): Promise<FileRecognitionResult | undefined> {
     signal?.throwIfAborted()
     const recognizer = this.fileRecognizers.find(candidate => candidate.supports(input))
-    return recognizer === undefined ? Promise.resolve(undefined) : recognizer.recognize(input, signal)
+    if (recognizer === undefined) return undefined
+    if ('data' in input) return recognizer.recognize(input, signal)
+    return recognizer.recognize(await this.readFile(input, signal), signal)
+  }
+
+  /**
+   * Validate and durably commit one ordered generic file batch.
+   * @param inputs - raw files in owning-message order.
+   * @returns durable references in input order.
+   */
+  async saveFiles(inputs: readonly SaveFileAttachment[]): Promise<readonly FileAttachmentRef[]> {
+    const { maxFilesPerMessage, maxMessageFileBytes, maxFileBytes } = this.fileLimits
+    if (inputs.length > maxFilesPerMessage) throw new AttachmentError('File batch exceeds the configured file-count limit.', 'TOO_MANY_FILES')
+    const totalBytes = inputs.reduce((sum, input) => sum + input.data.byteLength, 0)
+    if (totalBytes > maxMessageFileBytes) throw new AttachmentError('File batch exceeds the configured aggregate file-byte limit.', 'FILES_TOO_LARGE')
+    for (const input of inputs) {
+      if (input.data.byteLength > maxFileBytes) throw new AttachmentError('File exceeds the configured byte limit.', 'FILE_TOO_LARGE')
+      if (input.mediaType.length === 0 || input.mediaType.length > 255 || /[\u0000-\u001f\u007f]/.test(input.mediaType)) {
+        throw new AttachmentError('File media type is invalid.', 'INVALID_FILE_MEDIA_TYPE')
+      }
+    }
+    const refs: FileAttachmentRef[] = []
+    for (const input of inputs) refs.push(await this.saveFile(input))
+    return refs
+  }
+
+  /**
+   * Durably commit one generic file without changing its bytes.
+   * @param _input - raw bytes and display metadata.
+   * @returns durable content-addressed reference.
+   */
+  async saveFile(_input: SaveFileAttachment): Promise<FileAttachmentRef> {
+    throw new AttachmentError('The mounted attachment provider cannot persist generic files.', 'ATTACHMENT_WRITE_FAILED')
+  }
+
+  /**
+   * Read one generic file and verify its digest and metadata.
+   * @param _ref - durable file reference.
+   * @param _signal - optional cancellation signal.
+   * @returns verified original bytes and reference.
+   */
+  async readFile(_ref: FileAttachmentRef, _signal?: AbortSignal): Promise<StoredFileAttachment> {
+    throw new AttachmentError('The mounted attachment provider cannot read generic files.', 'ATTACHMENT_READ_FAILED')
   }
 
   /**

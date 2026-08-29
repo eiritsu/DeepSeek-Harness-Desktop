@@ -24,10 +24,10 @@ import type { ViewTab } from './views.ts'
 
 /** Browser-owned image that has not crossed the durable Host boundary. */
 export interface ComposerAttachment {
-  kind: 'image'
+  kind: 'image' | 'file'
   id: DraftAttachmentId
   file: File
-  previewUrl: string
+  previewUrl?: string
   /** Intrinsic pixel width, filled asynchronously by the intake header probe. */
   width?: number
   /** Intrinsic pixel height, filled asynchronously by the intake header probe. */

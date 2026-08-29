@@ -3,13 +3,14 @@
 import { Buffer } from 'node:buffer'
 import { AttachmentError } from './error.ts'
 import type { AttachmentStore } from './index.ts'
-import type { EncodedImageAttachment, ImageAttachmentRef, SaveImageAttachment } from './types.ts'
+import { UNKNOWN_FILE_MEDIA_TYPE } from './types.ts'
+import type { EncodedFileAttachment, EncodedImageAttachment, FileAttachmentRef, ImageAttachmentRef, SaveFileAttachment, SaveImageAttachment } from './types.ts'
 
 /** Decode one upload payload while rejecting non-canonical base64 forms. */
-function decodeBase64(data: string): Uint8Array {
+function decodeBase64(data: string, subject: 'Image' | 'File'): Uint8Array {
   const decoded = Buffer.from(data, 'base64')
   if (data.length === 0 || decoded.toString('base64') !== data) {
-    throw new AttachmentError('Image upload is not canonical base64.', 'INVALID_IMAGE_BASE64')
+    throw new AttachmentError(`${subject} upload is not canonical base64.`, subject === 'Image' ? 'INVALID_IMAGE_BASE64' : 'INVALID_FILE_BASE64')
   }
   return new Uint8Array(decoded)
 }
@@ -17,10 +18,14 @@ function decodeBase64(data: string): Uint8Array {
 /** Store input for one decoded upload. */
 function saveInput(image: EncodedImageAttachment): SaveImageAttachment {
   return {
-    data: decodeBase64(image.data),
+    data: decodeBase64(image.data, 'Image'),
     mediaType: image.mediaType,
     ...image.name === undefined ? {} : { name: image.name },
   }
+}
+
+function saveFileInput(file: EncodedFileAttachment): SaveFileAttachment {
+  return { data: decodeBase64(file.data, 'File'), mediaType: file.mediaType || UNKNOWN_FILE_MEDIA_TYPE, ...(file.name === undefined ? {} : { name: file.name }) }
 }
 
 /**
@@ -38,4 +43,12 @@ export async function admitEncodedImages(
   images: readonly EncodedImageAttachment[],
 ): Promise<readonly ImageAttachmentRef[]> {
   return attachments.saveImages(images.map(saveInput))
+}
+
+/** Admit one wire generic-file batch and durably store the original bytes. */
+export async function admitEncodedFiles(
+  attachments: AttachmentStore,
+  files: readonly EncodedFileAttachment[],
+): Promise<readonly FileAttachmentRef[]> {
+  return attachments.saveFiles(files.map(saveFileInput))
 }

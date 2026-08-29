@@ -465,16 +465,39 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [],
       },
       {
+        signature: 'readonly fileLimits: FileAttachmentLimits = Object.freeze({ maxFileBytes: 50 * 1024 * 1024, maxFilesPerMessage: 20, maxMessageFileBytes: 200 * 1024 * 1024 })',
+        description: 'Deployment-resolved generic file policy used by authoritative validation.',
+        parameters: [],
+      },
+      {
         signature: 'registerFileRecognizer(recognizer: FileRecognizer): () => void',
-        description: 'Register one trusted transient-file recognizer in precedence order.',
+        description: 'Register one trusted file recognizer in precedence order.',
         parameters: [{ name: 'recognizer', description: 'effect-scoped format recognizer.' }],
         returns: 'disposer removing this exact recognizer.',
       },
       {
-        signature: 'recognizeFile( input: FileRecognitionInput, signal?: AbortSignal, ): Promise<FileRecognitionResult | undefined>',
-        description: 'Ask the first supporting recognizer for semantic text without persisting generic file bytes.',
-        parameters: [{ name: 'input', description: 'complete transient file bytes and transport metadata.' }, { name: 'signal', description: 'optional cancellation for recognition work.' }],
+        signature: 'async recognizeFile( input: FileAttachmentRef | FileRecognitionInput, signal?: AbortSignal, ): Promise<FileRecognitionResult | undefined>',
+        description: 'Read one durable file and ask the first supporting recognizer for semantic text.',
+        parameters: [{ name: 'input', description: 'durable file reference.' }, { name: 'signal', description: 'optional cancellation for recognition work.' }],
         returns: 'bounded recognized text, or undefined when no recognizer supports or accepts the file.',
+      },
+      {
+        signature: 'async saveFiles(inputs: readonly SaveFileAttachment[]): Promise<readonly FileAttachmentRef[]>',
+        description: 'Validate and durably commit one ordered generic file batch.',
+        parameters: [{ name: 'inputs', description: 'raw files in owning-message order.' }],
+        returns: 'durable references in input order.',
+      },
+      {
+        signature: 'async saveFile(_input: SaveFileAttachment): Promise<FileAttachmentRef>',
+        description: 'Durably commit one generic file without changing its bytes.',
+        parameters: [{ name: '_input', description: 'raw bytes and display metadata.' }],
+        returns: 'durable content-addressed reference.',
+      },
+      {
+        signature: 'async readFile(_ref: FileAttachmentRef, _signal?: AbortSignal): Promise<StoredFileAttachment>',
+        description: 'Read one generic file and verify its digest and metadata.',
+        parameters: [{ name: '_ref', description: 'durable file reference.' }, { name: '_signal', description: 'optional cancellation signal.' }],
+        returns: 'verified original bytes and reference.',
       },
       {
         signature: 'abstract validateImage(input: SaveImageAttachment): Promise<void>',
@@ -3757,7 +3780,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ContentBlockMap',
-    declaration: 'export interface ContentBlockMap {\n    \'text\': TextBlock;\n    \'reasoning\': ReasoningBlock;\n    \'image\': ImageBlock;\n    \'tool-call\': ToolCallBlock;\n    \'tool-result\': ToolResultBlock;\n}',
+    declaration: 'export interface ContentBlockMap {\n    \'text\': TextBlock;\n    \'reasoning\': ReasoningBlock;\n    \'image\': ImageBlock;\n    \'file\': FileBlock;\n    \'tool-call\': ToolCallBlock;\n    \'tool-result\': ToolResultBlock;\n}',
   },
   {
     name: 'ContentBlockType',
@@ -4040,6 +4063,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface EpochHeader {\n    config: LlmCallConfig;\n    adapterDefaults?: LlmCallConfigAdapterDefaults;\n    system?: string;\n    tools?: ToolSchema[];\n}',
   },
   {
+    name: 'FileAttachmentLimits',
+    declaration: 'export interface FileAttachmentLimits {\n    maxFileBytes: number;\n    maxFilesPerMessage: number;\n    maxMessageFileBytes: number;\n}',
+  },
+  {
+    name: 'FileAttachmentRef',
+    declaration: 'export interface FileAttachmentRef {\n    attachmentId: AttachmentId;\n    mediaType: string;\n    bytes: number;\n    name?: string;\n}',
+  },
+  {
+    name: 'FileBlock',
+    declaration: 'export interface FileBlock {\n    type: \'file\';\n    attachment: FileAttachmentRef;\n    recognizedText?: string;\n}',
+  },
+  {
     name: 'FileDiff',
     declaration: 'export interface FileDiff {\n    path: string;\n    oldText: string | null;\n    newText: string;\n}',
   },
@@ -4057,7 +4092,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'FileRecognizer',
-    declaration: 'export interface FileRecognizer {\n    id: string;\n    supports(input: FileRecognitionInput): boolean;\n    recognize(input: FileRecognitionInput, signal?: AbortSignal): Promise<FileRecognitionResult | undefined>;\n}',
+    declaration: 'export interface FileRecognizer {\n    id: string;\n    supports(input: FileAttachmentRef | ImageAttachmentRef | FileRecognitionInput): boolean;\n    recognize(input: StoredFileAttachment | StoredImageAttachment | FileRecognitionInput, signal?: AbortSignal): Promise<FileRecognitionResult | undefined>;\n}',
   },
   {
     name: 'FileReferenceCandidate',
@@ -4689,7 +4724,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'PromptContentPart',
-    declaration: 'export type PromptContentPart = {\n    readonly type: \'text\';\n    readonly text: string;\n} | {\n    readonly type: \'image\';\n    readonly mediaType: ImageMediaType;\n    readonly data: string;\n    readonly name?: string;\n};',
+    declaration: 'export type PromptContentPart = {\n    readonly type: \'text\';\n    readonly text: string;\n} | {\n    readonly type: \'image\';\n    readonly mediaType: ImageMediaType;\n    readonly data: string;\n    readonly name?: string;\n} | {\n    readonly type: \'file\';\n    readonly mediaType: string;\n    readonly data: string;\n    readonly name?: string;\n};',
   },
   {
     name: 'PromptContext',
@@ -4818,6 +4853,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SandboxPolicyRequest',
     declaration: 'export interface SandboxPolicyRequest {\n    session?: Session;\n    mode?: SandboxMode;\n}',
+  },
+  {
+    name: 'SaveFileAttachment',
+    declaration: 'export interface SaveFileAttachment {\n    data: Uint8Array;\n    mediaType: string;\n    name?: string;\n}',
   },
   {
     name: 'SaveImageAttachment',
@@ -5480,8 +5519,12 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface StorageForms {\n}',
   },
   {
+    name: 'StoredFileAttachment',
+    declaration: 'export interface StoredFileAttachment {\n    ref: FileAttachmentRef;\n    data: Uint8Array;\n    mediaType?: string;\n    name?: string;\n}',
+  },
+  {
     name: 'StoredImageAttachment',
-    declaration: 'export interface StoredImageAttachment {\n    ref: ImageAttachmentRef;\n    data: Uint8Array;\n}',
+    declaration: 'export interface StoredImageAttachment {\n    ref: ImageAttachmentRef;\n    data: Uint8Array;\n    mediaType?: string;\n    name?: string;\n}',
   },
   {
     name: 'StreamChunk',

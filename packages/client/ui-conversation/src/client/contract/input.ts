@@ -27,6 +27,16 @@ export interface SubmitImageAttachment {
   readonly name?: string
 }
 
+/** Base64 generic-file payload passed to a claimed command submission. */
+export interface SubmitFileAttachment {
+  readonly mediaType: string
+  readonly data: string
+  readonly name?: string
+}
+
+/** Any attachment accepted by the prompt endpoint. */
+export type SubmitAttachment = SubmitImageAttachment | SubmitFileAttachment
+
 /** Settled result of a command or default composer submission. */
 export interface SubmitOutcome {
   readonly kind: 'success' | 'error'

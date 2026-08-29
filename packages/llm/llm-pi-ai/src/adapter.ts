@@ -44,6 +44,7 @@ import {
   LlmAdapter,
   LlmError,
   ReasoningEffortId,
+  STANDARD_MODEL_REASONING,
 } from '@deepseek-ai/dsh-llm'
 import type {
   GenerateOptions,
@@ -184,6 +185,7 @@ function resolveReasoningLevel(
 ): ModelThinkingLevel | undefined {
   if (effort === undefined) return undefined
   const supported = getSupportedThinkingLevels(model)
+  if (!model.reasoning) return effort as ModelThinkingLevel
   if (supported.some(level => level === effort)) return effort as ModelThinkingLevel
   throw new LlmError(
     `pi-ai provider "${model.provider}" model "${model.id}" does not support reasoning effort "${effort}"`,
@@ -211,7 +213,7 @@ function reasoningInfo(
   model: Model<Api>,
   defaultLevel: ModelThinkingLevel | undefined,
 ): Pick<LlmResolvedModelInfo, 'reasoning'> | Record<string, never> {
-  if (!model.reasoning) return {}
+  if (!model.reasoning) return { reasoning: STANDARD_MODEL_REASONING }
   const levels = getSupportedThinkingLevels(model)
   return {
     reasoning: {
@@ -222,6 +224,15 @@ function reasoningInfo(
       ...defaultLevel === undefined ? {} : { defaultEffort: ReasoningEffortId(defaultLevel) },
     },
   }
+}
+
+/** Preserve the legacy provider-neutral effort selector for models without a catalog map. */
+function modelForReasoning(model: Model<Api>, level: ModelThinkingLevel | undefined): Model<Api> {
+  if (level === undefined || model.reasoning) return model
+  const thinkingLevelMap = Object.fromEntries(
+    Object.entries(model.thinkingLevelMap ?? {}).filter(([key, value]) => key !== level || value !== null),
+  )
+  return { ...model, reasoning: true, thinkingLevelMap }
 }
 
 /** Merge deployment headers while removing case-insensitive attribution collisions. */
@@ -406,6 +417,7 @@ export class PiAiAdapter extends LlmAdapter {
       model,
       options.reasoningEffort ?? profile.reasoning,
     )
+    const dispatchModel = modelForReasoning(model, reasoning)
     const apiKey = await this.config.resolveApiKey(options.provider, profile)
 
     const consumer = new AbortController()
@@ -438,7 +450,7 @@ export class PiAiAdapter extends LlmAdapter {
             maxBytes: profile.requestImageMaxBytes,
           },
         }, onReplayDegrade)
-      const events = snapshot.models.streamSimple(model, context, {
+      const events = snapshot.models.streamSimple(dispatchModel, context, {
         ...profileOptions(profile, reasoning, apiKey),
         ...options.temperature === undefined ? {} : { temperature: options.temperature },
         ...options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens },
