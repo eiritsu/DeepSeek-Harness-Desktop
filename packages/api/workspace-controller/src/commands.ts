@@ -13,6 +13,8 @@ import { workspaceView } from './feed.ts'
 import type {
   WorkspaceArchiveSessionRequest,
   WorkspaceArchiveValue,
+  WorkspaceAttachSessionRequest,
+  WorkspaceAttachSessionValue,
   WorkspaceCreateRequest,
   WorkspaceCreateValue,
   WorkspaceDeleteRequest,
@@ -158,6 +160,24 @@ export class WorkspaceCommands {
       throw new RemoteError('session/not-found', error.message, { sessionId: request.sessionId }, { cause: error })
     }
     return { archivedSessionIds: [...this.ctx.workspaceRegistry.archivedSessionIds] }
+  }
+
+  /**
+   * Add one known Session to a Workspace's manual account.
+   * @param request - Workspace and Session identities.
+   * @returns the updated Workspace projection.
+   */
+  async attachSession(request: WorkspaceAttachSessionRequest): Promise<WorkspaceAttachSessionValue> {
+    const workspace = this.requireWorkspace(request.workspaceId)
+    try {
+      await workspace.attachSession(request.sessionId)
+    } catch (error) {
+      if (error instanceof WorkspaceUnknownSessionError) {
+        throw new RemoteError('session/not-found', error.message, { sessionId: request.sessionId }, { cause: error })
+      }
+      throw error
+    }
+    return { workspace: workspaceView(workspace) }
   }
 
   private requireWorkspace(workspaceId: WorkspaceId): Workspace {

@@ -8,6 +8,8 @@ import { WorkspaceFeed } from './feed.ts'
 import type {
   WorkspaceArchiveSessionRequest,
   WorkspaceArchiveValue,
+  WorkspaceAttachSessionRequest,
+  WorkspaceAttachSessionValue,
   WorkspaceCreateRequest,
   WorkspaceCreateValue,
   WorkspaceDeleteRequest,
@@ -107,6 +109,16 @@ export class WorkspaceController extends TypertRemoteService {
   @Remote('archiveSession')
   archiveSession(request: WorkspaceArchiveSessionRequest): Promise<WorkspaceArchiveValue> {
     return this.commands.archiveSession(request)
+  }
+
+  /**
+   * Add one known Session to a Workspace.
+   * @param request - Workspace and Session identities.
+   * @returns the updated Workspace projection.
+   */
+  @Remote('attachSession')
+  attachSession(request: WorkspaceAttachSessionRequest): Promise<WorkspaceAttachSessionValue> {
+    return this.commands.attachSession(request)
   }
 
   /**

@@ -21,6 +21,7 @@ const FILE_ADMISSION_ERROR_CODES = [
 
 /** Caller-correctable attachment failure codes raised while admitting image input. */
 export type ImageAdmissionErrorCode = typeof IMAGE_ADMISSION_ERROR_CODES[number]
+/** Caller-correctable attachment failure codes raised while admitting generic files. */
 export type FileAdmissionErrorCode = typeof FILE_ADMISSION_ERROR_CODES[number]
 
 /** Stable attachment failure codes used for protocol error routing. */
@@ -77,7 +78,11 @@ export function isImageAdmissionError(
     && IMAGE_ADMISSION_ERROR_CODE_SET.has(error.code)
 }
 
-/** Distinguish caller-correctable generic file admission failures. */
+/**
+ * Distinguish caller-correctable generic file admission failures.
+ * @param error - failure raised while validating or persisting a generic file batch.
+ * @returns whether the caller can correct the proposed file content or batch.
+ */
 export function isFileAdmissionError(error: unknown): error is AttachmentError & { readonly code: FileAdmissionErrorCode } {
   return error instanceof Error && 'code' in error && typeof error.code === 'string' && FILE_ADMISSION_ERROR_CODE_SET.has(error.code)
 }

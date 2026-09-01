@@ -163,6 +163,35 @@ export class InputTriggerController {
   }
 
   /**
+   * Open the launcher with every source bound to a trigger. The composer uses
+   * this for its plus menu so attachments, commands, and other contributions
+   * share one native menu surface.
+   * @param trigger - trigger whose sources should be displayed.
+   * @param hit - synthetic hit carrying position and pick-time draft CAS.
+   */
+  toggleSources(trigger: TriggerChar, hit: TriggerHit): void {
+    if (this.disposed) return
+    if (this.launcher.getSnapshot() === 'command' && this.menu.getSnapshot().open) {
+      this.dismiss()
+      return
+    }
+    const roster = this.deps.roster.sources(trigger)
+    if (roster.length === 0) {
+      this.dismiss()
+      return
+    }
+    this.stopFetch()
+    this.hit = hit
+    // Keep the existing launcher key: the composer only needs to know that
+    // its plus menu is expanded, while the menu itself contains all groups.
+    this.launcher.set('command')
+    this.menu.set(seedGroups(this.menu.getSnapshot(), roster))
+    this.reduce({ type: 'hit', hit })
+    this.refreshHeaders(hit, roster)
+    this.fetchCandidates(hit, roster)
+  }
+
+  /**
    * Pointer pick from MenuView: route the clicked candidate through onPick
    * and execute claim/insert outcomes via the scoped input events.
    * @param source - source (group) name.

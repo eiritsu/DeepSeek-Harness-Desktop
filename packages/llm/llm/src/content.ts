@@ -126,14 +126,23 @@ export function contentHasImage(content: readonly ContentBlock[]): boolean {
     || (block.type === 'tool-result' && contentHasImage(block.content)))
 }
 
-/** Stable text representation used when a provider cannot carry binary files. */
+/**
+ * Stable text representation used when a provider cannot carry binary files.
+ * @param ref - durable file reference and metadata.
+ * @param recognizedText - optional text extracted by a recognizer.
+ * @returns deterministic text representation of the file.
+ */
 export function fileAttachmentText(ref: FileAttachmentRef, recognizedText?: string): string {
   const label = ref.name === undefined ? String(ref.attachmentId) : `${quoted(ref.name)} (${ref.attachmentId})`
   const prefix = `[file ${label}; ${ref.mediaType}; ${ref.bytes} bytes]`
   return recognizedText === undefined || recognizedText.length === 0 ? prefix : `${prefix}\n${recognizedText}`
 }
 
-/** True when typed model content contains a generic file block. */
+/**
+ * True when typed model content contains a generic file block.
+ * @param content - typed model content blocks.
+ * @returns whether any nested block is a generic file.
+ */
 export function contentHasFile(content: readonly ContentBlock[]): boolean {
   return content.some(block => block.type === 'file' || (block.type === 'tool-result' && contentHasFile(block.content)))
 }
@@ -155,7 +164,11 @@ function replaceFiles(blocks: readonly ContentBlock[]): ContentBlock[] {
   return next ?? blocks as ContentBlock[]
 }
 
-/** Project durable generic files into deterministic text for every provider. */
+/**
+ * Project durable generic files into deterministic text for every provider.
+ * @param messages - model messages to project.
+ * @returns messages with generic-file blocks replaced by text.
+ */
 export function projectFilesForModel(messages: readonly Message[]): readonly Message[] {
   if (!messages.some(message => contentHasFile(message.content))) return messages
   return messages.map((message) => {

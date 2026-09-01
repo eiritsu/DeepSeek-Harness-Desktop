@@ -263,10 +263,16 @@ export interface Config {
   normalizedImageMaxBytes?: number
   /** Maximum simultaneous normalization or request-image transformations in this service instance. */
   imageCompressionConcurrency?: number
+  /** Maximum encoded bytes accepted for one generic file. */
+  maxFileBytes?: number
+  /** Maximum generic-file count accepted in one submitted message. */
+  maxFilesPerMessage?: number
+  /** Maximum aggregate encoded generic-file bytes accepted in one submitted message. */
+  maxMessageFileBytes?: number
 }
 ```
 
-来源：[`packages/attachment/attachment-local/src/index.ts:55`](../packages/attachment/attachment-local/src/index.ts)
+来源：[`packages/attachment/attachment-local/src/index.ts:65`](../packages/attachment/attachment-local/src/index.ts)
 
 <a id="deepseek-aidsh-bash-local"></a>
 

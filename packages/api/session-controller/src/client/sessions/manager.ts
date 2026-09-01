@@ -611,6 +611,22 @@ export class SessionManager {
   }
 
   /**
+   * Permanently delete a Session and remove its rows from the local projection.
+   * @param sessionId - root Session to delete.
+   * @returns deleted Session identities reported by the Host.
+   */
+  async delete(sessionId: SessionId): Promise<RemoteResult<{ deletedSessionIds: readonly SessionId[] }>> {
+    const result = await this.remote.session.delete({ sessionId, recursive: true })
+    if (!result.ok) return result
+    for (const id of result.value.deletedSessionIds) this.handleSessionRemoved(id)
+    this.selected = result.value.deletedSessionIds.includes(this.selected as SessionId)
+      ? undefined
+      : this.selected
+    this.notifier.markDirty()
+    return result
+  }
+
+  /**
    * Insert-or-enrich a locally synthesized summary: a new id prepends; an
    * existing entry only gains fields it lacks (the session-added frame and the
    * create() echo race — whichever lands second must fill the placeholder's

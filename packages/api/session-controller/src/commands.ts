@@ -21,6 +21,7 @@ import {
   ApiSessionCwdConflict,
   ApiSessionNotFound,
   ApiSessionPresetConflict,
+  ApiSessionRunning,
   ApiSessionSubagentOwnership,
   apiSessionSubagentOwnershipError,
   hasApiSessionSubagentOwner,
@@ -33,6 +34,8 @@ import type {
   SessionCancelValue,
   SessionCreateRequest,
   SessionCreateValue,
+  SessionDeleteRequest,
+  SessionDeleteValue,
   SessionForkRequest,
   SessionForkValue,
   SessionPromptRequest,
@@ -240,20 +243,35 @@ export class SessionCommandController {
     const composition = await this.agents.composeAgent(this.agents.presetForObservation(source))
     try {
       const { provider, model } = this.ctx.agentDefaultModel.currentSelection()
-      await this.ctx.agents.create({
-        sessionId: childId,
-        seed: source.events.slice(0, cut),
-        meta: {
-          ...(source.header.cwd === undefined ? {} : { cwd: source.header.cwd }),
-          parentSession: source.header.id,
-          seedLength: cut,
-          ...(composition.agentPreset === undefined
-            ? {}
-            : { agentPreset: composition.agentPreset }),
-        },
-        agentOptions: { provider, model },
-        setup: composition.setup,
-      })
+      await (this.agents.createFork === undefined
+        ? (await this.ctx.agents.create({
+          sessionId: childId,
+          seed: source.events.slice(0, cut),
+          meta: {
+            ...(source.header.cwd === undefined ? {} : { cwd: source.header.cwd }),
+            parentSession: source.header.id,
+            seedLength: cut,
+            ...(composition.agentPreset === undefined
+              ? {}
+              : { agentPreset: composition.agentPreset }),
+          },
+          agentOptions: { provider, model },
+          setup: composition.setup,
+        })).agent
+        : this.agents.createFork({
+          sessionId: childId,
+          seed: source.events.slice(0, cut),
+          meta: {
+            ...(source.header.cwd === undefined ? {} : { cwd: source.header.cwd }),
+            parentSession: source.header.id,
+            seedLength: cut,
+            ...(composition.agentPreset === undefined
+              ? {}
+              : { agentPreset: composition.agentPreset }),
+          },
+          agentOptions: { provider, model },
+          setup: composition.setup,
+        }))
     } catch (error) {
       throw new RemoteError(
         'gateway/internal',
@@ -273,6 +291,62 @@ export class SessionCommandController {
       }
     }
     return { sessionId: childId }
+  }
+
+  /**
+   * Permanently delete one Session and, when requested, its durable descendants.
+   * @param request - root identity and recursive-deletion policy.
+   * @returns deleted identities in child-before-parent order.
+   */
+  async delete(request: SessionDeleteRequest): Promise<SessionDeleteValue> {
+    const headers = new Map<SessionId, SessionHeader>()
+    for (const header of await this.ctx.sessionPersistence.list()) headers.set(header.id, header)
+    for (const session of this.ctx.sessions.list()) headers.set(session.id, session.header)
+    if (!headers.has(request.sessionId)) {
+      throw new RemoteError('session/not-found', `session "${request.sessionId}" not found`, {
+        sessionId: request.sessionId,
+      })
+    }
+    const children = new Map<SessionId, SessionId[]>()
+    for (const header of headers.values()) {
+      if (header.parentSession === undefined) continue
+      const current = children.get(header.parentSession) ?? []
+      current.push(header.id)
+      children.set(header.parentSession, current)
+    }
+    const directChildren = children.get(request.sessionId) ?? []
+    if (directChildren.length > 0 && request.recursive !== true) {
+      throw new RemoteError('session/has-children', `session "${request.sessionId}" has descendants`, {
+        sessionId: request.sessionId,
+        childSessionIds: directChildren,
+      })
+    }
+    const ordered: SessionId[] = []
+    const visit = (id: SessionId): void => {
+      for (const child of children.get(id) ?? []) visit(child)
+      ordered.push(id)
+    }
+    visit(request.sessionId)
+    try {
+      for (const id of ordered) this.agents.assertDeletable(id)
+      for (const id of ordered) {
+        await this.agents.disposeForDeletion(id)
+        await this.ctx.sessionPersistence.delete(id)
+        for (const workspace of this.ctx.workspaceRegistry.list()) {
+          if (workspace.sessionIds.includes(id)) await workspace.detachSession(id)
+        }
+      }
+    } catch (error: unknown) {
+      if (error instanceof ApiSessionRunning) {
+        throw new RemoteError('session/running', error.message, { sessionId: error.sessionId })
+      }
+      if (error instanceof ApiSessionSubagentOwnership) {
+        throw apiSessionSubagentOwnershipError(error.sessionId)
+      }
+      if (remoteErrorOf(error) !== undefined) throw error
+      throw new RemoteError('gateway/internal', `failed to delete session "${request.sessionId}": ${String(error)}`, {})
+    }
+    return { deletedSessionIds: ordered }
   }
 
   /**

@@ -431,6 +431,27 @@ describe('programmatic source launcher', () => {
     expect(controller.launcher.getSnapshot()).toBeNull()
     expect(controller.menu.getSnapshot().groups.map(group => group.source)).toEqual(['command', 'skill'])
   })
+
+  it('opens the plus launcher with every source in registration order', async () => {
+    const attachment = readySource('/', 'attachment', [{ name: '文件和文件夹', icon: 'paperclip' }])
+    const command = readySource('/', 'command', [{ name: 'goal' }])
+    const { controller } = controllerBench([attachment.source, command.source])
+    const hit = {
+      trigger: '/' as const,
+      query: '',
+      quoted: false,
+      position: 'leading' as const,
+      span: { start: 0, end: 0, draftRev: 2 },
+    }
+
+    controller.toggleSources('/', hit)
+    await tick()
+
+    expect(controller.launcher.getSnapshot()).toBe('command')
+    expect(controller.menu.getSnapshot().groups.map(group => group.source)).toEqual(['attachment', 'command'])
+    controller.toggleSources('/', hit)
+    expect(controller.menu.getSnapshot().open).toBe(false)
+  })
 })
 
 describe('scope-birth warm', () => {

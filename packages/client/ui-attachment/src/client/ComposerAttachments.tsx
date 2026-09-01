@@ -8,10 +8,19 @@ import { DropOverlay } from '../DropOverlay.tsx'
 import { ImageLightbox } from '../ImageLightbox.tsx'
 import { attachmentRailLabels, dropOverlayLabels, lightboxLabels } from './labels.ts'
 import css from './ComposerAttachments.module.css'
+import { ATTACHMENT_PICKER_EVENT } from './picker-event.ts'
 
 /** Rail item retaining its browser-owned attachment for callbacks. */
 interface ComposerRailItem extends AttachmentRailItem {
   attachment: ComposerAttachment
+}
+
+/** Resolve the short file-type label shown in a Codex-style file card. */
+function fileTypeLabel(file: File): string | undefined {
+  const extension = /\.([^./]+)$/.exec(file.name)?.[1]
+  if (extension !== undefined && extension.length > 0) return extension.toUpperCase()
+  const subtype = file.type.split('/')[1]
+  return subtype === undefined || subtype === '' ? undefined : subtype.toUpperCase()
 }
 
 /** Draft-image rail, document drop target, and original-image preview slot entry. */
@@ -79,13 +88,34 @@ export function ComposerAttachments({
     }
   }, [canAcceptDrop, onAddImages])
 
-  const railItems = useMemo<ComposerRailItem[]>(() => attachments.map(attachment => ({
-    id: attachment.id,
-    ...(attachment.previewUrl === undefined ? {} : { previewUrl: attachment.previewUrl }),
-    alt: attachment.file.name || t('image.pending'),
-    removeLabel: t('image.remove', { name: attachment.file.name }),
-    attachment,
-  })), [attachments, t])
+  useEffect(() => {
+    const onPickerRequest = (event: Event): void => {
+      if (!(event instanceof CustomEvent)) return
+      const kind = (event.detail as { kind?: unknown } | null)?.kind
+      if (kind === 'files') pickerRef.current?.click()
+    }
+    window.addEventListener(ATTACHMENT_PICKER_EVENT, onPickerRequest)
+    return () => { window.removeEventListener(ATTACHMENT_PICKER_EVENT, onPickerRequest) }
+  }, [])
+
+  const railItems = useMemo<ComposerRailItem[]>(() => attachments.map((attachment) => {
+    const common = {
+      id: attachment.id,
+      ...(attachment.previewUrl === undefined ? {} : { previewUrl: attachment.previewUrl }),
+      alt: attachment.file.name || (attachment.kind === 'image' ? t('image.pending') : t('attachment.file')),
+      removeLabel: attachment.kind === 'image'
+        ? t('image.remove', { name: attachment.file.name })
+        : t('attachment.remove', { name: attachment.file.name }),
+      attachment,
+    }
+    if (attachment.kind === 'image') return common
+    const meta = fileTypeLabel(attachment.file)
+    return {
+      ...common,
+      name: attachment.file.name || t('attachment.file'),
+      ...(meta === undefined ? {} : { meta }),
+    }
+  }), [attachments, t])
 
   return (
     <>
@@ -94,7 +124,6 @@ export function ComposerAttachments({
         if (files.length > 0) onAddImages(files)
         event.currentTarget.value = ''
       }} />
-      <button type="button" className={css.add} onClick={() => { pickerRef.current?.click() }}>{t('attachment.add')}</button>
       {dragActive && (
         <DropOverlay
           disabled={!canAcceptDrop}
@@ -106,7 +135,7 @@ export function ComposerAttachments({
           <AttachmentRail
             items={railItems}
             labels={attachmentRailLabels(t)}
-            onOpen={(item) => { setPreview(item.attachment) }}
+            onOpen={(item) => { if (item.attachment.previewUrl !== undefined) setPreview(item.attachment) }}
             onRemove={(item) => { onRemoveImage(item.attachment.id) }}
           />
         </div>

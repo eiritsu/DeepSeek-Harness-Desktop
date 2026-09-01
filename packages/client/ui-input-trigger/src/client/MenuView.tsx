@@ -12,7 +12,7 @@
  */
 import { Fragment, useEffect, useRef, useSyncExternalStore } from 'react'
 import clsx from 'clsx'
-import { IconChevronRightOutline14, ReferenceIcon, useAnchoredMaxHeight } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconChevronRightOutline14, IconPaperclipOutline16, ReferenceIcon, useAnchoredMaxHeight } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import css from './MenuView.module.css'
 import type { MenuViewInjected } from './slots.ts'
@@ -150,7 +150,9 @@ export function MenuView({ menu, headers, onPick, onCrumb, onHover, onDismiss, t
                       >
                         {item.icon !== undefined && (
                           <span className={css.itemIcon} aria-hidden>
-                            <ReferenceIcon kind={item.icon} size={16} />
+                            {item.icon === 'paperclip'
+                              ? <IconPaperclipOutline16 size={16} />
+                              : <ReferenceIcon kind={item.icon} size={16} />}
                           </span>
                         )}
                         <span className={css.itemName}>{item.name}</span>

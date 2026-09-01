@@ -119,6 +119,10 @@ export type WorkspaceBrowserInjected = {
   renameSession: (sessionId: SessionId, title: string) => Promise<void>
   /** Fork a Session at its last completed turn and open the child. */
   forkSession: (sessionId: SessionId) => void
+  /** Add a Session to a selected Workspace. */
+  attachSession: (workspaceId: WorkspaceId, sessionId: SessionId) => Promise<void>
+  /** Permanently delete a Session and its durable descendants. */
+  deleteSession: (sessionId: SessionId) => Promise<void>
   /** Rename a Host Workspace (rejects on name conflict; resolves on durability). */
   renameWorkspace: (workspaceId: WorkspaceId, title: string) => Promise<void>
   /** Delete only a Host Workspace registration; directory and Session logs remain. */

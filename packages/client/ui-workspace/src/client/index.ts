@@ -117,6 +117,10 @@ export function apply(ctx: Context): void {
           // Fork or child-rename failure keeps the current selection.
         })
     },
+    attachSession: async (workspaceId, sessionId) => {
+      await workspaces.attachSession(workspaceId, sessionId)
+    },
+    deleteSession: async (sessionId) => { await sessions.delete(sessionId) },
     renameWorkspace: async (workspaceId, title) => { await workspaces.rename(workspaceId, title) },
     deleteWorkspace: async (workspaceId) => { await workspaces.delete(workspaceId) },
     insertWorkspaceBefore: async (workspaceId, beforeWorkspaceId) => {

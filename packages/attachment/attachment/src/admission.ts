@@ -46,7 +46,12 @@ export async function admitEncodedImages(
   return attachments.saveImages(images.map(saveInput))
 }
 
-/** Admit a browser prompt and replace each uploaded image with its durable reference. */
+/**
+ * Admit a browser prompt and replace each uploaded attachment with a durable reference.
+ * @param attachments - attachment store owning admission policy.
+ * @param content - prompt parts containing text, image, or generic-file uploads.
+ * @returns prompt parts with durable attachment references.
+ */
 export async function admitPromptContent(
   attachments: AttachmentStore,
   content: readonly PromptContentPart[],
@@ -64,7 +69,12 @@ export async function admitPromptContent(
   })
 }
 
-/** Admit one wire generic-file batch and durably store the original bytes. */
+/**
+ * Admit one wire generic-file batch and durably store the original bytes.
+ * @param attachments - attachment store owning admission policy.
+ * @param files - base64-encoded generic-file uploads in caller order.
+ * @returns durable references in the same order as `files`.
+ */
 export async function admitEncodedFiles(
   attachments: AttachmentStore,
   files: readonly EncodedFileAttachment[],

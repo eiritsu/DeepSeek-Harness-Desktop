@@ -233,6 +233,13 @@ Host service backing the generated `ctx.remote.workspace` namespace.
 @Remote('archiveSession') archiveSession(request: WorkspaceArchiveSessionRequest): Promise<WorkspaceArchiveValue>
 
 /**
+ * Add one known Session to a Workspace.
+ * @param request - Workspace and Session identities.
+ * @returns the updated Workspace projection.
+ */
+@Remote('attachSession') attachSession(request: WorkspaceAttachSessionRequest): Promise<WorkspaceAttachSessionValue>
+
+/**
  * Stream a complete Workspace baseline followed by ordered increments.
  * @param signal - generation cancellation.
  * @returns baseline followed by ordered Workspace increments.

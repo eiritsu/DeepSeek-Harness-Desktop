@@ -54,8 +54,11 @@ export const DEFAULT_NORMALIZED_IMAGE_MAX_BYTES = 4 * 1024 * 1024
 export const DEFAULT_IMAGE_COMPRESSION_CONCURRENCY = 2
 /** Maximum configurable native image transformations per store. */
 export const MAX_IMAGE_COMPRESSION_CONCURRENCY = 8
+/** Default encoded-byte limit for one generic file. */
 export const DEFAULT_MAX_FILE_BYTES = 50 * 1024 * 1024
+/** Default generic-file count limit for one submitted message. */
 export const DEFAULT_MAX_FILES_PER_MESSAGE = 20
+/** Default aggregate encoded-byte limit for generic files in one submitted message. */
 export const DEFAULT_MAX_MESSAGE_FILE_BYTES = 200 * 1024 * 1024
 
 /** Local attachment backend configuration. */
@@ -83,8 +86,11 @@ export interface Config {
   normalizedImageMaxBytes?: number
   /** Maximum simultaneous normalization or request-image transformations in this service instance. */
   imageCompressionConcurrency?: number
+  /** Maximum encoded bytes accepted for one generic file. */
   maxFileBytes?: number
+  /** Maximum generic-file count accepted in one submitted message. */
   maxFilesPerMessage?: number
+  /** Maximum aggregate encoded generic-file bytes accepted in one submitted message. */
   maxMessageFileBytes?: number
 }
 

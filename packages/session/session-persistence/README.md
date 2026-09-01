@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-session-persistence` stores a session's event log durably, reloads it on resume, and lists stored sessions through the backend-neutral `ctx.sessionPersistence` service. The persisted unit is the existing `SessionEvent` log — there is no parallel stored message type — and non-replayable metadata (format version, working directory, lineage, seed boundary) travels separately as `SessionHeader`. A backend owns its storage, while the service owns append-only logs, contiguous sequence numbers, crash recovery that preserves an interrupted turn instead of truncating it, and durable writes that resolve only after the batch is safe. The shipped JSONL provider implements this service with one artifact per Session; third-party providers may implement the same contract without changing the loop or model.
+`dsh-session-persistence` stores a session's event log durably, reloads it on resume, deletes a session artifact only after lifecycle retirement, and lists stored sessions through the backend-neutral `ctx.sessionPersistence` service. The persisted unit is the existing `SessionEvent` log — there is no parallel stored message type — and non-replayable metadata (format version, working directory, lineage, seed boundary) travels separately as `SessionHeader`. A backend owns its storage, while the service owns append-only logs, contiguous sequence numbers, crash recovery that preserves an interrupted turn instead of truncating it, and durable writes that resolve only after the batch is safe. The shipped JSONL provider implements this service with one artifact per Session; third-party providers may implement the same contract without changing the loop or model.
 
 ## Table of Contents
 

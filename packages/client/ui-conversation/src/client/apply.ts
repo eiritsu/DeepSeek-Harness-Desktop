@@ -328,7 +328,7 @@ export function apply(ctx: Context): void {
           : (selection) => {
             shell.dismissPopup()
             const snapshot = shell.snapshot
-            inputTriggers.toggleSource('command', {
+            inputTriggers.toggleSources('/', {
               trigger: '/',
               query: '',
               quoted: false,

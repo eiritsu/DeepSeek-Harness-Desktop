@@ -448,6 +448,10 @@ export class JsonlSessionPersistence extends SessionPersistence implements Persi
    * decoded from it, then append synthetic closers. Two fsync'd steps — the seam
    * does not require this to be atomic.
    */
+  override delete(id: SessionId): Promise<void> {
+    return this.coordinator.delete(id)
+  }
+
   async commitRepair(
     meta: SessionHeader,
     tornMarker: JsonlTornMarker | undefined,
@@ -457,6 +461,22 @@ export class JsonlSessionPersistence extends SessionPersistence implements Persi
     const repairedEvents = [...(tornMarker?.recoveredEvents ?? []), ...closers]
     if (repairedEvents.length > 0) await this.appendLines(meta, repairedEvents)
     if (tornMarker !== undefined) this.ctx.logger.warn(`${this.name}: session "${meta.id}" recovered from a torn tail; incomplete tail bytes were discarded`)
+  }
+
+  /** Remove the configured artifact and durably publish its absence. */
+  async deleteStored(id: SessionId): Promise<boolean> {
+    await this.ensureRootEncoding()
+    const path = await this.findLog(id)
+    if (path === undefined) return false
+    try {
+      await rm(path)
+    } catch (error: unknown) {
+      if (isENOENT(error)) return false
+      throw error
+    }
+    /* v8 ignore next -- Windows namespace writes use platform durability semantics. */
+    if (process.platform !== 'win32') await this.syncDirPosix(dirname(path))
+    return true
   }
 
   /** List valid unique stored sessions' metadata (header line only — no full-log parse). */

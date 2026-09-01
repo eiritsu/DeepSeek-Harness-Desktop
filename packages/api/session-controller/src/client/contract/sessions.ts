@@ -96,6 +96,12 @@ export interface ISessions {
    */
   fork(opts: { sessionId: SessionId; atSeq?: number; increaseTitle?: boolean }): Promise<SessionId>
   /**
+   * Permanently delete a Session and all of its durable descendants.
+   * @param sessionId - root Session to delete.
+   * @returns deleted Session identities in child-before-parent order.
+   */
+  delete(sessionId: SessionId): Promise<readonly SessionId[]>
+  /**
    * Resolve an Agent-scoped context view (use-and-discard).
    * @param id - session id.
    * @returns scoped ctx, or undefined for a session neither listed nor already scoped.

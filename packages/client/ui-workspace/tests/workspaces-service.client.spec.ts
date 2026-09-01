@@ -146,6 +146,10 @@ class FakeWorkspaces implements IWorkspaces {
     this.archiveCalls.push(sessionId)
     return this.onArchive(sessionId)
   }
+
+  attachSession(_workspaceId: WorkspaceId, _sessionId: SessionId): Promise<WorkspaceView> {
+    return Promise.resolve({} as WorkspaceView)
+  }
 }
 
 const listing: DirectoryListing = {

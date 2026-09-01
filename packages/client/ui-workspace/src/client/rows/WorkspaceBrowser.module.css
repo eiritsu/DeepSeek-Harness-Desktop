@@ -486,6 +486,13 @@
   color: var(--dsw-alias-label-secondary);
 }
 
+.attachWorkspaceList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .wide {
     animation: none;

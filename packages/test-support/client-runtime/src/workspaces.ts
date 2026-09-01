@@ -112,6 +112,14 @@ export class TestWorkspaces implements IWorkspaces {
     await (this.stubs.get('insertBefore')?.(workspaceId, beforeWorkspaceId) as Promise<void> | undefined)
   }
 
+  /** Add a session to a workspace (recorded). */
+  async attachSession(workspaceId: WorkspaceId, sessionId: SessionId): Promise<WorkspaceView> {
+    this.calls.push({ method: 'attachSession', args: [workspaceId, sessionId] })
+    const stub = this.stubs.get('attachSession')
+    if (stub !== undefined) return await (stub(workspaceId, sessionId) as Promise<WorkspaceView>)
+    return { workspaceId, title: '', path: '', sessionIds: [sessionId] } as unknown as WorkspaceView
+  }
+
   /**
    * Move an accounted session (recorded). The default echoes a minimal view.
    * @param workspaceId - target workspace.

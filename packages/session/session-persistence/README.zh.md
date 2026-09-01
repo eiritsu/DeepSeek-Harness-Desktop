@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-session-persistence` 通过后端无关的 `ctx.sessionPersistence` 服务持久存储会话的事件日志、在恢复时重新加载并列出已存储会话。持久化单元就是现有 `SessionEvent` 日志——不存在另一套并行的存储消息类型——不可回放的元数据（格式版本、工作目录、血缘、种子边界）作为 `SessionHeader` 单独传输。后端拥有自己的存储，而服务拥有仅追加日志、连续序列号、保留中断轮次而非截断的崩溃恢复，以及只在批次安全后才返回的持久写入。随产品交付的 JSONL provider 用每个 Session 一份产物实现该服务；第三方 provider 可以实现同一约定，而不改变 loop 或模型。
+`dsh-session-persistence` 通过后端无关的 `ctx.sessionPersistence` 服务持久存储会话的事件日志、在恢复时重新加载、在生命周期退出后删除会话产物，并列出已存储会话。持久化单元就是现有 `SessionEvent` 日志——不存在另一套并行的存储消息类型——不可回放的元数据（格式版本、工作目录、血缘、种子边界）作为 `SessionHeader` 单独传输。后端拥有自己的存储，而服务拥有仅追加日志、连续序列号、保留中断轮次而非截断的崩溃恢复，以及只在批次安全后才返回的持久写入。随产品交付的 JSONL provider 用每个 Session 一份产物实现该服务；第三方 provider 可以实现同一约定，而不改变 loop 或模型。
 
 ## 目录
 

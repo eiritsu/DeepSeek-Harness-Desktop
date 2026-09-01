@@ -6,6 +6,7 @@ import type {
   ComposerAttachment, ComposerAttachmentsOwnerProps, ComposerAttachmentsProps,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { ComposerAttachments } from '../src/client/ComposerAttachments.tsx'
+import { ATTACHMENT_PICKER_EVENT } from '../src/client/picker-event.ts'
 
 beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class {
@@ -31,6 +32,10 @@ const t = ((key: string, params?: Readonly<Record<string, unknown>>): string => 
     'image.scrollRight': '向右滚动图片',
     'image.dropBlocked': '当前无法添加图片',
     'image.dropTitle': '图片拖动到此处即可添加',
+    'attachment.add': '添加文件',
+    'attachment.remove': '移除文件 {name}',
+    'attachment.filesAndFolders': '文件和文件夹',
+    'attachment.folder': '选择文件夹',
   }
   if (key === 'image.remove') {
     const name = params?.name
@@ -89,6 +94,28 @@ describe('ComposerAttachments', () => {
     expect(fireEvent.drop(document.body, { dataTransfer })).toBe(false)
     expect(onAddImages).toHaveBeenCalledWith([image])
     expect(view.queryByRole('status')).toBeNull()
+  })
+
+  it('opens Codex-style file and folder choices and accepts a document card', () => {
+    const onAddImages = vi.fn()
+    const documentFile = new File(['{"ok":true}'], 'settings.json', { type: 'application/json' })
+    const view = render(<ComposerAttachments {...props({ onAddImages })} />)
+
+    window.dispatchEvent(new CustomEvent(ATTACHMENT_PICKER_EVENT, { detail: { kind: 'files' } }))
+    const inputs = view.container.querySelectorAll('input[type="file"]')
+    expect(inputs).toHaveLength(1)
+    fireEvent.change(inputs[0]!, { target: { files: [documentFile] } })
+    expect(onAddImages).toHaveBeenCalledWith([documentFile])
+
+    view.rerender(<ComposerAttachments {...props({
+      attachments: [{
+        kind: 'file', id: 'file-1' as ComposerAttachment['id'], file: documentFile,
+      }],
+    })} />)
+    const card = view.getByLabelText('settings.json')
+    expect(card).toBeTruthy()
+    expect(card.textContent).toContain('settings.json')
+    expect(card.textContent).toContain('JSON')
   })
 
   it('tracks nested file drags and clears an aborted drag', () => {

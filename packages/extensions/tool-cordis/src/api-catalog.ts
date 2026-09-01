@@ -471,16 +471,39 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [],
       },
       {
+        signature: 'readonly fileLimits: FileAttachmentLimits = Object.freeze({ maxFileBytes: 50 * 1024 * 1024, maxFilesPerMessage: 20, maxMessageFileBytes: 200 * 1024 * 1024, })',
+        description: 'Deployment-resolved generic file policy used by authoritative validation.',
+        parameters: [],
+      },
+      {
         signature: 'registerFileRecognizer(recognizer: FileRecognizer): () => void',
-        description: 'Register one trusted transient-file recognizer in precedence order.',
+        description: 'Register one trusted file recognizer in precedence order.',
         parameters: [{ name: 'recognizer', description: 'effect-scoped format recognizer.' }],
         returns: 'disposer removing this exact recognizer.',
       },
       {
-        signature: 'recognizeFile( input: FileRecognitionInput, signal?: AbortSignal, ): Promise<FileRecognitionResult | undefined>',
-        description: 'Ask the first supporting recognizer for semantic text without persisting generic file bytes.',
-        parameters: [{ name: 'input', description: 'complete transient file bytes and transport metadata.' }, { name: 'signal', description: 'optional cancellation for recognition work.' }],
+        signature: 'async recognizeFile( input: FileAttachmentRef | FileRecognitionInput, signal?: AbortSignal, ): Promise<FileRecognitionResult | undefined>',
+        description: 'Read one durable file and ask the first supporting recognizer for semantic text.',
+        parameters: [{ name: 'input', description: 'durable file reference.' }, { name: 'signal', description: 'optional cancellation for recognition work.' }],
         returns: 'bounded recognized text, or undefined when no recognizer supports or accepts the file.',
+      },
+      {
+        signature: 'async saveFiles(inputs: readonly SaveFileAttachment[]): Promise<readonly FileAttachmentRef[]>',
+        description: 'Validate and durably commit one ordered generic file batch.',
+        parameters: [{ name: 'inputs', description: 'raw files in owning-message order.' }],
+        returns: 'durable references in input order.',
+      },
+      {
+        signature: 'async saveFile(_input: SaveFileAttachment): Promise<FileAttachmentRef>',
+        description: 'Durably commit one generic file without changing its bytes.',
+        parameters: [{ name: '_input', description: 'raw bytes and display metadata.' }],
+        returns: 'durable content-addressed reference.',
+      },
+      {
+        signature: 'async readFile(_ref: FileAttachmentRef, _signal?: AbortSignal): Promise<StoredFileAttachment>',
+        description: 'Read one generic file and verify its digest and metadata.',
+        parameters: [{ name: '_ref', description: 'durable file reference.' }, { name: '_signal', description: 'optional cancellation signal.' }],
+        returns: 'verified original bytes and reference.',
       },
       {
         signature: 'abstract validateImage(input: SaveImageAttachment): Promise<void>',
@@ -1450,6 +1473,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the new Session identity.',
       },
       {
+        signature: '@Remote(\'delete\') delete(request: SessionDeleteRequest): Promise<SessionDeleteValue>',
+        description: 'Permanently delete one Session and its durable descendants.',
+        parameters: [{ name: 'request', description: 'root identity and recursive-deletion policy.' }],
+        returns: 'deleted identities in child-before-parent order.',
+      },
+      {
         signature: '@Remote(\'prompt\') prompt(request: SessionPromptRequest, signal: AbortSignal): Promise<SessionPromptValue>',
         description: 'Admit one prompt after explicitly resuming its Session.',
         parameters: [{ name: 'request', description: 'Session identity, prompt content, source metadata, and delivery mode.' }, { name: 'signal', description: 'caller cancellation before prompt admission begins.' }],
@@ -1543,6 +1572,11 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: 'abstract append(id: SessionId, events: readonly SessionEvent[]): Promise<void>',
         description: 'Durably persist a batch of events. Honors the append-only and contiguous- seq contracts: the first event\'s `seq` MUST equal the stored next-seq (after `load` has durably closed any interrupted turn). Rejects non-JSON- serializable `event.data` with an error naming the offending event type.',
         parameters: [{ name: 'id', description: 'the session the batch belongs to.' }, { name: 'events', description: 'the contiguous batch to persist, in seq order.' }],
+      },
+      {
+        signature: 'delete(_id: SessionId): Promise<void>',
+        description: 'Permanently delete one Session log after its live lifecycle has stopped.',
+        parameters: [{ name: '_id', description: 'Session identity to delete.' }],
       },
       {
         signature: 'async prepare(id: SessionId, signal?: AbortSignal): Promise<SessionPreparation>',
@@ -2875,6 +2909,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the complete resulting archive set.',
       },
       {
+        signature: '@Remote(\'attachSession\') attachSession(request: WorkspaceAttachSessionRequest): Promise<WorkspaceAttachSessionValue>',
+        description: 'Add one known Session to a Workspace.',
+        parameters: [{ name: 'request', description: 'Workspace and Session identities.' }],
+        returns: 'the updated Workspace projection.',
+      },
+      {
         signature: '@Remote({ mode: \'stream\' }) follow(signal: AbortSignal): AsyncIterable<WorkspaceFollowFrame>',
         description: 'Stream a complete Workspace baseline followed by ordered increments.',
         parameters: [{ name: 'signal', description: 'generation cancellation.' }],
@@ -3230,6 +3270,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     summary: 'Waterfall around every streaming model call (retry, replay, routing).',
     description: 'Waterfall around every streaming model call (retry, replay, routing). Bound to the LlmRuntime; call `next()` to reach the resolved adapter\'s stream, or yield your own chunks to short-circuit.',
     parameters: [{ name: 'options', description: 'the full request. A LOOP-built request carries the process-local {@link markAgentLoopRequest} identity and arrives deep-frozen (mutation throws): its content is a pure function of the session log (the reconstructability Agent Note), so listeners read it, never rewrite it. Hand-built calls do not carry that marker; their messages already obey the immutable creation contract.' }],
+  },
+  {
+    name: 'session-persistence/deleted',
+    mode: 'emit',
+    signature: '\'session-persistence/deleted\'(id: SessionId): void',
+    summary: 'Emitted after one Session identity has left durable storage.',
+    description: 'Emitted after one Session identity has left durable storage.',
+    parameters: [{ name: 'id', description: 'Removed Session identity.' }],
   },
   {
     name: 'session-telemetry/record',
@@ -3777,7 +3825,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ContentBlockMap',
-    declaration: 'export interface ContentBlockMap {\n    \'text\': TextBlock;\n    \'reasoning\': ReasoningBlock;\n    \'image\': ImageBlock;\n    \'tool-call\': ToolCallBlock;\n    \'tool-result\': ToolResultBlock;\n}',
+    declaration: 'export interface ContentBlockMap {\n    \'text\': TextBlock;\n    \'reasoning\': ReasoningBlock;\n    \'image\': ImageBlock;\n    \'file\': FileBlock;\n    \'tool-call\': ToolCallBlock;\n    \'tool-result\': ToolResultBlock;\n}',
   },
   {
     name: 'ContentBlockType',
@@ -4064,6 +4112,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type FiberState = FiberStateEnum;',
   },
   {
+    name: 'FileAttachmentLimits',
+    declaration: 'export interface FileAttachmentLimits {\n    maxFileBytes: number;\n    maxFilesPerMessage: number;\n    maxMessageFileBytes: number;\n}',
+  },
+  {
+    name: 'FileAttachmentRef',
+    declaration: 'export interface FileAttachmentRef {\n    attachmentId: AttachmentId;\n    mediaType: string;\n    bytes: number;\n    name?: string;\n}',
+  },
+  {
+    name: 'FileBlock',
+    declaration: 'export interface FileBlock {\n    type: \'file\';\n    attachment: FileAttachmentRef;\n    recognizedText?: string;\n}',
+  },
+  {
     name: 'FileDiff',
     declaration: 'export interface FileDiff {\n    path: string;\n    oldText: string | null;\n    newText: string;\n}',
   },
@@ -4081,7 +4141,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'FileRecognizer',
-    declaration: 'export interface FileRecognizer {\n    id: string;\n    supports(input: FileRecognitionInput): boolean;\n    recognize(input: FileRecognitionInput, signal?: AbortSignal): Promise<FileRecognitionResult | undefined>;\n}',
+    declaration: 'export interface FileRecognizer {\n    id: string;\n    supports(input: FileAttachmentRef | ImageAttachmentRef | FileRecognitionInput): boolean;\n    recognize(input: StoredFileAttachment | StoredImageAttachment | FileRecognitionInput, signal?: AbortSignal): Promise<FileRecognitionResult | undefined>;\n}',
   },
   {
     name: 'FileReferenceCandidate',
@@ -4860,6 +4920,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SandboxPolicyRequest {\n    session?: Session;\n    mode?: SandboxMode;\n}',
   },
   {
+    name: 'SaveFileAttachment',
+    declaration: 'export interface SaveFileAttachment {\n    data: Uint8Array;\n    mediaType: string;\n    name?: string;\n}',
+  },
+  {
     name: 'SaveImageAttachment',
     declaration: 'export interface SaveImageAttachment {\n    data: Uint8Array;\n    mediaType: ImageMediaType;\n    name?: string;\n}',
   },
@@ -4958,6 +5022,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SessionCreateValue',
     declaration: 'export interface SessionCreateValue {\n    readonly sessionId: SessionId;\n    readonly agentPreset?: string;\n}',
+  },
+  {
+    name: 'SessionDeleteRequest',
+    declaration: 'export interface SessionDeleteRequest {\n    readonly sessionId: SessionId;\n    readonly recursive?: boolean;\n}',
+  },
+  {
+    name: 'SessionDeleteValue',
+    declaration: 'export interface SessionDeleteValue {\n    readonly deletedSessionIds: readonly SessionId[];\n}',
   },
   {
     name: 'SessionEvent',
@@ -5504,8 +5576,12 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface StorageForms {\n}',
   },
   {
+    name: 'StoredFileAttachment',
+    declaration: 'export interface StoredFileAttachment {\n    ref: FileAttachmentRef;\n    data: Uint8Array;\n    mediaType?: string;\n    name?: string;\n}',
+  },
+  {
     name: 'StoredImageAttachment',
-    declaration: 'export interface StoredImageAttachment {\n    ref: ImageAttachmentRef;\n    data: Uint8Array;\n}',
+    declaration: 'export interface StoredImageAttachment {\n    ref: ImageAttachmentRef;\n    data: Uint8Array;\n    mediaType?: string;\n    name?: string;\n}',
   },
   {
     name: 'StreamChunk',
@@ -6222,6 +6298,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'WorkspaceArchiveValue',
     declaration: 'export interface WorkspaceArchiveValue {\n    readonly archivedSessionIds: readonly SessionId[];\n}',
+  },
+  {
+    name: 'WorkspaceAttachSessionRequest',
+    declaration: 'export interface WorkspaceAttachSessionRequest {\n    readonly workspaceId: WorkspaceId;\n    readonly sessionId: SessionId;\n}',
+  },
+  {
+    name: 'WorkspaceAttachSessionValue',
+    declaration: 'export interface WorkspaceAttachSessionValue {\n    readonly workspace: WorkspaceView;\n}',
   },
   {
     name: 'WorkspaceBaseline',

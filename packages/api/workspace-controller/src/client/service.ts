@@ -63,6 +63,13 @@ export interface IWorkspaces {
    */
   archiveSession(sessionId: SessionId): Promise<void>
   /**
+   * Add a known Session to a Workspace's manual account.
+   * @param workspaceId - target Workspace.
+   * @param sessionId - Session to account.
+   * @returns the changed Workspace.
+   */
+  attachSession(workspaceId: WorkspaceId, sessionId: SessionId): Promise<WorkspaceView>
+  /**
    * Move a Session within one Workspace account.
    * @param workspaceId - owning Workspace.
    * @param sessionId - Session to move.
@@ -114,6 +121,12 @@ export class WorkspaceController extends Service implements IWorkspaces {
   async archiveSession(sessionId: SessionId): Promise<void> {
     const result = await this.model.archiveSession(sessionId)
     if (!result.ok) throw commandError('session archive', result.error)
+  }
+
+  async attachSession(workspaceId: WorkspaceId, sessionId: SessionId): Promise<WorkspaceView> {
+    const result = await this.model.attachSession(workspaceId, sessionId)
+    if (!result.ok) throw commandError('session attach', result.error)
+    return result.value.workspace
   }
 
   async insertSessionBefore(

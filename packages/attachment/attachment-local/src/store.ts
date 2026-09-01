@@ -100,14 +100,25 @@ async function commitAttachment(root: string, data: Uint8Array, ref: AttachmentR
   }
 }
 
-/** Persist one generic file byte-for-byte. */
+/**
+ * Persist one generic file byte-for-byte.
+ * @param root - attachment store root.
+ * @param input - file bytes and declared metadata to persist.
+ * @returns the durable file reference.
+ */
 export async function saveFileAttachment(root: string, input: SaveFileAttachment): Promise<FileAttachmentRef> {
   const prepared = prepareFileAttachment(input)
   await commitAttachment(root, prepared.data, prepared.ref, 'file')
   return prepared.ref
 }
 
-/** Read and verify one generic file. */
+/**
+ * Read and verify one generic file.
+ * @param root - attachment store root.
+ * @param ref - durable file reference to read.
+ * @param signal - optional cancellation signal.
+ * @returns verified file bytes and reference.
+ */
 export async function readFileAttachment(root: string, ref: FileAttachmentRef, signal?: AbortSignal): Promise<StoredFileAttachment> {
   signal?.throwIfAborted()
   const sha256 = ensureReference(ref)

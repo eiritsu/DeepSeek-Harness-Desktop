@@ -42,7 +42,11 @@ function parseSettingsNamespace(value: string): SettingsNamespace {
   return value as SettingsNamespace
 }
 
-/** Validate and brand a settings namespace for plugin-owned constants. */
+/**
+ * Validate and brand a settings namespace for plugin-owned constants.
+ * @param value - namespace string to validate.
+ * @returns validated settings namespace.
+ */
 export function settingsNamespace(value: string): SettingsNamespace {
   return parseSettingsNamespace(value)
 }

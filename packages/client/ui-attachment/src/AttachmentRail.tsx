@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
-  IconChevronLeftOutline14, IconChevronRightOutline14, IconCloseFill14,
+  IconChevronLeftOutline14, IconChevronRightOutline14, IconCloseFill14, ReferenceIcon,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import css from './AttachmentRail.module.css'
 
@@ -18,6 +18,10 @@ export interface AttachmentRailItem {
   alt: string
   /** Accessible label of the item's remove control. */
   removeLabel: string
+  /** Optional display name for a non-image attachment. */
+  name?: string
+  /** Optional short metadata line such as an uppercase file extension. */
+  meta?: string
 }
 
 /** Rail-level strings the owner resolves from its own locale namespace. */
@@ -165,15 +169,22 @@ export function AttachmentRail<T extends AttachmentRailItem>({ items, labels, on
         onScroll={updateEdges}
       >
         {items.map(item => (
-          <div key={item.id} className={css.item}>
-            <button
-              type="button"
-              className={css.thumbnail}
-              title={labels.open}
-              onClick={() => { onOpen(item) }}
-            >
-              {item.previewUrl === undefined ? <span aria-label={item.alt}>📄</span> : <img src={item.previewUrl} alt={item.alt} />}
-            </button>
+          <div key={item.id} className={clsx(css.item, item.previewUrl === undefined && css.fileItem)}>
+            {item.previewUrl === undefined ? (
+              <div className={clsx(css.thumbnail, css.fileThumbnail)} aria-label={item.alt}>
+                <span className={css.fileCard}>
+                  <span className={css.fileIconBox} aria-hidden><ReferenceIcon kind="file" size={20} className={css.fileIcon} /></span>
+                  <span className={css.fileDetails}>
+                    {item.name !== undefined && <span className={css.fileName}>{item.name}</span>}
+                    {item.meta !== undefined && <span className={css.fileMeta}>{item.meta}</span>}
+                  </span>
+                </span>
+              </div>
+            ) : (
+              <button type="button" className={css.thumbnail} title={labels.open} onClick={() => { onOpen(item) }}>
+                <img src={item.previewUrl} alt={item.alt} />
+              </button>
+            )}
             <button
               type="button"
               className={css.remove}
