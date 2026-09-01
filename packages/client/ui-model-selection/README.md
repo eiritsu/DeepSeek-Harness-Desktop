@@ -29,7 +29,7 @@ Mount this plugin alongside `ui-conversation` and the commands package; the comp
 
 ### Model and effort
 
-Models stay grouped by provider. The menu shows model and effort names only; catalog descriptions remain available to other consumers. The `/model` popup applies the selected model's default effort; the composer can then choose any advertised effort. An adapter without reasoning metadata leaves the Effort row absent; there is no arbitrary effort input.
+Models stay grouped by provider. The menu shows model and effort names only; catalog descriptions remain available to other consumers. The `/model` popup applies the selected model's default effort; the composer can then choose any advertised effort. When an adapter has no exact catalog metadata it exposes the shared `Off`, `Low`, `High`, and `Max` fallback; there is no arbitrary effort input.
 
 ### Unroutable sessions
 
@@ -79,7 +79,7 @@ These limits define the current model surface. They are current package constrai
 
 - **No create-time or addressed-subagent selection** — both entries require an existing ordinary session's Agent; there is no draft-phase model choice to fold into session creation, and subagent continuation deliberately exposes no independent model-selection contract.
 - **Directory names are presentation-only** — selection and persistence use provider/model/effort ids; a provider whose catalog or exact-model metadata lookup fails lists as an unselectable failure row until reload.
-- **No arbitrary effort input** — the composer offers only the exact model's adapter-advertised levels; an adapter without reasoning metadata leaves the Effort row absent.
+- **No arbitrary effort input** — the composer offers only the exact model's adapter-advertised levels, including the adapter's shared fallback for an unlisted model.
 
 <a id="dev-note"></a>
 ### Dev Note

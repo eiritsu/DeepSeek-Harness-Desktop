@@ -59,4 +59,16 @@ describe('tails', () => {
     expect(blank.container.firstChild).toBeNull()
   })
 
+  it('AssistantMarkdown does not render an empty reasoning disclosure', () => {
+    const view = render(
+      <AssistantMarkdown
+        t={t}
+        blocks={[{ kind: 'reasoning', text: '' }]}
+        streaming={false}
+        renderMessageImages={renderMessageImages}
+      />,
+    )
+    expect(view.container.firstChild).toBeNull()
+  })
+
 })

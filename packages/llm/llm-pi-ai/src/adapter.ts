@@ -194,20 +194,15 @@ function resolveReasoningLevel(
 }
 
 /**
- * Selectable reasoning efforts for one model, or nothing at all.
+ * Selectable reasoning efforts for one model.
  *
- * A model that carries no reasoning metadata — every hand-declared one, and
- * every catalog model pi-ai marks as non-reasoning — is reported by pi-ai as
- * supporting the single level `off`. Passing that through would offer a control
- * that cannot do what it says: `off` is translated to *omitting* the reasoning
- * option, which for such a model is byte-for-byte the same request as naming no
- * effort — so a provider whose own default is to think would keep thinking with
- * `off` selected. Omitting `reasoning` entirely is the seam's way of saying the
- * capability is unavailable, which leaves the surface offering only the
- * provider's default.
+ * A model that carries no reasoning metadata receives the provider-neutral
+ * effort list. The request path installs the same list as a pi-ai thinking map
+ * before dispatch, so aliases and private gateways can expose an effective
+ * thinking control without a local catalog entry.
  * @param model - the resolved model descriptor.
  * @param defaultLevel - the profile's configured effort, already validated.
- * @returns the `reasoning` field, or an empty object when none can be offered.
+ * @returns the model's reasoning metadata.
  */
 function reasoningInfo(
   model: Model<Api>,
@@ -226,7 +221,7 @@ function reasoningInfo(
   }
 }
 
-/** Supply an explicit reasoning route for compatible models that lack catalog metadata. */
+/** Add the standard effort map before dispatching a model without catalog metadata. */
 function modelForReasoning(model: Model<Api>, level: ModelThinkingLevel | undefined): Model<Api> {
   if (level === undefined || model.reasoning) return model
   const thinkingLevelMap = Object.fromEntries(

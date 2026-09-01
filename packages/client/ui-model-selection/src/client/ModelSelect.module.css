@@ -74,7 +74,7 @@
   flex-direction: column;
   /* Let the visible pane's rows set the card width, but keep pathological ids
      and narrow screens inside a bounded card where ellipsis remains. */
-  width: max-content;
+  width: min(420px, calc(100vw - 32px));
   min-width: min(240px, calc(100vw - 32px));
   max-width: min(420px, calc(100vw - 32px));
   max-height: min(360px, calc(100vh - 96px));
@@ -136,8 +136,14 @@
 }
 
 .groups {
+  width: 100%;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.group {
+  min-width: 0;
 }
 
 .group + .group {
@@ -161,8 +167,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  width: auto;
-  min-width: 100%;
+  width: 100%;
+  min-width: 0;
   min-height: 38px;
   padding: 6px 8px;
   border: none;

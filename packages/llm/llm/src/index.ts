@@ -47,12 +47,11 @@ export * from './api-key.ts'
 export * from './types.ts'
 export * from './content.ts'
 export * from './message.ts'
-export * from './reasoning.ts'
 export * from './retry-policy.ts'
-export * from './reasoning.ts'
 export { BlockAssembler } from './assembler.ts'
 export { callConfigEquals, isAgentLoopRequest, markAgentLoopRequest } from './call-config.ts'
 export type { LlmCallConfig, LlmCallConfigAdapterDefaults } from './call-config.ts'
+export { STANDARD_MODEL_REASONING, STANDARD_REASONING_EFFORTS } from './reasoning.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {

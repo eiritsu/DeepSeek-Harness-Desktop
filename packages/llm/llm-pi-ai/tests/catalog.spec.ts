@@ -112,16 +112,14 @@ describe('hand-declared providers', () => {
     })
   })
 
-  it('offers no reasoning control it could not honour', async () => {
+  it('offers standard reasoning levels for a route without catalog metadata', async () => {
     const server = await mockServer([])
     const ctx = await harness(gateway(`${server.url}/v1`))
 
-    // pi-ai reports a model with no reasoning metadata as supporting the single
-    // level `off`, but `off` is translated to *omitting* the reasoning option —
-    // byte-for-byte the same request as naming no effort — so a provider whose
-    // own default is to think would keep thinking with `off` selected. The
-    // capability is reported unavailable instead of offering that control.
-    expect((await ctx.llm.resolveModelInfo('acme-gateway', 'acme-large')).reasoning).toBeUndefined()
+    // A route without an installed catalog still gets the provider-neutral
+    // controls used by the request adapter for compatible gateway models.
+    expect((await ctx.llm.resolveModelInfo('acme-gateway', 'acme-large')).reasoning?.efforts.map(e => e.id))
+      .toEqual([ReasoningEffortId('off'), ReasoningEffortId('low'), ReasoningEffortId('high'), ReasoningEffortId('max')])
 
     // A catalog route is unaffected: its models carry the metadata that makes
     // `off` actually disable thinking.

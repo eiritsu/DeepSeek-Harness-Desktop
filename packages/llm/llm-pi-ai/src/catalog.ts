@@ -576,8 +576,9 @@ export interface PiAiModelProfile {
   input?: PiAiModality[]
   /**
    * Selectable reasoning efforts. Absent inherits the installed catalog
-   * entry's capability (a hand-declared model has none and does not reason);
-   * `false` declares a non-reasoning model, which is how a profile strips
+   * entry's capability; when neither the entry nor its upstream owner has
+   * metadata, the adapter exposes its provider-neutral effort list. `false`
+   * declares a non-reasoning model, which is how a profile strips
    * reasoning from a catalog model its gateway cannot serve; a non-empty dict
    * declares the offered levels and their wire spellings.
    */
@@ -668,11 +669,9 @@ function resolveModelReasoning(
 ): ModelReasoning {
   const efforts = entry.reasoningEfforts
   if (efforts === undefined) {
-    // Reasoning rides the installed entry or is absent: a bare capability flag
-    // would make pi-ai advertise effort levels with no `thinkingLevelMap` to
-    // spell them, and no listing endpoint reports a model's reasoning
-    // protocol. The entry's map (when any) arrives through the `...base`
-    // spread in the model literal.
+    // Reasoning rides the installed entry when one exists. The adapter adds
+    // its provider-neutral fallback for a model with no catalog metadata;
+    // this resolver keeps the materialized catalog truthful to its inputs.
     return { reasoning: base?.reasoning ?? false }
   }
   // The installed entry's map may ride along through `...base`; pi-ai never
@@ -860,7 +859,11 @@ export function resolveRouteModels(request: RouteCatalogRequest): RouteCatalog {
     if (entry.id.length === 0) invalid(provider, 'has a model with an empty id')
     if (seen.has(entry.id)) invalid(provider, `lists model "${entry.id}" more than once`)
     seen.add(entry.id)
+    // A configured route may be an alias of a provider pi-ai already knows.
+    // Preserve that exact provider/model capability metadata (including
+    // reasoning levels) while replacing only the route and endpoint fields.
     const base = defaults.get(entry.id)
+      ?? (entry.ownedBy === undefined ? undefined : catalogModels(entry.ownedBy).get(entry.id))
     const api = request.api ?? base?.api ?? routeApi
     if (api === undefined) {
       invalid(provider, `model "${entry.id}" needs an api; the installed catalog does not describe it, so set the`

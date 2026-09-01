@@ -489,7 +489,7 @@ describe('provider profile lifecycle', () => {
     expect(typeof info.context?.contextWindow).toBe('number')
   })
 
-  it('exposes pi-ai model thinking levels verbatim without inventing a provider default', async () => {
+  it('exposes pi-ai model thinking levels and a shared fallback when metadata is absent', async () => {
     const ctx = new Context()
     await ctx.plugin(LlmRuntime)
     await ctx.plugin(LlmPiAi, {
@@ -516,10 +516,40 @@ describe('provider profile lifecycle', () => {
       ReasoningEffortId('xhigh'),
       ReasoningEffortId('max'),
     ])
-    // Models without provider metadata retain the legacy provider-neutral controls.
-    expect((await ctx.llm.resolveModelInfo('openai', 'gpt-4.1')).reasoning?.efforts.map(effort => effort.id)).toEqual([
-      ReasoningEffortId('off'), ReasoningEffortId('low'), ReasoningEffortId('high'), ReasoningEffortId('max'),
+    // A model without provider metadata receives the provider-neutral effort
+    // list so compatible gateways still expose the thinking control.
+    expect((await ctx.llm.resolveModelInfo('openai', 'gpt-4.1')).reasoning?.efforts.map(e => e.id)).toEqual([
+      ReasoningEffortId('off'),
+      ReasoningEffortId('low'),
+      ReasoningEffortId('high'),
+      ReasoningEffortId('max'),
     ])
+  })
+
+  it('offers the shared reasoning control on a non-OpenAI hand-declared route', async () => {
+    const ctx = new Context()
+    await ctx.plugin(LlmRuntime)
+    await ctx.plugin(LlmPiAi, {
+      providers: {
+        'anthropic-private': {
+          api: 'anthropic-messages',
+          baseURL: 'https://anthropic.example.test',
+          models: [{ id: 'claude-private' }],
+        },
+      },
+    })
+
+    await expect(ctx.llm.resolveModelInfo('anthropic-private', 'claude-private'))
+      .resolves.toMatchObject({
+        reasoning: {
+          efforts: [
+            { id: ReasoningEffortId('off') },
+            { id: ReasoningEffortId('low') },
+            { id: ReasoningEffortId('high') },
+            { id: ReasoningEffortId('max') },
+          ],
+        },
+      })
   })
 
   it('uses a supported profile reasoning value as the model default and rejects an unsupported one', async () => {

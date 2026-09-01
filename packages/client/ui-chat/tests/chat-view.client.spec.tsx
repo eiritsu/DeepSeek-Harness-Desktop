@@ -1185,12 +1185,13 @@ describe('ChatView', () => {
     expect(within(cancelledDisclosure).getByRole('status').textContent).toContain('重试已取消')
   })
 
-  it('renders terminal turn failures inline with their durable message and optional code', () => {
-    const h = makeHarness({ nodes: [user(1, 'try'), turnError(2, 'AUTH'), turnError(3)] })
+  it('renders terminal turn failures inline with their durable message and user-facing code', () => {
+    const h = makeHarness({ nodes: [user(1, 'try'), turnError(2, 'AUTH'), turnError(3), turnError(4, 'PI_AI_ERROR')] })
     const view = render(<h.ChatView {...h.props} />)
     const statuses = view.getAllByRole('status')
     expect(statuses.map(status => status.textContent)).toEqual([
       '本轮运行失败API 密钥无效AUTH',
+      '本轮运行失败plugin exploded',
       '本轮运行失败plugin exploded',
     ])
   })

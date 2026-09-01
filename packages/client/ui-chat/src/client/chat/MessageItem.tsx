@@ -48,6 +48,11 @@ function failureMessage(
   return code === 'AUTH' ? t('message.failure.auth') : message
 }
 
+/** Internal adapter codes stay in diagnostics, not beside user-facing failures. */
+function visibleFailureCode(code: unknown): code is string {
+  return typeof code === 'string' && code !== 'PI_AI_ERROR'
+}
+
 function ModelRetryItem({ node, active, t }: {
   node: ModelRetryNode
   active: boolean
@@ -126,7 +131,7 @@ function TurnErrorItem({ node, t }: {
         <span className={css.turnErrorTitle}>{t('message.turnError')}</span>
         <span className={css.turnErrorMessage}>{failureMessage(node.message, node.code, t)}</span>
       </div>
-      {node.code !== undefined && <code className={css.turnErrorCode}>{node.code}</code>}
+      {visibleFailureCode(node.code) && <code className={css.turnErrorCode}>{node.code}</code>}
     </div>
   )
 }
