@@ -151,6 +151,9 @@ const SECTION_ORDERS = {
   STRUCTURED_OUTPUT: 9900,
 } as const
 
+/** Compatibility alias for plugins that still import the pre-alpha.3 name. */
+export const FIRST_PARTY_SECTION_ORDER = SECTION_ORDERS
+
 /** Name of a centrally allocated prompt-section position. */
 export type PromptSectionOrderName = keyof typeof SECTION_ORDERS
 

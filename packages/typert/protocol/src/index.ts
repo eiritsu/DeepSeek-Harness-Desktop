@@ -10,6 +10,19 @@ import type { TypertContextMap } from './types.ts'
 
 export { RemoteError, remoteErrorOf } from './remote-error.ts'
 
+/** Compatibility error for lookup policy rejections from pre-alpha.3 plugins. */
+export class TypertLookupFailure<Failure = unknown> extends Error {
+  /** Adapter-owned failure returned to the caller. */
+  readonly failure: Failure
+
+  /** @param failure - adapter-owned lookup failure payload. */
+  constructor(failure: Failure) {
+    super('Typert lookup policy rejected the requested identity')
+    this.name = 'TypertLookupFailure'
+    this.failure = failure
+  }
+}
+
 const TYPERT_REMOTE_SEGMENT_PATTERN = /^[A-Za-z0-9_$.-]+$/
 
 /**

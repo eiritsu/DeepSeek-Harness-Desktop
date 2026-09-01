@@ -895,4 +895,25 @@ export interface SettingsSectionHooks<T> {
   validate?: (value: T) => void
 }
 
+/**
+ * Compatibility installer for plugins written against the pre-alpha.3 settings
+ * helper. New code should call `ctx.settings.installSection` directly.
+ * @param ctx - consumer plugin context owning the wiring.
+ * @param ns - consumer-owned settings namespace.
+ * @param schema - settings schema.
+ * @param entry - composition entry used as the base layer.
+ * @param hooks - source sink, change notification, and optional validation.
+ */
+export function installSettingsSection<T>(
+  ctx: Context,
+  ns: SettingsNamespace,
+  schema: z<T>,
+  entry: T,
+  hooks: SettingsSectionHooks<T>,
+): void {
+  ctx.inject(['settings'], (settingsCtx) => {
+    settingsCtx.settings.installSection(ctx, ns, schema, entry, hooks)
+  })
+}
+
 export default SettingsProvider
