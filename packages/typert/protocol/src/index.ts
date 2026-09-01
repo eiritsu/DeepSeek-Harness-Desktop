@@ -6,7 +6,7 @@
  */
 
 import { Service, type Context } from '@deepseek-ai/cordis'
-import type { TypertContextMap } from './types.ts'
+import type { RemoteFailure, TypertContextMap } from './types.ts'
 
 export { RemoteError, remoteErrorOf } from './remote-error.ts'
 
@@ -19,6 +19,19 @@ export class TypertLookupFailure<Failure = unknown> extends Error {
   constructor(failure: Failure) {
     super('Typert lookup policy rejected the requested identity')
     this.name = 'TypertLookupFailure'
+    this.failure = failure
+  }
+}
+
+/** Compatibility error for business Remote rejections from pre-alpha.3 plugins. */
+export class TypertRemoteFailure extends Error {
+  /** Stable caller-facing failure payload. */
+  readonly failure: RemoteFailure
+
+  /** @param failure - business failure returned unchanged to the caller. */
+  constructor(failure: RemoteFailure) {
+    super(failure.message)
+    this.name = 'TypertRemoteFailure'
     this.failure = failure
   }
 }
