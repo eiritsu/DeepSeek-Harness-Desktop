@@ -2,7 +2,7 @@
 
 import type { ContentBlock } from './types.ts'
 import type { Message } from './message.ts'
-import type { AttachmentStore, ImageAttachmentRef, ImageMediaType, RequestImageAttachment } from '@deepseek-ai/dsh-attachment'
+import type { AttachmentStore, FileAttachmentRef, ImageAttachmentRef, ImageMediaType, RequestImageAttachment } from '@deepseek-ai/dsh-attachment'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 
 /** Execution-world path that model tools can use to read one normalized attachment. */
@@ -124,6 +124,44 @@ export function offloadedImageText(
 export function contentHasImage(content: readonly ContentBlock[]): boolean {
   return content.some(block => block.type === 'image'
     || (block.type === 'tool-result' && contentHasImage(block.content)))
+}
+
+/** Stable text representation used when a provider cannot carry binary files. */
+export function fileAttachmentText(ref: FileAttachmentRef, recognizedText?: string): string {
+  const label = ref.name === undefined ? String(ref.attachmentId) : `${quoted(ref.name)} (${ref.attachmentId})`
+  const prefix = `[file ${label}; ${ref.mediaType}; ${ref.bytes} bytes]`
+  return recognizedText === undefined || recognizedText.length === 0 ? prefix : `${prefix}\n${recognizedText}`
+}
+
+/** True when typed model content contains a generic file block. */
+export function contentHasFile(content: readonly ContentBlock[]): boolean {
+  return content.some(block => block.type === 'file' || (block.type === 'tool-result' && contentHasFile(block.content)))
+}
+
+function replaceFiles(blocks: readonly ContentBlock[]): ContentBlock[] {
+  let next: ContentBlock[] | undefined
+  for (const [index, block] of blocks.entries()) {
+    if (block.type === 'file') {
+      next ??= blocks.slice(0, index)
+      next.push({ type: 'text', text: fileAttachmentText(block.attachment, block.recognizedText) })
+    } else if (block.type === 'tool-result') {
+      const content = replaceFiles(block.content)
+      if (content !== block.content) {
+        next ??= blocks.slice(0, index)
+        next.push({ ...block, content })
+      } else next?.push(block)
+    } else next?.push(block)
+  }
+  return next ?? blocks as ContentBlock[]
+}
+
+/** Project durable generic files into deterministic text for every provider. */
+export function projectFilesForModel(messages: readonly Message[]): readonly Message[] {
+  if (!messages.some(message => contentHasFile(message.content))) return messages
+  return messages.map((message) => {
+    const content = replaceFiles(message.content)
+    return content === message.content ? message : { ...message, content }
+  })
 }
 
 /** Base64 length of raw image bytes, including padding. */

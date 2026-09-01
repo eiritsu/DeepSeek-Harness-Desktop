@@ -21,10 +21,11 @@ import type {
 export { AttachmentId, ImageVariantId } from './brand.ts'
 export { AttachmentError, isFileAdmissionError, isImageAdmissionError } from './error.ts'
 export type { AttachmentErrorCode, FileAdmissionErrorCode, ImageAdmissionErrorCode } from './error.ts'
-export { admitEncodedFiles, admitEncodedImages } from './admission.ts'
+export { admitEncodedFiles, admitEncodedImages, admitPromptContent } from './admission.ts'
 export { requestImageDimensions } from './request-projection.ts'
 export type {
   AttachmentId as AttachmentIdType,
+  AdmittedPromptContentPart,
   AttachmentRef,
   EncodedImageAttachment,
   EncodedFileAttachment,
@@ -37,6 +38,7 @@ export type {
   ImageAttachmentRef,
   ImageRequestPolicy,
   ImageMediaType,
+  PromptContentPart,
   SaveFileAttachment,
   RequestImageAttachment,
   SaveImageAttachment,
