@@ -205,7 +205,7 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-api-session-controller`
 
-需要：`agentDefaultModel` · `agents` · `attachments` · `llm` · `sessions` · `sessionProjections` · `sessionQuery` · `typert` · `workspaceRegistry`
+需要：`agentDefaultModel` · `agents` · `attachments` · `llm` · `sessions` · `sessionPersistence` · `sessionProjections` · `sessionQuery` · `typert` · `workspaceRegistry`
 
 ```ts config-catalog
 /** Session Controller deployment policy. */
@@ -1097,8 +1097,9 @@ export interface PiAiModelProfile {
   input?: PiAiModality[]
   /**
    * Selectable reasoning efforts. Absent inherits the installed catalog
-   * entry's capability (a hand-declared model has none and does not reason);
-   * `false` declares a non-reasoning model, which is how a profile strips
+   * entry's capability; when neither the entry nor its upstream owner has
+   * metadata, the adapter exposes its provider-neutral effort list. `false`
+   * declares a non-reasoning model, which is how a profile strips
    * reasoning from a catalog model its gateway cannot serve; a non-empty dict
    * declares the offered levels and their wire spellings.
    */

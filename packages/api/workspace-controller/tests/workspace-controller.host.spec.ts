@@ -73,6 +73,10 @@ async function nextFrame(
 }
 
 describe('WorkspaceController commands', () => {
+  it('declares the registry required by deletion and feed operations', () => {
+    expect(WorkspaceController.inject).toContain('workspaceRegistry')
+  })
+
   it('serializes concurrent path adoption and preserves an existing title', async () => {
     const { controller, root } = await harness()
     const path = stageDir(root, 'alpha')
