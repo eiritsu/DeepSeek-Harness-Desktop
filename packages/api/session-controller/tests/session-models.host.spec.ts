@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry, { agentEvents } from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import AttachmentStore from '@deepseek-ai/dsh-attachment'
+import AttachmentStore, { type SaveFileAttachment } from '@deepseek-ai/dsh-attachment'
 import LlmRuntime, { LlmAdapter, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type {
   GenerateOptions, LlmCallConfig, LlmCallConfigAdapterDefaults, LlmModelInfo,
@@ -160,7 +160,7 @@ function currentSelection(ctx: Context, sessionId: SessionId) {
 describe('Web session model selection', () => {
   it('writes recognized generic-file text into the admitted user message', async () => {
     const { ctx, agent, sessionId } = await harness()
-    const saveFiles = vi.fn(() => Promise.resolve([{
+    const saveFiles = vi.fn((_inputs: readonly SaveFileAttachment[]) => Promise.resolve([{
       attachmentId: 'scanned-pdf', mediaType: 'application/pdf', bytes: 4, name: 'scan.pdf',
     }]))
     const recognizeFile = vi.fn(() => Promise.resolve({ text: 'OCR extracted text' }))
