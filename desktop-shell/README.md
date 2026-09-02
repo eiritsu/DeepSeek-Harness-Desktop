@@ -46,7 +46,7 @@ open "desktop-shell/dist/DeepSeek Harness.app"
 
 The build script recreates `desktop-shell/dist/DeepSeek Harness.app`, generates `AppIcon.icns`, applies an ad-hoc signature after all resources are present, and records the current checkout as the initial source root. The resulting application has the development bundle identifier `ai.deepseek.harness.desktop.local`.
 
-Run `desktop-shell/scripts/package-dmg.sh` to create a shareable disk image. The distribution build removes the developer source path, embeds a source snapshot assembled from tracked files, and uses the `ai.deepseek.harness.desktop` identifier. It remains ad-hoc signed and is not notarized.
+Run `desktop-shell/scripts/package-dmg.sh` to create a shareable disk image. The distribution build removes the developer source path, Git metadata, tests, snapshots, source maps, and development-only documentation; it embeds the verified Harness runtime/Web artifacts and the five self-developed plugin packages from the sibling `DeepSeek Plugin` checkout (the path can be overridden with `DSH_PLUGIN_DIR`). The Web profile enables the Plugin library, Deepseek-Files Office recognition, Lark, and model-catalog bundles on first launch. It uses the `ai.deepseek.harness.desktop` identifier, remains ad-hoc signed, and is not notarized.
 
 If no existing `node` and same-directory `npx` satisfy the required version, startup downloads the official Node.js 24.16.0 ARM64 archive, verifies its pinned SHA-256 digest, and installs it below Application Support without administrator access or changes to the system Node.js installation.
 

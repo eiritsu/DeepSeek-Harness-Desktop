@@ -46,7 +46,7 @@ open "desktop-shell/dist/DeepSeek Harness.app"
 
 构建脚本会重新创建 `desktop-shell/dist/DeepSeek Harness.app`、生成 `AppIcon.icns`、在所有资源写入后应用 ad-hoc 签名，并把当前 checkout 记录为初始源码根目录。生成的应用使用开发 bundle identifier `ai.deepseek.harness.desktop.local`。
 
-运行 `desktop-shell/scripts/package-dmg.sh` 可以创建可分享的磁盘映像。分发构建会移除开发者源码路径、嵌入仅由已跟踪文件组成的源码快照，并使用 `ai.deepseek.harness.desktop` identifier。产物仍是 ad-hoc 签名，且未经 notarization。
+运行 `desktop-shell/scripts/package-dmg.sh` 可以创建可分享的磁盘映像。分发构建会移除开发者源码路径、Git 元数据、测试、快照、source map 和仅开发使用的文档；它会嵌入已验证的 Harness 运行时/Web 产物，以及旁置 `DeepSeek Plugin` checkout 中五个自研插件包（可用 `DSH_PLUGIN_DIR` 覆盖路径）。Web profile 首次启动时默认启用插件库、Deepseek-Files Office 识别、Lark 和 model-catalog Bundle。产物使用 `ai.deepseek.harness.desktop` identifier，仍是 ad-hoc 签名且未经 notarization。
 
 如果既有 `node` 与同目录 `npx` 不满足版本要求，启动流程会下载官方 Node.js 24.16.0 ARM64 归档，校验固定 SHA-256 摘要，再把它安装到 Application Support 下；该过程不需要管理员权限，也不会修改系统 Node.js 安装。
 
