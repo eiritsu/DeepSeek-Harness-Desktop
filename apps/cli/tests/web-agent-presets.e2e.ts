@@ -349,7 +349,7 @@ describe('the shipped Web composition', () => {
     }
   })
 
-  it('presents `ptc` as PTC mode without disturbing a native session beside it', async () => {
+  it('presents `ptc` with native and PTC tools without disturbing a native session beside it', async () => {
     const coded = await ctx.agents.create({
       sessionId: SessionId('preset-ptc'),
       setup: agentCtx => ctx.agentPresets.mount(agentCtx, 'ptc').then(() => undefined),
@@ -359,15 +359,16 @@ describe('the shipped Web composition', () => {
       setup: agentCtx => ctx.agentPresets.mount(agentCtx, 'standard').then(() => undefined),
     })
     try {
-      // One tool reaches the MODEL: the transport. The registry's catalog for
-      // this agent is unchanged — PTC mode collapses the presentation, not
-      // the capabilities — so the assembly is what carries the claim.
+      // The preset keeps both direct tools and the batching transport so models
+      // that do not reliably synthesize nested SDK calls can still execute.
       const assembly = await ctx.systemPrompt.assemble({ scope: coded.agent })
-      expect(assembly.tools.map(tool => tool.name)).toEqual(['run_code'])
+      expect(assembly.tools.map(tool => tool.name)).toContain('run_code')
+      expect(assembly.tools.map(tool => tool.name)).toContain('bash')
       expect(toolNames(ctx, coded.agent)).not.toContain('str_replace_editor')
       expect(ctx.commands.find(coded.agent, 'goal')).toBeDefined()
       const sdk = assembly.sections.find(section => section.name === 'tools:sdk')?.text ?? ''
       expect(sdk).not.toContain('str_replace_editor')
+      expect(assembly.sections.find(section => section.name === 'tools:ptc-only')?.text).toBe('')
       expect(sdk).toContain('web_search')
 
       // The presentation is this agent's alone: the deployment default is

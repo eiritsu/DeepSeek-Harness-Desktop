@@ -413,9 +413,8 @@ describe('mode-aware wire contribution', () => {
     const runCodeSchema = assembly.tools.find(tool => tool.name === RUN_CODE_NAME)
     expect(runCodeSchema?.description).toContain('Execute a TypeScript program')
     expect(runCodeSchema?.description).toContain('BODY of an')
-    // Both required arguments are named here, not only in the parameter
-    // schema: prose that describes the call as "pass the program" is what
-    // leads a model to emit `{code}` alone and fail INVALID_ARGS.
+    // The optional display label remains documented so models can provide it
+    // when useful without making it a protocol requirement.
     expect(runCodeSchema?.description).toContain('`description`')
     const codeParam = (runCodeSchema?.parameters as { properties: { code: { description: string } } }).properties.code
     expect(codeParam.description).toBe('The program: the body of an async TypeScript function.')
@@ -1326,6 +1325,22 @@ describe('the run_code dispatch bridge', () => {
     const result = await runCode(ctx, 'return 1', { description: '   ' })
     expect(result.isError).toBe(true)
     expect((result.content[0] as { text: string }).text).toContain('invalid description')
+  })
+
+  it('executes when the UI-only description is omitted', async () => {
+    const { ctx, runtime } = await setup({ mode: 'ptc' })
+    runtime.behavior = () => Promise.resolve({ logs: ['fallback-ok'] })
+    const result = await ctx.tools.execute({
+      signal: testToolSignal,
+      callId: ToolCallId('call-no-description'),
+      name: RUN_CODE_NAME,
+      arguments: { code: 'return 1' },
+    })
+    expect(result.isError).toBe(false)
+    expect(result.content).toEqual([{ type: 'text', text: 'fallback-ok' }])
+    expect(ctx.tools.get(RUN_CODE_NAME)?.presentCall?.({ code: 'return 1' })).toMatchObject({
+      title: 'Run code',
+    })
   })
 
   it.each([

@@ -9,7 +9,7 @@ import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import {
   ReasoningEffortId, createUserMessage, freezeMessage,
 } from '@deepseek-ai/dsh-llm'
-import type { MessageSource } from '@deepseek-ai/dsh-llm'
+import type { ContentBlock, MessageSource } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent, SessionHeader, SessionId, UserMessage } from '@deepseek-ai/dsh-session'
 import { SessionQueryError, type SessionObservation } from '@deepseek-ai/dsh-session-query'
 import { SessionTitleInvalidError } from '@deepseek-ai/dsh-session-title'
@@ -52,6 +52,24 @@ interface SessionReadState {
   readonly id: SessionId
   readonly header: SessionHeader
   readonly events: SessionEvent[]
+}
+
+/**
+ * Preserve recognizer output with each admitted generic file so every model request
+ * and durable user message can use the same extracted text.
+ * @param ctx - Host context owning the attachment recognizer registry.
+ * @param content - prompt parts after browser uploads become durable references.
+ * @returns model-ready message blocks with optional recognized file text.
+ */
+async function recognizePromptFiles(
+  ctx: Context,
+  content: Awaited<ReturnType<typeof admitPromptContent>>,
+): Promise<ContentBlock[]> {
+  return Promise.all(content.map(async (part): Promise<ContentBlock> => {
+    if (part.type !== 'file') return part
+    const recognized = await ctx.attachments.recognizeFile(part.attachment)
+    return recognized === undefined ? part : { ...part, recognizedText: recognized.text }
+  }))
 }
 
 /** Implements Session business commands delegated by the Session Controller Remote service. */
@@ -393,7 +411,8 @@ export class SessionCommandController {
             )
           }
         }
-        const content = await admitPromptContent(this.ctx.attachments, request.content)
+        const admitted = await admitPromptContent(this.ctx.attachments, request.content)
+        const content = await recognizePromptFiles(this.ctx, admitted)
         const message: UserMessage = createUserMessage({ content, source })
         if (request.mode === 'steer') agent.steer(message)
         else agent.followup(message)

@@ -158,6 +158,41 @@ function currentSelection(ctx: Context, sessionId: SessionId) {
 }
 
 describe('Web session model selection', () => {
+  it('writes recognized generic-file text into the admitted user message', async () => {
+    const { ctx, agent, sessionId } = await harness()
+    const saveFiles = vi.fn(() => Promise.resolve([{
+      attachmentId: 'scanned-pdf', mediaType: 'application/pdf', bytes: 4, name: 'scan.pdf',
+    }]))
+    const recognizeFile = vi.fn(() => Promise.resolve({ text: 'OCR extracted text' }))
+    ctx.provide('attachments', { saveFiles, recognizeFile } as never)
+    const followup = vi.fn()
+    Object.assign(agent, { followup })
+    const remote = createSessionTestRemote(ctx, {
+      defaultModelSelection: () => ({ provider: 'deepseek-official', model: 'deepseek-chat' }),
+      cwd: '/tmp',
+    })
+
+    expectValue(await remote.prompt(promptRequest({
+      sessionId,
+      mode: 'queue',
+      content: [{ type: 'file', mediaType: 'application/pdf', data: 'c2Nhbg==', name: 'scan.pdf' }],
+    })))
+
+    expect(saveFiles).toHaveBeenCalledTimes(1)
+    expect(saveFiles.mock.calls[0]?.[0]?.[0]).toMatchObject({ mediaType: 'application/pdf', name: 'scan.pdf' })
+    expect(recognizeFile).toHaveBeenCalledWith({
+      attachmentId: 'scanned-pdf', mediaType: 'application/pdf', bytes: 4, name: 'scan.pdf',
+    })
+    expect((followup.mock.calls[0]?.[0] as UserMessage).content).toEqual([{
+      type: 'file',
+      attachment: {
+        attachmentId: 'scanned-pdf', mediaType: 'application/pdf', bytes: 4, name: 'scan.pdf',
+      },
+      recognizedText: 'OCR extracted text',
+    }])
+    await ctx.fiber.dispose()
+  })
+
   it('validates an ordered image batch before persisting any member', async () => {
     const { ctx, agent, sessionId } = await harness()
     const validateImage = vi.fn((_input: { data: Uint8Array }) => Promise.resolve())

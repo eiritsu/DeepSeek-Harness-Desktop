@@ -122,7 +122,7 @@ ask_user_question pauses the tool call until the active UI provider returns a hu
 
 ### `run_code`
 
-Execute a TypeScript program against the available tools. Takes two required arguments: `code`, the BODY of an async function (erasable syntax only; top-level `await` and `return` work), and `description`, a short summary of what the program does. Call tools as `await tools.name(args)` per the declarations in the system prompt. Only what you print or return is program output — curate it. Image-bearing subtool results are attached after the run.
+Execute a TypeScript program against the available tools. Takes a required `code` argument, the BODY of an async function (erasable syntax only; top-level `await` and `return` work), and an optional `description`, a short summary of what the program does (defaults to "Run code"). Call tools as `await tools.name(args)` per the system prompt. Only what you print or return is program output — curate it. Image-bearing subtool results are attached after the run.
 
 ```json
 {
@@ -138,8 +138,7 @@ Execute a TypeScript program against the available tools. Takes two required arg
     }
   },
   "required": [
-    "code",
-    "description"
+    "code"
   ]
 }
 ```
@@ -193,7 +192,7 @@ Execute a bash command (`bash -c`) and return its stdout/stderr. Each call runs 
     },
     "description": {
       "type": "string",
-      "description": "Clear, concise description of what this command does in active voice, 5-10 words (shown in the UI). Examples: \"ls\" → \"List files in current directory\"; \"git status\" → \"Show working tree status\"; \"npm install\" → \"Install package dependencies\"."
+      "description": "Clear, concise description of what this command does in active voice, 5-10 words (shown in the UI). Optional; defaults to \"Run bash command\". Examples: \"ls\" → \"List files in current directory\"; \"git status\" → \"Show working tree status\"; \"npm install\" → \"Install package dependencies\"."
     },
     "timeoutMs": {
       "type": "number",
@@ -209,8 +208,7 @@ Execute a bash command (`bash -c`) and return its stdout/stderr. Each call runs 
     }
   },
   "required": [
-    "command",
-    "description"
+    "command"
   ]
 }
 ```
@@ -237,7 +235,7 @@ Execute a PowerShell command (`pwsh -Command`) and return its stdout/stderr. Eac
     },
     "description": {
       "type": "string",
-      "description": "Clear, concise description of what this command does in active voice, 5-10 words (shown in the UI). Examples: \"ls\" → \"List files in current directory\"; \"git status\" → \"Show working tree status\"; \"Get-Process\" → \"List running processes\"."
+      "description": "Clear, concise description of what this command does in active voice, 5-10 words (shown in the UI). Optional; defaults to \"Run PowerShell command\". Examples: \"ls\" → \"List files in current directory\"; \"git status\" → \"Show working tree status\"; \"Get-Process\" → \"List running processes\"."
     },
     "timeoutMs": {
       "type": "number",
@@ -253,8 +251,7 @@ Execute a PowerShell command (`pwsh -Command`) and return its stdout/stderr. Eac
     }
   },
   "required": [
-    "command",
-    "description"
+    "command"
   ]
 }
 ```

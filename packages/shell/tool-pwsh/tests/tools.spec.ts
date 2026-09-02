@@ -321,7 +321,7 @@ describe('registration', () => {
       workdir: { type: 'string' },
       run_in_background: { type: 'boolean' },
     })
-    expect(schema?.parameters.required).toEqual(['command', 'description'])
+    expect(schema?.parameters.required).toEqual(['command'])
     const prompt = renderPrompt(await ctx.systemPrompt.assemble())
     expect(prompt).toContain('Non-zero exits are reported as `[exit code: N]` markers')
     expect(prompt).toContain('without a signal marker')
@@ -349,6 +349,14 @@ describe('registration', () => {
 })
 
 describe('argument validation', () => {
+  it('executes when the UI-only description is omitted', async () => {
+    const { ctx, bash } = await setup()
+    bash.handler = () => runResult('fallback-ok\n')
+    const result = await call(ctx, 'pwsh', { command: 'Write-Output fallback-ok' })
+    expect(result.isError).toBe(false)
+    expect(text(result)).toContain('fallback-ok')
+  })
+
   it('rejects a blank command or description and a non-positive timeoutMs', async () => {
     const { ctx } = await setup()
     expect(text(await call(ctx, 'pwsh', { command: '  ', description: 'd' }))).toContain('expected a non-empty string')

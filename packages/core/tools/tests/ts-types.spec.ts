@@ -152,13 +152,14 @@ describe('renderToolsSdk', () => {
     expect(text).toContain('lossless JSON')
   })
 
-  it('names both required call arguments, not just the program', () => {
-    // The schema requires `code` AND `description`; instructions that mention
-    // only the program let a model emit `{code}` alone and fail INVALID_ARGS.
+  it('documents the required program and optional display label', () => {
+    // The program is required; the display label is optional and has a stable
+    // fallback so a model omission does not prevent tool execution.
     const text = renderToolsSdk([bash])
     expect(text).toContain('`code`')
     expect(text).toContain('`description`')
-    expect(text).toContain('two required arguments')
+    expect(text).toContain('optional `description`')
+    expect(text).toContain('defaults to "Run code"')
   })
 
   it('keeps generated bindings inside a run_code program', () => {
