@@ -111,6 +111,16 @@ if [ "$DISTRIBUTION" = true ]; then
         mkdir -p "$SNAPSHOT_ROOT/$(dirname "$RELATIVE")"
         COPYFILE_DISABLE=1 /bin/cp -R "$LIBRARY" "$SNAPSHOT_ROOT/$(dirname "$RELATIVE")/"
       done
+  # The sandbox provider imports the native launcher entry package through a
+  # workspace link. It lives under native/, so copy its built JS face
+  # explicitly alongside the package sources above.
+  NATIVE_ENTRY_LIB="$SOURCE_ROOT/native/landlock-run/packages/entry/lib"
+  if [ ! -f "$NATIVE_ENTRY_LIB/index.js" ]; then
+    echo "build-app: native launcher entry artifact is missing at $NATIVE_ENTRY_LIB; run pnpm run build before packaging" >&2
+    exit 1
+  fi
+  mkdir -p "$SNAPSHOT_ROOT/native/landlock-run/packages/entry"
+  COPYFILE_DISABLE=1 /bin/cp -R "$NATIVE_ENTRY_LIB" "$SNAPSHOT_ROOT/native/landlock-run/packages/entry/"
   # Distribution needs the source and built package faces, not repository
   # governance files, test fixtures, snapshots, or development-only docs.
   # Keeping those out prevents local paths and fixture credentials from
