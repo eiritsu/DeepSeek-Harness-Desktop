@@ -168,18 +168,35 @@ final class SourceManager: @unchecked Sendable {
   private func prepare(_ source: URL, progress: @escaping @Sendable (String) -> Void) throws {
     let artifact = source.appendingPathComponent("apps/cli/lib/bin.js")
     let frontend = source.appendingPathComponent("apps/web/dist/index.html")
-    if FileManager.default.fileExists(atPath: artifact.path), FileManager.default.fileExists(atPath: frontend.path) { return }
+    let artifactsReady = FileManager.default.fileExists(atPath: artifact.path)
+      && FileManager.default.fileExists(atPath: frontend.path)
+    let dependenciesReady = FileManager.default.fileExists(
+      atPath: source.appendingPathComponent(
+        "apps/cli/node_modules/@deepseek-ai/dsh-app-boot/package.json"
+      ).path
+    )
+    let hasLockfile = FileManager.default.fileExists(
+      atPath: source.appendingPathComponent("pnpm-lock.yaml").path
+    )
+    // Distribution snapshots contain built artifacts and the lockfile, but
+    // omit node_modules so they remain portable across machines. Install the
+    // workspace links before launching the prebuilt CLI.
+    if artifactsReady, dependenciesReady || !hasLockfile { return }
 
     let toolchain = try Toolchain.resolve(supportRoot: supportRoot, progress: progress)
-    progress("正在安装源码依赖…\n")
-    let install = try CommandRunner.run(
-      executable: toolchain.npx,
-      arguments: ["--yes", "pnpm@11.7.0", "install", "--frozen-lockfile"],
-      directory: source,
-      environment: toolchain.environment(),
-      progress: progress
-    )
-    guard install.status == 0 else { throw DesktopError.message("依赖安装失败：\n\(install.output)") }
+    if !dependenciesReady {
+      progress("正在安装源码依赖…\n")
+      let install = try CommandRunner.run(
+        executable: toolchain.npx,
+        arguments: ["--yes", "pnpm@11.7.0", "install", "--frozen-lockfile"],
+        directory: source,
+        environment: toolchain.environment(),
+        progress: progress
+      )
+      guard install.status == 0 else { throw DesktopError.message("依赖安装失败：\n\(install.output)") }
+    }
+
+    if artifactsReady { return }
 
     progress("正在构建 DeepSeek Harness…\n")
     let build = try CommandRunner.run(
