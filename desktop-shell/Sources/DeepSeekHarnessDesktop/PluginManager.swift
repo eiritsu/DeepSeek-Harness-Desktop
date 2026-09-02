@@ -548,7 +548,14 @@ final class PluginManager: @unchecked Sendable {
         guard Self.isPackageName(package) else {
           throw DesktopError.message("插件包名格式无效。")
         }
-        _ = try self.runCommand(sourceRoot: sourceRoot, arguments: ["remove", package], progress: progress)
+        // pnpm 11's default minimum-release-age policy has an internal
+        // callback bug on remove; no new package is being resolved here, so
+        // disable that check for this manifest-only operation.
+        _ = try self.runCommand(
+          sourceRoot: sourceRoot,
+          arguments: ["remove", package, "--config.minimum-release-age=0"],
+          progress: progress
+        )
         self.appendAudit(action: "remove", subject: package, status: "success", message: "已从 Web profile 移除。")
         completion(.success(()))
       } catch {
