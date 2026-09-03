@@ -416,20 +416,25 @@ final class PluginManager: @unchecked Sendable {
         )
         guard extraction.status == 0 else { throw DesktopError.message("Skill 解压失败：\n\(extraction.output)") }
         try FileManager.default.createDirectory(at: skillsRoot, withIntermediateDirectories: true)
-        let entries = try FileManager.default.contentsOfDirectory(at: stage, includingPropertiesForKeys: nil)
-          .filter {
-            $0.lastPathComponent != "skill.zip"
-              && $0.lastPathComponent != "__MACOSX"
-              && $0.lastPathComponent != "_meta.json"
-          }
-        guard !entries.isEmpty else { throw DesktopError.message("Skill 压缩包为空。") }
-        for entry in entries {
-          let destination = skillsRoot.appendingPathComponent(entry.lastPathComponent)
-          guard !FileManager.default.fileExists(atPath: destination.path) else {
-            throw DesktopError.message("Skill 已存在：\(entry.lastPathComponent)")
-          }
-          try FileManager.default.copyItem(at: entry, to: destination)
+        let destination = skillsRoot.appendingPathComponent(slug, isDirectory: true)
+        guard !FileManager.default.fileExists(atPath: destination.path) else {
+          throw DesktopError.message("Skill 已存在：\(slug)")
         }
+        let payloadRoot = try Self.skillPayloadRoot(in: stage)
+        let stagedDestination = stage.appendingPathComponent("installed", isDirectory: true)
+        try FileManager.default.createDirectory(at: stagedDestination, withIntermediateDirectories: true)
+        let entries = try FileManager.default.contentsOfDirectory(at: payloadRoot, includingPropertiesForKeys: nil)
+          .filter { !Self.ignoredSkillArchiveEntries.contains($0.lastPathComponent) }
+        guard entries.contains(where: { $0.lastPathComponent == "SKILL.md" }) else {
+          throw DesktopError.message("Skill 压缩包缺少 SKILL.md。")
+        }
+        for entry in entries {
+          try FileManager.default.copyItem(
+            at: entry,
+            to: stagedDestination.appendingPathComponent(entry.lastPathComponent),
+          )
+        }
+        try FileManager.default.moveItem(at: stagedDestination, to: destination)
         self.appendAudit(action: "skill-install", subject: slug, status: "success", message: "Skill 已保存到 Application Support。")
         self.refreshSQLitePayloads()
         completion(.success(skillsRoot.path))
@@ -449,18 +454,15 @@ final class PluginManager: @unchecked Sendable {
           completion(.success([]))
           return
         }
-        if let name = Self.skillName(at: root) {
-          completion(.success([name]))
-          return
-        }
+        var names: [String] = []
+        if let name = Self.skillName(at: root) { names.append(name) }
         let entries = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey])
           .filter { !$0.lastPathComponent.hasPrefix(".") }
-        let names = entries.flatMap { entry -> [String] in
+        names.append(contentsOf: entries.flatMap { entry -> [String] in
           if let name = Self.skillName(at: entry) { return [name] }
           return []
-        }
-          .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
-        completion(.success(names))
+        })
+        completion(.success(Array(Set(names)).sorted { $0.localizedStandardCompare($1) == .orderedAscending }))
       } catch {
         completion(.failure(error))
       }
@@ -511,6 +513,33 @@ final class PluginManager: @unchecked Sendable {
       .replacingOccurrences(of: "name:", with: "")
       .trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: "\"'")))
     return name.flatMap { $0.isEmpty ? nil : $0 } ?? entry.lastPathComponent
+  }
+
+  private static let ignoredSkillArchiveEntries: Set<String> = [
+    "skill.zip", "__MACOSX", "_meta.json", "_skillhub_meta.json",
+  ]
+
+  /// Resolve the payload directory used by SkillHub archives.
+  ///
+  /// SkillHub currently publishes archives with `SKILL.md` at the root, while
+  /// other publishers wrap that payload in one directory. Both forms are
+  /// normalized before installation so nested `references/` files never
+  /// collide with the desktop skill root.
+  static func skillPayloadRoot(in stage: URL) throws -> URL {
+    let entries = try FileManager.default.contentsOfDirectory(at: stage, includingPropertiesForKeys: [.isDirectoryKey])
+      .filter { !ignoredSkillArchiveEntries.contains($0.lastPathComponent) }
+    if let entry = entries.first(where: { entry in
+      var isDirectory = ObjCBool(false)
+      return FileManager.default.fileExists(atPath: entry.path, isDirectory: &isDirectory)
+        && isDirectory.boolValue
+        && FileManager.default.fileExists(atPath: entry.appendingPathComponent("SKILL.md").path)
+    }) {
+      return entry
+    }
+    guard entries.contains(where: { $0.lastPathComponent == "SKILL.md" }) else {
+      throw DesktopError.message("Skill 压缩包为空或缺少 SKILL.md。")
+    }
+    return stage
   }
 
   func review(source: String, completion: @escaping @Sendable (Result<DesktopPluginReview, Error>) -> Void) {

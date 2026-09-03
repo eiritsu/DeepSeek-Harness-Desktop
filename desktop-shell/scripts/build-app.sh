@@ -103,6 +103,13 @@ if [ "$DISTRIBUTION" = true ]; then
     echo "build-app: built Harness artifacts are missing; run pnpm run build before packaging" >&2
     exit 1
   fi
+  CLIENT_BUILD_RECORD="$SOURCE_ROOT/.dsh-build/client-build-environment.json"
+  if [ ! -f "$CLIENT_BUILD_RECORD" ] \
+    || ! /usr/bin/grep -q '"DSH_CLIENT_BUILD_PROFILE": "official"' "$CLIENT_BUILD_RECORD" \
+    || ! /usr/bin/grep -q '"DSH_CLIENT_TITLE": "DeepSeek Harness"' "$CLIENT_BUILD_RECORD"; then
+    echo "build-app: distribution requires an official client build; run DSH_BUILD_CLIENT_PROFILE=official pnpm run build before packaging" >&2
+    exit 1
+  fi
   mkdir -p "$SNAPSHOT_ROOT/apps/cli" "$SNAPSHOT_ROOT/apps/web"
   COPYFILE_DISABLE=1 /bin/cp -R "$SOURCE_ROOT/apps/cli/lib" "$SNAPSHOT_ROOT/apps/cli/"
   COPYFILE_DISABLE=1 /bin/cp -R "$SOURCE_ROOT/apps/web/dist" "$SNAPSHOT_ROOT/apps/web/"

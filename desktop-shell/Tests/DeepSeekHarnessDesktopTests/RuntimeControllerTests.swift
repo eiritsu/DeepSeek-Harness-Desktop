@@ -4,6 +4,31 @@ import Foundation
 import Testing
 @testable import DeepSeekHarnessDesktop
 
+@Test func skillArchivePayloadRootResolvesWrappedArchives() throws {
+  let root = FileManager.default.temporaryDirectory
+    .appendingPathComponent("dsh-skill-archive-\(UUID().uuidString)", isDirectory: true)
+  defer { try? FileManager.default.removeItem(at: root) }
+  let wrapped = root.appendingPathComponent("diagram-builder", isDirectory: true)
+  try FileManager.default.createDirectory(at: wrapped, withIntermediateDirectories: true)
+  try Data("---\nname: diagram-builder\n---\n".utf8)
+    .write(to: wrapped.appendingPathComponent("SKILL.md"))
+  try Data("{}".utf8).write(to: root.appendingPathComponent("_meta.json"))
+
+  #expect(try PluginManager.skillPayloadRoot(in: root).standardizedFileURL == wrapped.standardizedFileURL)
+}
+
+@Test func skillArchivePayloadRootRejectsMetadataOnlyArchives() throws {
+  let root = FileManager.default.temporaryDirectory
+    .appendingPathComponent("dsh-skill-archive-empty-\(UUID().uuidString)", isDirectory: true)
+  defer { try? FileManager.default.removeItem(at: root) }
+  try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+  try Data("{}".utf8).write(to: root.appendingPathComponent("_meta.json"))
+
+  #expect(throws: (any Error).self) {
+    try PluginManager.skillPayloadRoot(in: root)
+  }
+}
+
 @Test func runtimeInstanceLockRejectsSecondOwnerUntilRelease() throws {
   let root = FileManager.default.temporaryDirectory
     .appendingPathComponent("dsh-runtime-lock-\(UUID().uuidString)", isDirectory: true)
@@ -718,7 +743,7 @@ private func createSourceArchive(from source: URL, at archive: URL) throws {
   #expect(queryItems["page_size"] == "1")
   #expect(queryItems["q"] == "memory")
   #expect(queryItems["category"] == "memory")
-  #expect(queryItems["sort"] == "active")
+  #expect(queryItems["sort"] == "stars")
 }
 
 @Test func skillHubPluginReviewPinsRepositoryBeforeInspection() async throws {

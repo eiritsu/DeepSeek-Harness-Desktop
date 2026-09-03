@@ -204,7 +204,10 @@ final class PluginCatalogClient: @unchecked Sendable {
     let safePageSize = max(1, min(pageSize, 100))
     let normalizedQuery = String(query.trimmingCharacters(in: .whitespacesAndNewlines).prefix(80))
     let normalizedCategory = String(category.lowercased().prefix(32))
-    let supportedSorts = Set(["stars", "npmDownloads7d", "installs", "newest", "active"])
+    // SkillHub's plugin endpoint currently accepts only `stars`; keeping the
+    // old client-side sort values here would turn a harmless tab click into a
+    // HTTP 400 response.
+    let supportedSorts = Set(["stars"])
     let normalizedSort = supportedSorts.contains(sort) ? sort : "stars"
     var components = URLComponents(string: "https://api.skillhub.cn/api/v1/plugins")!
     components.queryItems = [
