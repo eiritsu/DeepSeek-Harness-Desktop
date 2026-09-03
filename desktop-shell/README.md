@@ -10,11 +10,7 @@ This is a local developer-preview build. It is ad-hoc signed, is not distributed
 
 ## Release 0.1.11
 
-This release differs from 0.1.10 in four desktop-data guarantees: SQLite WAL state is checkpointed before export, import stages and rolls back the database and file artifacts as one operation, maintenance closes the catalog before replacing files, and canceled backup actions no longer report success. The release also adds a native backup round-trip test and updates distribution builds to fetch the `main` branch of the desktop source repository.
-
-## Release 0.1.12
-
-This release aligns the Skill library's Installed tab with the Plugin library: installed Skills can be searched, displayed in detailed or compact cards, and uninstalled from the desktop-managed Application Support directory.
+This release differs from 0.1.10 in four desktop-data guarantees: SQLite WAL state is checkpointed before export, import stages and rolls back the database and file artifacts as one operation, maintenance closes the catalog before replacing files, and canceled backup actions no longer report success. The release also adds a native backup round-trip test, updates distribution builds to fetch the `main` branch of the desktop source repository, and aligns the Skill library's Installed tab with the Plugin library with search, detailed or compact cards, and uninstall support.
 
 ## Desktop behavior
 
