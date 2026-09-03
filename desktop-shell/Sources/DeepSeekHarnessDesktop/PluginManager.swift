@@ -417,7 +417,11 @@ final class PluginManager: @unchecked Sendable {
         guard extraction.status == 0 else { throw DesktopError.message("Skill 解压失败：\n\(extraction.output)") }
         try FileManager.default.createDirectory(at: skillsRoot, withIntermediateDirectories: true)
         let entries = try FileManager.default.contentsOfDirectory(at: stage, includingPropertiesForKeys: nil)
-          .filter { $0.lastPathComponent != "skill.zip" && $0.lastPathComponent != "__MACOSX" }
+          .filter {
+            $0.lastPathComponent != "skill.zip"
+              && $0.lastPathComponent != "__MACOSX"
+              && $0.lastPathComponent != "_meta.json"
+          }
         guard !entries.isEmpty else { throw DesktopError.message("Skill 压缩包为空。") }
         for entry in entries {
           let destination = skillsRoot.appendingPathComponent(entry.lastPathComponent)
