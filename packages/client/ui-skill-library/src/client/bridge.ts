@@ -13,6 +13,7 @@ export interface SkillHubBridge {
   }): Promise<{ readonly items: readonly Record<string, unknown>[]; readonly total: number }>
   request(request: { readonly action: 'downloadSkill'; readonly slug: string }): Promise<{ readonly path: string }>
   request(request: { readonly action: 'listSkills' }): Promise<{ readonly skills: readonly string[] }>
+  request(request: { readonly action: 'removeSkill'; readonly name: string }): Promise<{ readonly ok: true }>
 }
 
 declare global {

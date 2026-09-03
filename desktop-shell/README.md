@@ -12,6 +12,10 @@ This is a local developer-preview build. It is ad-hoc signed, is not distributed
 
 This release differs from 0.1.10 in four desktop-data guarantees: SQLite WAL state is checkpointed before export, import stages and rolls back the database and file artifacts as one operation, maintenance closes the catalog before replacing files, and canceled backup actions no longer report success. The release also adds a native backup round-trip test and updates distribution builds to fetch the `main` branch of the desktop source repository.
 
+## Release 0.1.12
+
+This release aligns the Skill library's Installed tab with the Plugin library: installed Skills can be searched, displayed in detailed or compact cards, and uninstalled from the desktop-managed Application Support directory.
+
 ## Desktop behavior
 
 - **Runtime lifecycle.** The application holds an advisory lock for its Application Support directory, starts the repository-built CLI with `--profile web --no-open --port 0`, and opens the announced loopback URL in WKWebView. A second application copy activates the existing process instead of starting another runtime against the same data.

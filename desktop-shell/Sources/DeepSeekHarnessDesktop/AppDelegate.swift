@@ -687,6 +687,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
           }
         }
       }
+    case "removeSkill":
+      guard let name = request["name"] as? String, !name.isEmpty else {
+        replyHandler(nil, "Skill 名称缺失。")
+        return
+      }
+      plugins.removeSkill(name: name) { result in
+        DispatchQueue.main.async {
+          switch result {
+          case .success: replyHandler(["ok": true], nil)
+          case let .failure(error): replyHandler(nil, error.localizedDescription)
+          }
+        }
+      }
     case "thirdPartyCatalog", "skillHubCatalog":
       let page = request["page"] as? Int ?? 1
       let pageSize = request["pageSize"] as? Int ?? 12

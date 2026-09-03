@@ -12,6 +12,10 @@ DeepSeek Harness Desktop 在 WKWebView 中嵌入官方 `dsh web` 应用。用户
 
 本版本与 0.1.10 的差异集中在四项桌面数据保证：导出前会 checkpoint SQLite WAL，导入会把数据库和文件制品作为一个操作暂存并支持回滚，维护操作会在替换文件前关闭 catalog，备份操作取消后不再显示成功。本版本还增加了原生备份往返测试，并将发行版构建改为从桌面源码仓库的 `main` 分支获取更新。
 
+## 0.1.12 版本说明
+
+本版本将技能库“已安装”页与插件库对齐：已安装技能支持搜索、详细／简洁卡片视图，并可直接从桌面 Application Support 管理目录卸载。
+
 ## 桌面行为
 
 - **运行时生命周期。** 应用会为 Application Support 目录持有 advisory lock，使用 `--profile web --no-open --port 0` 启动仓库构建出的 CLI，并在 WKWebView 中打开 CLI 公布的 loopback URL。第二个应用副本只会激活既有进程，不会针对同一份数据启动另一套运行时。

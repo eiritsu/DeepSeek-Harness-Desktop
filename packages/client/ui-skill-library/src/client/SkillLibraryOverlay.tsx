@@ -1,7 +1,7 @@
 /** Full-frame SkillHub skill and skill-package marketplace. */
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import { IconCloseOutline16, IconSearchOutline16, IconSkillOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconCloseOutline16, IconSearchOutline16, IconSkillOutline16, IconTrashOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { fetchSkills, skillUrl, type SkillHubSkill } from './api.ts'
 import type { SkillHubBridge } from './bridge.ts'
@@ -11,6 +11,7 @@ import css from './SkillLibraryOverlay.module.css'
 export interface SkillLibraryOverlayInjected { readonly controller: SkillLibraryController; readonly bridge: SkillHubBridge }
 export type SkillLibraryOverlayProps = PropsRuntime<'shell.overlay'> & PropsLocale<'skillLibrary'> & InjectFace<SkillLibraryOverlayInjected>
 type Tab = 'installed' | 'review' | 'discovery' | 'logs'
+type CardView = 'detailed' | 'compact'
 type SkillSort = 'score' | 'trending' | 'downloads' | 'newest'
 type FilterMenu = 'source' | 'category' | 'apiKey' | null
 
@@ -32,7 +33,10 @@ export function SkillLibraryOverlay({ controller, bridge, t }: SkillLibraryOverl
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string>()
   const [downloading, setDownloading] = useState<string>()
+  const [removing, setRemoving] = useState<string>()
   const [installedSkills, setInstalledSkills] = useState<readonly string[]>([])
+  const [installedQuery, setInstalledQuery] = useState('')
+  const [installedView, setInstalledView] = useState<CardView>('detailed')
   const [openFilter, setOpenFilter] = useState<FilterMenu>(null)
   const viewport = useRef<HTMLDivElement>(null)
   const requestVersion = useRef(0)
@@ -41,6 +45,11 @@ export function SkillLibraryOverlay({ controller, bridge, t }: SkillLibraryOverl
   const hasMore = total > 0 && page * pageSize < total
   const categoryOptions = [...new Set(items.map(item => item.category).filter((value): value is string => typeof value === 'string' && value.length > 0))].sort()
   const visibleItems = useMemo(() => apiKeyFilter === 'all' ? items : items.filter(item => apiKeyFilter === 'required' ? item.requiresApiKey === true : item.requiresApiKey !== true), [apiKeyFilter, items])
+  const filteredInstalledSkills = useMemo(() => {
+    const normalized = installedQuery.trim().toLocaleLowerCase()
+    if (normalized.length === 0) return installedSkills
+    return installedSkills.filter(skill => skill.toLocaleLowerCase().includes(normalized))
+  }, [installedQuery, installedSkills])
 
   const load = async (nextPage: number, reset: boolean): Promise<void> => {
     if (loadingRef.current) return
@@ -97,6 +106,20 @@ export function SkillLibraryOverlay({ controller, bridge, t }: SkillLibraryOverl
     }
   }
 
+  const removeSkill = async (skill: string): Promise<void> => {
+    setRemoving(skill)
+    setError(undefined)
+    try {
+      await bridge.request({ action: 'removeSkill', name: skill })
+      const result = await bridge.request({ action: 'listSkills' })
+      setInstalledSkills(result.skills)
+    } catch (reason) {
+      setError(message(reason))
+    } finally {
+      setRemoving(undefined)
+    }
+  }
+
   const filterMenu = (kind: Exclude<FilterMenu, null>, label: string, value: string, options: readonly { value: string; label: string }[], select: (value: string) => void): JSX.Element => <div className={css.filter}><button type="button" className={css.filterTrigger} aria-haspopup="menu" aria-expanded={openFilter === kind} onClick={() => { setOpenFilter(openFilter === kind ? null : kind) }}>{label}<span className={css.chevron} aria-hidden="true">⌄</span></button>{openFilter === kind ? <div className={css.filterMenu} role="menu">{options.map(option => <button key={option.value} type="button" role="menuitemradio" aria-checked={value === option.value} className={value === option.value ? css.filterSelected : undefined} onClick={() => { select(option.value); setOpenFilter(null) }}>{value === option.value ? <span aria-hidden="true">✓</span> : <span className={css.filterCheck} aria-hidden="true" />}{option.label}</button>)}</div> : null}</div>
 
   if (!open) return null
@@ -108,7 +131,31 @@ export function SkillLibraryOverlay({ controller, bridge, t }: SkillLibraryOverl
       </nav>
       <div className={css.body} aria-busy={loading}>
         {error !== undefined ? <p className={css.error} role="alert">{t('failed', { message: error })}</p> : null}
-        {tab === 'installed' ? <section className={css.panel}><h2>{t('installed')} ({installedSkills.length})</h2>{installedSkills.length === 0 ? <p>{t('installedEmpty')}</p> : <ul>{installedSkills.map(skill => <li key={skill}>{skill}</li>)}</ul>}</section> : null}
+        {tab === 'installed' ? <section className={css.installed}>
+          <div className={css.toolbar}>
+            <label className={css.search}>
+              <IconSearchOutline16 aria-hidden="true" />
+              <input type="search" value={installedQuery} aria-label={t('installed')} placeholder={t('installed')} onChange={(event) => { setInstalledQuery(event.currentTarget.value) }} />
+            </label>
+            <div className={css.viewSwitch} aria-label={t('installed')}>
+              <button type="button" aria-pressed={installedView === 'detailed'} onClick={() => { setInstalledView('detailed') }}>{t('detailed')}</button>
+              <button type="button" aria-pressed={installedView === 'compact'} onClick={() => { setInstalledView('compact') }}>{t('compact')}</button>
+            </div>
+          </div>
+          {installedSkills.length === 0 ? <p className={css.note}>{t('installedEmpty')}</p> : filteredInstalledSkills.length === 0 ? <p className={css.note}>{t('empty')}</p> : <ul className={css.skillGrid} data-view={installedView}>
+            {filteredInstalledSkills.map(skill => <li key={skill} className={css.skillCard}>
+              <span className={css.skillIcon} aria-hidden="true"><IconSkillOutline16 size={18} /></span>
+              <div className={css.skillIdentity}><strong title={skill}>{skill}</strong><span>{t('installedLocation')}</span></div>
+              <div className={css.skillActions}>
+                <span className={css.defaultInstalled}>{t('installedStatus')}</span>
+                <button type="button" className={css.remove} disabled={removing !== undefined} onClick={() => { void removeSkill(skill) }}>
+                  <IconTrashOutline16 size={14} />
+                  {removing === skill ? t('removing') : t('remove')}
+                </button>
+              </div>
+            </li>)}
+          </ul>}
+        </section> : null}
         {tab === 'review' ? <section className={css.panel}><h2>{t('review')}</h2><p>{t('reviewEmpty')}</p></section> : null}
         {tab === 'logs' ? <section className={css.panel}><h2>{t('logs')}</h2><p>{t('logsEmpty')}</p></section> : null}
         {tab === 'discovery' ? <section className={css.catalog}>

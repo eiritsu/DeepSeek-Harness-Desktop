@@ -463,6 +463,37 @@ final class PluginManager: @unchecked Sendable {
     }
   }
 
+  /// Remove one Skill bundle from the desktop-managed skill root.
+  func removeSkill(name: String, completion: @escaping @Sendable (Result<Void, Error>) -> Void) {
+    queue.async {
+      do {
+        let root = self.dshHome.appendingPathComponent("skills", isDirectory: true)
+        guard FileManager.default.fileExists(atPath: root.path) else {
+          throw DesktopError.message("未找到已安装的 Skill。")
+        }
+        let candidates: [URL]
+        if Self.skillName(at: root) == name {
+          candidates = [root]
+        } else {
+          candidates = try FileManager.default.contentsOfDirectory(
+            at: root,
+            includingPropertiesForKeys: [.isDirectoryKey]
+          ).filter { !$0.lastPathComponent.hasPrefix(".") && Self.skillName(at: $0) == name }
+        }
+        guard candidates.count == 1, let target = candidates.first else {
+          throw DesktopError.message("未找到唯一匹配的 Skill：(name)")
+        }
+        try FileManager.default.removeItem(at: target)
+        self.appendAudit(action: "skill-remove", subject: name, status: "success", message: "Skill 已从 Application Support 移除。")
+        self.refreshSQLitePayloads()
+        completion(.success(()))
+      } catch {
+        self.appendAudit(action: "skill-remove", subject: name, status: "failure", message: error.localizedDescription)
+        completion(.failure(error))
+      }
+    }
+  }
+
   private static func skillName(at entry: URL) -> String? {
     let marker = entry.appendingPathComponent("SKILL.md")
     guard FileManager.default.fileExists(atPath: marker.path) else { return nil }
