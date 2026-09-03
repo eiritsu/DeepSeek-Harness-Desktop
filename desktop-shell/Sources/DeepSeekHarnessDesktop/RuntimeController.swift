@@ -216,7 +216,70 @@ final class RuntimeController: @unchecked Sendable {
     let (resolvedURL, resolvedError) = state.outcome()
     if let resolvedError { throw resolvedError }
     guard let resolvedURL else { throw DesktopError.message("Harness 未返回有效的本地地址。") }
+    try waitForWebReady(resolvedURL, progress: progress)
     return resolvedURL
+  }
+
+  /// Wait until the Web profile has published its boot page and first client bundle.
+  ///
+  /// The CLI announces its listening URL before the client module registry finishes
+  /// composing the initial graph. Loading the WebView at that point can race the
+  /// registry and turn a temporary 404 into a permanent boot failure.
+  private func waitForWebReady(
+    _ authenticatedURL: URL,
+    progress: @escaping @Sendable (String) -> Void
+  ) throws {
+    let deadline = Date().addingTimeInterval(20)
+    var announced = false
+    while Date() < deadline {
+      if let html = Self.fetchText(authenticatedURL),
+         let bundle = Self.advertisedBundleURLs(in: html, baseURL: authenticatedURL).first,
+         Self.fetchStatus(bundle) == 200 {
+        return
+      }
+      if !announced {
+        progress("正在等待插件模块就绪…\n")
+        announced = true
+      }
+      usleep(200_000)
+    }
+    throw DesktopError.message("本地 Web 服务已启动，但插件模块未及时就绪。请查看桌面日志后重试。")
+  }
+
+  /// Extract the revisioned combo URLs that the Web profile advertises in its HTML.
+  static func advertisedBundleURLs(in html: String, baseURL: URL) -> [URL] {
+    guard let expression = try? NSRegularExpression(pattern: #"(?:href|src)=\"(/plugins/\?\?[^\"]+)\""#) else {
+      return []
+    }
+    let range = NSRange(html.startIndex..., in: html)
+    return expression.matches(in: html, range: range).compactMap { match in
+      guard let capture = Range(match.range(at: 1), in: html) else { return nil }
+      let raw = String(html[capture]).replacingOccurrences(of: "&amp;", with: "&")
+      return URL(string: raw, relativeTo: baseURL)?.absoluteURL
+    }
+  }
+
+  private static func fetchText(_ url: URL) -> String? {
+    fetch(url).flatMap { String(data: $0.data, encoding: .utf8) }
+  }
+
+  private static func fetchStatus(_ url: URL) -> Int? {
+    fetch(url)?.status
+  }
+
+  private static func fetch(_ url: URL) -> (data: Data, status: Int)? {
+    let semaphore = DispatchSemaphore(value: 0)
+    let result = LockedBox<(data: Data, status: Int)?>(nil)
+    var request = URLRequest(url: url)
+    request.timeoutInterval = 2
+    URLSession.shared.dataTask(with: request) { data, response, _ in
+      if let data, let status = (response as? HTTPURLResponse)?.statusCode {
+        result.set((data, status))
+      }
+      semaphore.signal()
+    }.resume()
+    guard semaphore.wait(timeout: .now() + 2) == .success else { return nil }
+    return result.get()
   }
 
   private func readOutput(_ pipe: Pipe, state: StartupState, isError: Bool) {

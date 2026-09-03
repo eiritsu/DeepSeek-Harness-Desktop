@@ -102,6 +102,15 @@ import Testing
   #expect(RuntimeController.reloadURL(for: startup) == URL(string: "http://127.0.0.1:43210/"))
 }
 
+@Test func advertisedBundleURLsDecodeHTMLAttributeEscaping() throws {
+  let base = try #require(URL(string: "http://127.0.0.1:43210/?token=test"))
+  let html = #"<link rel="preload" as="script" href="/plugins/??@deepseek-ai/dsh-typert-registry/client.js&amp;rev=abc123">"#
+
+  #expect(RuntimeController.advertisedBundleURLs(in: html, baseURL: base) == [
+    URL(string: "http://127.0.0.1:43210/plugins/??@deepseek-ai/dsh-typert-registry/client.js&rev=abc123")!
+  ])
+}
+
 @Test func startupFailureIdentifiesTheRootSideloadedPackage() {
   let state = StartupState(progress: { _ in }, log: { _ in })
   state.consume(Data("failed to import loader entry ui-lark (@deepseek-ai/dsh-lark/ui)\n".utf8), isError: true)
