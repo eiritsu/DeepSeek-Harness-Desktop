@@ -267,8 +267,8 @@ final class RuntimeController: @unchecked Sendable {
     var request = URLRequest(url: url)
     request.timeoutInterval = 2
     URLSession.shared.dataTask(with: request) { data, response, _ in
-      if let data, let status = (response as? HTTPURLResponse)?.statusCode {
-        result.set((data, status))
+      if let status = (response as? HTTPURLResponse)?.statusCode {
+        result.set((data ?? Data(), status))
       }
       semaphore.signal()
     }.resume()
