@@ -71,6 +71,7 @@ if [ "$DISTRIBUTION" = true ]; then
   copy_tracked_files "$SOURCE_ROOT" "$SNAPSHOT_ROOT" .
   rm -rf \
     "$SNAPSHOT_ROOT/packages/client/ui-plugin-library" \
+    "$SNAPSHOT_ROOT/packages/client/ui-skill-library" \
     "$SNAPSHOT_ROOT/packages/client/ui-deepseek-files" \
     "$SNAPSHOT_ROOT/packages/attachment/file-recognizer-office" \
     "$SNAPSHOT_ROOT/packages/lark/lark" \
@@ -78,12 +79,14 @@ if [ "$DISTRIBUTION" = true ]; then
     "$SNAPSHOT_ROOT/desktop-shell"
   copy_tracked_files "$PLUGIN_ROOT" "$SNAPSHOT_ROOT" \
     packages/client/ui-plugin-library \
+    packages/client/ui-skill-library \
     packages/client/ui-deepseek-files \
     packages/attachment/file-recognizer-office \
     packages/lark/lark \
     packages/llm/model-catalog
   for PACKAGE in \
     packages/client/ui-plugin-library \
+    packages/client/ui-skill-library \
     packages/client/ui-deepseek-files \
     packages/attachment/file-recognizer-office \
     packages/lark/lark \
@@ -176,8 +179,8 @@ NODE
 const fs = require('node:fs')
 const paths = process.argv.slice(2)
 const replacements = [
-  ["bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'],", "bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-client-ui-plugin-library', '@deepseek-ai/dsh-file-recognizer-office', '@deepseek-ai/dsh-lark', '@deepseek-ai/dsh-model-catalog'],"],
-  ['bundles: ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app"],', 'bundles: ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "@deepseek-ai/dsh-client-ui-plugin-library", "@deepseek-ai/dsh-file-recognizer-office", "@deepseek-ai/dsh-lark", "@deepseek-ai/dsh-model-catalog"],'],
+  ["bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'],", "bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-client-ui-plugin-library', '@deepseek-ai/dsh-client-ui-skill-library', '@deepseek-ai/dsh-file-recognizer-office', '@deepseek-ai/dsh-lark', '@deepseek-ai/dsh-model-catalog'],"],
+  ['bundles: ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app"],', 'bundles: ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "@deepseek-ai/dsh-client-ui-plugin-library", "@deepseek-ai/dsh-client-ui-skill-library", "@deepseek-ai/dsh-file-recognizer-office", "@deepseek-ai/dsh-lark", "@deepseek-ai/dsh-model-catalog"],'],
 ]
 for (const path of paths) {
   let source = fs.readFileSync(path, 'utf8')
@@ -194,6 +197,7 @@ const path = process.argv[2]
 const manifest = JSON.parse(fs.readFileSync(path, 'utf8'))
 const dependencies = {
   '@deepseek-ai/dsh-client-ui-plugin-library': 'workspace:^',
+  '@deepseek-ai/dsh-client-ui-skill-library': 'workspace:^',
   '@deepseek-ai/dsh-client-ui-deepseek-files': 'workspace:^',
   '@deepseek-ai/dsh-file-recognizer-office': 'workspace:^',
   '@deepseek-ai/dsh-lark': 'workspace:^',

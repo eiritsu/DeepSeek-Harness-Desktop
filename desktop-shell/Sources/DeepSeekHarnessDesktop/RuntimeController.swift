@@ -188,8 +188,11 @@ final class RuntimeController: @unchecked Sendable {
     child.standardError = stderr
 
     let state = StartupState(progress: progress)
-    stdout.fileHandleForReading.readabilityHandler = { state.consume($0.availableData, isError: false) }
-    stderr.fileHandleForReading.readabilityHandler = { state.consume($0.availableData, isError: true) }
+    // Keep draining both pipes independently. A readability handler relies on
+    // Foundation's run-loop delivery and can leave a child blocked when early
+    // startup diagnostics exceed the pipe buffer.
+    readOutput(stdout, state: state, isError: false)
+    readOutput(stderr, state: state, isError: true)
     child.terminationHandler = { process in
       state.terminated(status: process.terminationStatus)
     }
@@ -209,6 +212,22 @@ final class RuntimeController: @unchecked Sendable {
     if let resolvedError { throw resolvedError }
     guard let resolvedURL else { throw DesktopError.message("Harness 未返回有效的本地地址。") }
     return resolvedURL
+  }
+
+  private func readOutput(_ pipe: Pipe, state: StartupState, isError: Bool) {
+    DispatchQueue.global(qos: .utility).async {
+      while true {
+        // POSIX read returns after any bytes are available; Foundation's
+        // length-based reads can wait for a full buffer while the runtime
+        // keeps stdout open after announcing readiness.
+        var buffer = [UInt8](repeating: 0, count: 16 * 1024)
+        let count = buffer.withUnsafeMutableBytes { bytes in
+          Darwin.read(pipe.fileHandleForReading.fileDescriptor, bytes.baseAddress, bytes.count)
+        }
+        guard count > 0 else { break }
+        state.consume(Data(buffer[..<count]), isError: isError)
+      }
+    }
   }
 
   static func reloadURL(for authenticatedURL: URL) -> URL {

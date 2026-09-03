@@ -10,7 +10,7 @@ Status: implemented
 
 把含 emoji、中日韩文字或全角标点的 Key 粘进 Web 模型设置页，保存会报成功。首个轮次随即失败，报错为 `Cannot convert argument to a ByteString because the character at index 7 has a value of 55357 which is greater than 255`——其中的下标与码点是 UTF-16 内部细节，不附带任何可执行动作，却泄露了 Key 中某一个字符的码点。`llm-deepseek` 之所以产出这句，是因为 `fetch` 在 [adapter.ts](../../../../packages/llm/llm-deepseek/src/adapter.ts) 的 `try` 内部构造 `Bearer` header，而那个 `catch` 把一切失败都标为 `TRANSPORT`；该标签又在 `DEFAULT_RETRYABLE_CODES` 之中，于是一个永久且确定的故障还会被重试三次。
 
-同样的输入在 `llm-pi-ai` 上更糟。它的探测路径在 [discovery.ts](../../../../packages/llm/llm-pi-ai/src/discovery.ts) 里用裸 `fetch` 构造同一个 header，并把一切失败包装成 `could not reach <url>`，于是一个本地的 Key 故障被报成网络不可达。这条探测在保存之前就够得着：`ProviderEditor` 把用户输入的 `keyDraft` 直接放进探测请求，所以「获取模型列表」按钮会在任何东西落盘之前就把非法 Key 发出去。
+同样的输入在 `llm-dsh-ai` 上更糟。它的探测路径在 [discovery.ts](../../../../packages/llm/llm-dsh-ai/src/discovery.ts) 里用裸 `fetch` 构造同一个 header，并把一切失败包装成 `could not reach <url>`，于是一个本地的 Key 故障被报成网络不可达。这条探测在保存之前就够得着：`ProviderEditor` 把用户输入的 `keyDraft` 直接放进探测请求，所以「获取模型列表」按钮会在任何东西落盘之前就把非法 Key 发出去。
 
 空白字符能通过每一道检查。`ProviderEditor` 判的是 `keyDraft.length`，于是三个空格构成的 Key 会被存下，随后以 `Bearer` 加若干空格去认证。两个适配器都不检查来自凭据或环境的 Key——而那正是 Models 页写入的路径，也就是用户真正走的路径。
 
@@ -26,13 +26,13 @@ Status: implemented
 
 字符集规则是不变量。非 ASCII 字符对任何提供方都**不可能**在 header value 中传输，因此在浏览器、在各个 resolver、在每一次凭据读取上执行它，是结构上的一致而非约定上的一致。
 
-形状规则是对人如何粘贴的猜测，因此**只在浏览器中运行**。`llm-pi-ai` 前面挂着 OpenAI、Anthropic 以及任意手工声明的网关，本仓库并不掌握它们的 Key 格式；若这条规则运行在 resolver 中，一个签发形如 `TENANT1=abc` 的网关会让用户被彻底锁死、无路可走——设置页拒绝它，手写的 `.env` 在读取时同样被拒。把启发式限制在粘贴动作发生的那一层，环境变量便始终是那条出路。
+形状规则是对人如何粘贴的猜测，因此**只在浏览器中运行**。`llm-dsh-ai` 前面挂着 OpenAI、Anthropic 以及任意手工声明的网关，本仓库并不掌握它们的 Key 格式；若这条规则运行在 resolver 中，一个签发形如 `TENANT1=abc` 的网关会让用户被彻底锁死、无路可走——设置页拒绝它，手写的 `.env` 在读取时同样被拒。把启发式限制在粘贴动作发生的那一层，环境变量便始终是那条出路。
 
 ### 「没有 Key」是一种配置状态，不是缺失
 
 规则作用于*已提供*的值；至于究竟有没有提供，由各个调用方自行判断。
 
-**未点名凭据。** 省略 `apiKeyEnv` 的 pi-ai profile 可以在 harness 持有的凭据路径之外鉴权。[provider.ts](../../../../packages/llm/llm-pi-ai/src/provider.ts) 中的 `routeAuth` 保留内置 catalog 提供方自身的鉴权，正是为了让提供方原生的 ambient 发现继续工作；而该 catalog 附带的 `openai-codex` 通过 OAuth 鉴权。`namesCredential` 承载这一区分；省略不是需要校验的值。
+**未点名凭据。** 省略 `apiKeyEnv` 的 pi-ai profile 可以在 harness 持有的凭据路径之外鉴权。[provider.ts](../../../../packages/llm/llm-dsh-ai/src/provider.ts) 中的 `routeAuth` 保留内置 catalog 提供方自身的鉴权，正是为了让提供方原生的 ambient 发现继续工作；而该 catalog 附带的 `openai-codex` 通过 OAuth 鉴权。`namesCredential` 承载这一区分；省略不是需要校验的值。
 
 **Web UI 中留空的输入框。** 即便某个提供方的 Key 已经存好，该输入框也是空着打开的——`keyStored` 的文案写的是「已配置——输入新值以替换」——所以留空意味着*保持已存储的值*。`ProviderEditor` 在草稿为空时完全跳过 `credentials.set`，这一点保持不变：留空绝不拦截提交，否则改一个 base URL 都得重新输一遍 Key。
 
@@ -54,8 +54,8 @@ Status: implemented
 |---|---|
 | `dsh-llm` | 拥有 `normalizeApiKey`、`assertUsableApiKey` 与 `INVALID_CREDENTIAL_CODE`，后者刻意不进 `DEFAULT_RETRYABLE_CODES`。 |
 | `llm-deepseek` `resolveApiKey` | 归一化凭据 seam 或环境返回的值，以 `INVALID_CREDENTIAL` 拒绝，消息指明模型设置页，绝不回显 Key。 |
-| `llm-pi-ai` `resolveApiKey` | 归一化凭据与环境路径。不指定任何凭据的 profile 仍返回 `undefined`，ambient 与 OAuth 路由不受影响。 |
-| `llm-pi-ai` `discoverModels` | 在构造 header 之前归一化，使非法 Key 成为凭据故障而非端点不可达。不带 Key 的探测保持未鉴权。 |
+| `llm-dsh-ai` `resolveApiKey` | 归一化凭据与环境路径。不指定任何凭据的 profile 仍返回 `undefined`，ambient 与 OAuth 路由不受影响。 |
+| `llm-dsh-ai` `discoverModels` | 在构造 header 之前归一化，使非法 Key 成为凭据故障而非端点不可达。不带 Key 的探测保持未鉴权。 |
 | `ui-settings-models` | 镜像字符集规则，加入形状启发式，在探测与 `credentials.set` 之前 trim `keyDraft`，并修正 `stringAt` 的空值判断。留空的输入框仍是可以提交的空操作；只含空白的输入框则是字段级失败。提交**与端点探测**同时受拦截，因此被拒绝的密钥不会白花一次往返去换取字段上已经写明的答案；失败呈现在字段上，与既有的 `modelFailure` 模式一致。 |
 
 `ProviderEditor` 同时服务 DeepSeek 与 pi-ai 两种布局，因此一处客户端改动覆盖两个提供方。`CustomProviderCard` 为手工声明的路由承载同一套判定。
@@ -66,9 +66,9 @@ Status: implemented
 
 **由 client 与 host 共享一个校验模块。** 被 source plane 布局否决：client 包只 reference client 包外加 `vendor/cordis` 与 `runtime-diagnostics/invariants`，把它放宽到够得着 host 包会撞上这一分割本就要隔开的两份 `Context` 合并。在两侧各镜像一行断言并各配一份测试，是此处的既定形态。
 
-**在 `llm-deepseek` 与 `llm-pi-ai` 中各留一个抛错 helper。** 最初的计划正是各留一份，差别仅在消息中的包名前缀，并配一个重复检测豁免来放行这一对。在实现之前即被否决：`LlmError` 声明在 Service Definition 中，因此该包完全可以自己拥有这句诊断，而那里的一个豁免恰恰会掩盖它本要遮掩的重复。
+**在 `llm-deepseek` 与 `llm-dsh-ai` 中各留一个抛错 helper。** 最初的计划正是各留一份，差别仅在消息中的包名前缀，并配一个重复检测豁免来放行这一对。在实现之前即被否决：`LlmError` 声明在 Service Definition 中，因此该包完全可以自己拥有这句诊断，而那里的一个豁免恰恰会掩盖它本要遮掩的重复。
 
-**在适配器的 `catch` 中嗅探 `TypeError`。** 这只是事后归类 ByteString 失败，header 构造本身仍无防护。它依赖 Node 错误消息的措辞，因而会随运行时版本静默失效；它也帮不到 `llm-pi-ai`——后者的请求 header 构造在 pi-ai SDK 内部。在交出 Key 之前就拒绝，则对两个适配器与探测路径同时有效。
+**在适配器的 `catch` 中嗅探 `TypeError`。** 这只是事后归类 ByteString 失败，header 构造本身仍无防护。它依赖 Node 错误消息的措辞，因而会随运行时版本静默失效；它也帮不到 `llm-dsh-ai`——后者的请求 header 构造在 pi-ai SDK 内部。在交出 Key 之前就拒绝，则对两个适配器与探测路径同时有效。
 
 **在 `credentials-local.set` 中执行。** 它能一次性拦住所有写入方，包括手工编辑的文件。它落败于该提供方存储各种类型的凭据，而一条源自 HTTP header 编码的规则并不属于它。
 
@@ -78,7 +78,7 @@ Status: implemented
 
 ## 后果
 
-格式错误的 Key 在持有它的那个字段上就被拒绝；格式错误的已存储 Key 以 `INVALID_CREDENTIAL` 失败，消息指明修复位置且不含 Key 的任何片段。由于该 code 位于 `DEFAULT_RETRYABLE_CODES` 之外，一个确定性的凭据故障不再被当作瞬时传输抖动重试三次。`llm-pi-ai` 的探测把非法 Key 报为凭据故障，而非端点不可达。
+格式错误的 Key 在持有它的那个字段上就被拒绝；格式错误的已存储 Key 以 `INVALID_CREDENTIAL` 失败，消息指明修复位置且不含 Key 的任何片段。由于该 code 位于 `DEFAULT_RETRYABLE_CODES` 之外，一个确定性的凭据故障不再被当作瞬时传输抖动重试三次。`llm-dsh-ai` 的探测把非法 Key 报为凭据故障，而非端点不可达。
 
 形状启发式可能拒绝一个真实的 Key。匹配任意「全大写标识符接 `=`」会比预期覆盖面更宽：一个以 padding 结尾的全大写 base64 Key（`ABCD==`）会命中它并不像的赋值形态。要求分隔符之后必须是非 `=` 字符即可排除 padding——base64 的 padding 只出现在末尾。剩下的形态（大写名称、一个 `=`、然后是值）是已知提供方不会签发的，且该规则只在浏览器中运行，因此仍撞上它的用户可通过环境变量设置该凭据。残留代价是对一个尚无人报告过的 Key 给出一次令人困惑的拒绝。
 
@@ -94,7 +94,7 @@ Status: implemented
 
 `packages/llm/llm/tests/api-key.spec.ts` 以整张输入表驱动 `normalizeApiKey` 与 `assertUsableApiKey`——空值、纯空白、带首尾空白、含中间空格、C0 控制字符、emoji、中日韩文字、全角、latin-1，以及可打印 ASCII 的边界字符——并钉住一次拒绝携带 `INVALID_CREDENTIAL` 且不含 Key 的任何部分。
 
-`packages/llm/llm-deepseek/tests/` 在 `dynamic-config.spec.ts` 中经真实凭据 seam（而非 stub）端到端覆盖已存储凭据路径。`packages/llm/llm-pi-ai/tests/` 覆盖探测路径，包括不带 Key 的探测不会发出 `authorization` 标头。
+`packages/llm/llm-deepseek/tests/` 在 `dynamic-config.spec.ts` 中经真实凭据 seam（而非 stub）端到端覆盖已存储凭据路径。`packages/llm/llm-dsh-ai/tests/` 覆盖探测路径，包括不带 Key 的探测不会发出 `authorization` 标头。
 
 `packages/client/ui-settings-models/tests/` 以同一张表加上形状用例钉住 `apiKeyFailure`，并驱动两张卡片：留空的输入框可提交且不写入凭据、只含空白的输入框在字段上失败、非法或被包裹的 Key 同时拦截提交与探测、带首尾空白的 Key 在 `credentials.set` 与探测之前被 trim，以及手工声明的路由可以完全不带 Key 创建。
 

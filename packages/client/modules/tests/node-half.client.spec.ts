@@ -582,14 +582,14 @@ describe('client bundle activation', () => {
     expect(batches.length).toBeGreaterThan(1)
     expect(batches.flatMap(batch => batch.entries)).toEqual(packageNames)
     for (const batch of batches) {
-      expect(Buffer.byteLength(batch.url)).toBeLessThanOrEqual(3 * 1024)
-      expect(Buffer.byteLength(mapUrl(batch.url))).toBeLessThanOrEqual(3 * 1024)
+      expect(Buffer.byteLength(batch.url)).toBeLessThanOrEqual(2 * 1024)
+      expect(Buffer.byteLength(mapUrl(batch.url))).toBeLessThanOrEqual(2 * 1024)
       expect((await routeRequest(route, batch.url)).status).toBe(200)
       expect((await routeRequest(route, mapUrl(batch.url))).status).toBe(200)
     }
     for (let index = 0; index < batches.length - 1; index += 1) {
       const entries = [...batches[index]!.entries, batches[index + 1]!.entries[0]!]
-      expect(Buffer.byteLength(mapUrl(comboUrl(entries, '0'.repeat(12))))).toBeGreaterThan(3 * 1024)
+      expect(Buffer.byteLength(mapUrl(comboUrl(entries, '0'.repeat(12))))).toBeGreaterThan(2 * 1024)
     }
   })
 

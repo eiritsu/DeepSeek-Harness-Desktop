@@ -33,7 +33,10 @@ const GROUPS = [{
       reasoning: {
         efforts: [
           { id: 'off', name: 'Off' },
+          { id: 'low', name: 'Low' },
+          { id: 'medium', name: 'Medium' },
           { id: 'high', name: 'High' },
+          { id: 'xhigh', name: 'XHigh' },
           { id: 'max', name: 'Max' },
         ],
         defaultEffort: 'high',
@@ -45,7 +48,10 @@ const GROUPS = [{
       reasoning: {
         efforts: [
           { id: 'off', name: 'Off' },
+          { id: 'low', name: 'Low' },
+          { id: 'medium', name: 'Medium' },
           { id: 'high', name: 'High' },
+          { id: 'xhigh', name: 'XHigh' },
           { id: 'max', name: 'Max' },
         ],
         defaultEffort: 'high',
@@ -286,6 +292,50 @@ describe('ui-model-selection dual entry', () => {
         current: { provider: 'deepseek-official', model: 'deepseek-v4-pro' },
         status: 'ready',
       })
+    })
+  })
+
+  it('repairs a projected effort that the current model no longer advertises', async () => {
+    const b = await bench()
+    b.mint('s1')
+    b.setProjected(sid('s1'), {
+      lastUsed: null,
+      next: { provider: 'deepseek-official', model: 'deepseek-v4-flash', reasoningEffort: 'legacy' },
+    })
+    const face = b.seat().inject!(sid('s1'))
+    await b.ctx.modelDirectories.directoryFor(sid('s1')).load()
+    expect(b.hostCurrent()).toEqual({
+      provider: 'deepseek-official',
+      model: 'deepseek-v4-flash',
+      reasoningEffort: 'high',
+    })
+    expect(face.directory.getSnapshot().current).toEqual({
+      provider: 'deepseek-official',
+      model: 'deepseek-v4-flash',
+      reasoningEffort: 'high',
+    })
+  })
+
+  it('repairs a stale effort when a loaded session projection changes', async () => {
+    const b = await bench()
+    b.mint('s1')
+    const face = b.seat().inject!(sid('s1'))
+    await b.ctx.modelDirectories.directoryFor(sid('s1')).load()
+    b.setProjected(sid('s1'), {
+      lastUsed: null,
+      next: { provider: 'deepseek-official', model: 'deepseek-v4-flash', reasoningEffort: 'legacy' },
+    })
+    await vi.waitFor(() => {
+      expect(b.hostCurrent()).toEqual({
+        provider: 'deepseek-official',
+        model: 'deepseek-v4-flash',
+        reasoningEffort: 'high',
+      })
+    })
+    expect(face.directory.getSnapshot().current).toEqual({
+      provider: 'deepseek-official',
+      model: 'deepseek-v4-flash',
+      reasoningEffort: 'high',
     })
   })
 

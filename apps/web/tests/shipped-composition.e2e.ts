@@ -111,7 +111,7 @@ it('assembles the shipped Web transport, catalog, guidance, and defaults', async
       "mode": "always",
     }
   `)
-  await ctx.settings.update('llm-pi-ai', {
+  await ctx.settings.update('llm-dsh-ai', {
     providers: {
       openai: {},
       anthropic: { retryPolicy: { mode: 'always' } },

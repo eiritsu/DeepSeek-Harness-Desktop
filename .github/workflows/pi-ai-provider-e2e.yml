@@ -69,4 +69,4 @@ jobs:
           DSH_E2E_MAX_WORKERS: 2
         run: >-
           pnpm exec vitest run --config vitest.e2e.config.ts
-          packages/llm/llm-pi-ai/tests/provider-apis.e2e.ts
+          packages/llm/llm-dsh-ai/tests/provider-apis.e2e.ts

@@ -1724,7 +1724,9 @@ describe('plugin registration and config', () => {
           efforts: [
             { id: ReasoningEffortId('off'), name: 'Off', description: 'Use for simple tasks that do not need reasoning.' },
             { id: ReasoningEffortId('low'), name: 'Low', description: 'Prefer for routine or latency-sensitive tasks.' },
+            { id: ReasoningEffortId('medium'), name: 'Medium', description: 'Use for balanced reasoning depth and latency.' },
             { id: ReasoningEffortId('high'), name: 'High', description: 'The default balance for most tasks.' },
+            { id: ReasoningEffortId('xhigh'), name: 'XHigh', description: 'Use for extended reasoning on difficult tasks.' },
             { id: ReasoningEffortId('max'), name: 'Max', description: 'Reserve for the hardest quality-first tasks.' },
           ],
           defaultEffort: ReasoningEffortId('high'),
@@ -1741,7 +1743,7 @@ describe('plugin registration and config', () => {
       })
   })
 
-  it.each(['off', 'low', 'max'] as const)('uses the configured %s reasoning default', async (effort) => {
+  it.each(['off', 'low', 'medium', 'high', 'xhigh', 'max'] as const)('uses the configured %s reasoning default', async (effort) => {
     const ctx = new Context()
     await ctx.plugin(LlmRuntime)
     await ctx.plugin(LlmDeepSeek, {
@@ -1754,7 +1756,9 @@ describe('plugin registration and config', () => {
           efforts: [
             { id: ReasoningEffortId('off'), name: 'Off', description: 'Use for simple tasks that do not need reasoning.' },
             { id: ReasoningEffortId('low'), name: 'Low', description: 'Prefer for routine or latency-sensitive tasks.' },
+            { id: ReasoningEffortId('medium'), name: 'Medium', description: 'Use for balanced reasoning depth and latency.' },
             { id: ReasoningEffortId('high'), name: 'High', description: 'The default balance for most tasks.' },
+            { id: ReasoningEffortId('xhigh'), name: 'XHigh', description: 'Use for extended reasoning on difficult tasks.' },
             { id: ReasoningEffortId('max'), name: 'Max', description: 'Reserve for the hardest quality-first tasks.' },
           ],
           defaultEffort: ReasoningEffortId(effort),
@@ -1783,7 +1787,7 @@ describe('plugin registration and config', () => {
       })
   })
 
-  it.each(['low', 'high', 'max'] as const)(
+  it.each(['low', 'medium', 'high', 'xhigh', 'max'] as const)(
     'rejects configured reasoning effort %s when thinking is disabled',
     async (reasoningEffort) => {
       const ctx = new Context()
@@ -1797,7 +1801,7 @@ describe('plugin registration and config', () => {
     },
   )
 
-  it.each(['low', 'high', 'max'] as const)(
+  it.each(['low', 'medium', 'high', 'xhigh', 'max'] as const)(
     'rejects disabled-thinking effort %s at the resolver boundary',
     (reasoningEffort) => {
       expect(() => resolveAdapterOptions({ thinking: 'disabled', reasoningEffort }))

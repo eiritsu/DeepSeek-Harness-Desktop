@@ -44,7 +44,7 @@ The **Provider ID** is the one create-card field that stays fixed, and not for w
 
 A gateway, a self-hosted server, or a model newer than the installed catalog is now configurable without leaving the browser, and the endpoint itself supplies the model ids where it can. The page grew two components and one shared list editor; the editor card's pi-ai fold grew from two fields to a list, plus a name and a protocol on a declared route.
 
-What it costs: only pi-ai routes can be hand-declared, because `llm-pi-ai` is the one namespace whose profiles describe a whole provider — a `llm-deepseek` route stays a composition fact. Interrogation reaches only OpenAI-compatible endpoints, so a gateway speaking another protocol reports that it cannot be asked and its models are typed in. And the page now holds a key in component state for the duration of a fetch, which is the same exposure `credentials.set` already has and no longer than the card lives.
+What it costs: only pi-ai routes can be hand-declared, because `llm-dsh-ai` is the one namespace whose profiles describe a whole provider — a `llm-deepseek` route stays a composition fact. Interrogation reaches only OpenAI-compatible endpoints, so a gateway speaking another protocol reports that it cannot be asked and its models are typed in. And the page now holds a key in component state for the duration of a fetch, which is the same exposure `credentials.set` already has and no longer than the card lives.
 
 ## Testing
 

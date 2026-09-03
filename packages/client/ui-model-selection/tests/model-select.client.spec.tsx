@@ -23,7 +23,10 @@ const t: ComponentProps<typeof ModelSelect>['t'] = (key, params) => {
 const reasoning = {
   efforts: [
     { id: 'off', name: 'Off' },
+    { id: 'low', name: 'Low' },
+    { id: 'medium', name: 'Medium' },
     { id: 'high', name: 'High' },
+    { id: 'xhigh', name: 'XHigh' },
     { id: 'max', name: 'Max', description: 'Largest budget' },
   ],
   defaultEffort: 'high',
@@ -74,7 +77,7 @@ describe('ModelSelect reasoning effort', () => {
     fireEvent.click(trigger)
     fireEvent.click(screen.getByRole('menuitem', { name: /推理等级/ }))
     expect(screen.getAllByRole('menuitemradio').map(item => item.textContent))
-      .toEqual(['Off', 'High', 'Max'])
+      .toEqual(['Off', 'Low', 'Medium', 'High', 'XHigh', 'Max'])
     expect(screen.queryByText('Largest budget')).toBeNull()
 
     fireEvent.click(screen.getByRole('menuitemradio', { name: /Max/ }))

@@ -151,7 +151,7 @@ Pi-AI 与直接 DeepSeek 适配器都会在请求时解析 `ctx.attachments`，�
 | `packages/attachment/attachment` | 不透明附件和请求版本标识符、图片引用、策略、错误，以及通过 `ctx.attachments` 提供的批量准入、派生读取和裁剪。 |
 | `packages/attachment/attachment-local` | 私有内容寻址主版本、确定性请求缓存、完整光栅解码、完整性校验和配置。 |
 | `packages/llm/llm` | 角色无关的 `ImageBlock`、输入模态元数据、精确适配器代次和纯文本请求投影。 |
-| `packages/llm/llm-pi-ai` | 把持久图片解析为确定性内联请求版本。 |
+| `packages/llm/llm-dsh-ai` | 把持久图片解析为确定性内联请求版本。 |
 | `packages/llm/llm-deepseek` | 把官方视觉输入解析为确定性请求版本和 Files API ID。 |
 | `packages/compaction/compaction-basic` | 在摘要输入中保留图片，并明确拒绝非文本检查点输出。 |
 | `packages/host/apiproxy` 和 `packages/bundle/base` | 范围狭窄的上传协议、共享批量准入、限制和路由模型前置检查、先持久化再追加事件的顺序、会话授权读取，以及默认 profile 组合。 |

@@ -874,7 +874,8 @@ The abstract `llm` service: an adapter registry plus a streaming model-call API,
 ```ts cordis-catalog
 /**
  * Register one exact-route metadata enricher after adapter-owned resolution.
- * Enrichers fill only fields the adapter or an earlier enricher left absent.
+ * Enrichers fill absent fields; an authoritative catalog may replace reasoning
+ * capabilities when the adapter's built-in declaration is stale.
  * @param id - stable registration identity.
  * @param enrich - asynchronous exact-route metadata lookup.
  * @returns disposer withdrawing this exact enricher.
@@ -969,6 +970,23 @@ registerModelCapacityResolver(resolve: LlmModelCapacityResolver): () => void
  * @returns the first non-empty validated capacity, or `undefined`.
  */
 async resolveModelCapacity( provider: string, model: string, signal?: AbortSignal, ownedBy?: string, baseURL?: string, ): Promise<LlmModelCapacity | undefined>
+
+/** Register an ordered compatibility resolver for exact model reasoning levels.
+ * @param resolve - resolver consulted in registration order.
+ * @returns disposer that removes this resolver.
+ */
+registerModelReasoningResolver(resolve: LlmModelReasoningResolver): () => void
+
+/**
+ * Resolve exact reasoning levels through compatibility catalog registrations.
+ * @param provider - configured provider route.
+ * @param model - exact model id.
+ * @param signal - operation-local cancellation.
+ * @param ownedBy - upstream owner supplied by discovery.
+ * @param baseURL - exact configured endpoint when available.
+ * @returns the first resolver answer, or `undefined`.
+ */
+async resolveModelReasoning( provider: string, model: string, signal?: AbortSignal, ownedBy?: string, baseURL?: string, ): Promise<readonly string[] | undefined>
 
 /**
  * Interrogate one provider endpoint for the models it advertises. The

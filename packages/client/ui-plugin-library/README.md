@@ -31,7 +31,7 @@ The shipped Web application mounts this package, but it becomes visible only ins
 
 Review accepts an exact npm version, an HTTPS GitHub repository pinned to a commit, or a local directory. Direct installation requires a valid root package manifest whose `dsh.bundle.patch` names an existing package-internal YAML entry. The native bridge issues a single-use 15-minute review token and delegates installation to `dsh plugin --profile web` with exact saving and dependency lifecycle scripts disabled.
 
-Community discovery keeps GitHub's `dsh-plugin` topic and deepseek1024.com separate. Catalog metadata is only a discovery signal; the selected project must still resolve to a pinned source and pass local structural review.
+Community discovery uses the [SkillHub Plugins catalog](https://skillhub.cloud.tencent.com/plugins) as its only external source. Catalog metadata is only a discovery signal; the selected GitHub repository is pinned to a commit and must pass local structural review before installation.
 
 ### Mount in another Web composition
 

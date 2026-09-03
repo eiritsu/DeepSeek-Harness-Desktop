@@ -1,10 +1,10 @@
 /**
  * `@earendil-works/pi-ai` stub, including its `/providers/all` and `/api/*.lazy`
  * subpaths. The package is Node-only (no `require`/`browser` conditions, Node
- * builtins plus five cloud SDKs in its transport layer) and `llm-pi-ai` imports it
+ * builtins plus five cloud SDKs in its transport layer) and `llm-dsh-ai` imports it
  * statically at module scope, so the row cannot mount without it.
  *
- * Every symbol `llm-pi-ai` imports by name is present: a missing CommonJS symbol
+ * Every symbol `llm-dsh-ai` imports by name is present: a missing CommonJS symbol
  * would surface as `undefined` at call time instead of a link error. The three catalog readers
  * return empty collections rather than throwing — the row reads them while it
  * activates, and "this deployment ships no pi-ai provider" is the truth here.
@@ -39,7 +39,7 @@ const BUILTIN_PROVIDER_IDS: readonly string[] = [
 ]
 
 /**
- * Installed catalog providers, read while `llm-pi-ai` activates. Each carries the
+ * Installed catalog providers, read while `llm-dsh-ai` activates. Each carries the
  * api-key auth marker the adapter filters on, and no models: the provider
  * directory therefore matches the served deployment while every request path
  * lands on a loud symbol above.
@@ -55,7 +55,7 @@ export function builtinProviders(): unknown[] {
 }
 
 /**
- * Provider route ids of the installed catalog. `llm-pi-ai` registers the whole
+ * Provider route ids of the installed catalog. `llm-dsh-ai` registers the whole
  * catalog as configurable the moment it mounts and rejects an empty
  * registration, so these are pi-ai's real ids rather than an empty list.
  * @returns the builtin provider ids.

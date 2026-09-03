@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import LlmRuntime, { LlmAdapter, LlmError } from '@deepseek-ai/dsh-llm'
-import type { GenerateOptions, LlmConfigurableProvider, StreamChunk } from '@deepseek-ai/dsh-llm'
+import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+import type { GenerateOptions, LlmConfigurableProvider, LlmModelReasoningInfo, StreamChunk } from '@deepseek-ai/dsh-llm'
 
 class NoopAdapter extends LlmAdapter {
 
@@ -20,7 +21,7 @@ function entry(overrides: Partial<LlmConfigurableProvider> = {}): LlmConfigurabl
   return {
     provider: 'openai',
     displayName: 'OpenAI',
-    settingsNs: 'llm-pi-ai',
+    settingsNs: 'llm-dsh-ai',
     settingsPath: ['providers', 'openai'],
     ...overrides,
   }
@@ -114,7 +115,7 @@ describe('configurable-provider directory', () => {
     const listed = ctx.llm.listConfigurableProviders()
     expect(listed).toEqual([
       { provider: 'deepseek-official', displayName: 'DeepSeek', settingsNs: 'llm-deepseek', settingsPath: [] },
-      { provider: 'openai', displayName: 'OpenAI', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'openai'] },
+      { provider: 'openai', displayName: 'OpenAI', settingsNs: 'llm-dsh-ai', settingsPath: ['providers', 'openai'] },
     ])
     listed[0]!.displayName = 'mutated'
     ;(listed[1]!.settingsPath as string[]).push('mutated')
@@ -386,6 +387,40 @@ describe('model metadata enrichment', () => {
 
     dispose()
     await expect(ctx.llm.resolveModelInfo('catalog', 'model')).resolves.not.toHaveProperty('defaultMaxTokens')
+  })
+
+  it('lets an authoritative catalog replace stale adapter reasoning metadata', async () => {
+    const ctx = await setup()
+    class StaleAdapter extends NoopAdapter {
+      override resolveModel(provider: string, model: string) {
+        return Promise.resolve({
+          provider,
+          id: model,
+          name: 'Owned',
+          reasoning: {
+            efforts: [{ id: ReasoningEffortId('high'), name: 'High' }],
+          } satisfies LlmModelReasoningInfo,
+        })
+      }
+    }
+    ctx.llm.registerAdapter(['catalog'], new StaleAdapter())
+    ctx.llm.registerModelMetadataEnricher('authoritative-catalog', async () => ({
+      reasoning: {
+        efforts: [
+          { id: ReasoningEffortId('off'), name: 'Off' },
+          { id: ReasoningEffortId('low'), name: 'Low' },
+        ],
+      },
+    }))
+
+    await expect(ctx.llm.resolveModelInfo('catalog', 'model')).resolves.toMatchObject({
+      reasoning: {
+        efforts: [
+          { id: 'off', name: 'Off' },
+          { id: 'low', name: 'Low' },
+        ],
+      },
+    })
   })
 
   it('rejects duplicate identities and validates enriched capacities', async () => {

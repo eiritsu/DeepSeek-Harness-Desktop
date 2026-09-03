@@ -35,7 +35,7 @@ A model you enter by hand is treated as text-only until it says otherwise, becau
 A vision model on a custom provider therefore needs one line. The form has no field for it; add `input` to the model in `$DSH_HOME/settings.yaml`:
 
 ```yaml
-llm-pi-ai:
+llm-dsh-ai:
   providers:
     my-gateway:
       apiKeyEnv: GATEWAY_API_KEY
@@ -52,7 +52,7 @@ llm-pi-ai:
 If every model you entered by hand takes images, set the fallback once on the route instead of on each of them:
 
 ```yaml
-llm-pi-ai:
+llm-dsh-ai:
   providers:
     vision-gateway:
       apiKeyEnv: GATEWAY_API_KEY
@@ -67,7 +67,7 @@ llm-pi-ai:
 `defaultInput` is a fallback, not an override, and defaults to `[text]`: on a catalog provider it answers only for models the catalog does not describe, so it never removes images from a catalog model that has them. Narrow one of those with that model's own `input`. A catalog provider has no `models` list to put it in, so write it under `modelOverrides`, keyed by model id:
 
 ```yaml
-llm-pi-ai:
+llm-dsh-ai:
   providers:
     anthropic:
       modelOverrides:
@@ -86,7 +86,7 @@ A gateway can hold a working key at a reachable address and still refuse every r
 Two account for most of it. A model that declares reasoning has its system prompt sent as `role: "developer"`, which many gateways reject outright, and the output cap is sent as `max_completion_tokens`, which a server that only knows `max_tokens` refuses. The form has no field for either; correct them on the route in `$DSH_HOME/settings.yaml`:
 
 ```yaml
-llm-pi-ai:
+llm-dsh-ai:
   providers:
     my-gateway:
       apiKeyEnv: GATEWAY_API_KEY
@@ -113,7 +113,7 @@ What neither sets keeps the installed catalog's value for that model, and what t
 
 Each switch belongs to the protocols that declare it, so a switch valid on one `api` may be refused on another — the message names what that protocol does offer. Like `input` above, a switch states a claim about your endpoint rather than checking it: setting one your gateway does not actually need simply sends a different request.
 
-Every switch, its accepted values, and the protocols that take it are listed under `PiAiCompatProfile` in the [generated `dsh-llm-pi-ai` configuration reference](../../config-catalog.md#deepseek-aidsh-llm-pi-ai) — which is derived from the source, so it cannot fall behind what the adapter accepts.
+Every switch, its accepted values, and the protocols that take it are listed under `PiAiCompatProfile` in the [generated `dsh-llm-dsh-ai` configuration reference](../../config-catalog.md#deepseek-aidsh-llm-dsh-ai) — which is derived from the source, so it cannot fall behind what the adapter accepts.
 
 ## Select a model
 
@@ -134,4 +134,4 @@ If a saved default names a provider that was deleted, the composer displays **Se
 
 ## Advanced configuration
 
-The generated [plugin configuration catalog](../../config-catalog.md) lists every supported field and default for every plugin; [`dsh-llm-pi-ai`](../../config-catalog.md#deepseek-aidsh-llm-pi-ai) is the provider section this page configures. The [`dsh-llm-pi-ai`](../../../packages/llm/llm-pi-ai/README.md) and [`dsh-llm-deepseek`](../../../packages/llm/llm-deepseek/README.md) references own direct `settings.yaml` configuration, catalog resolution, reasoning controls, credentials, and adapter errors.
+The generated [plugin configuration catalog](../../config-catalog.md) lists every supported field and default for every plugin; [`dsh-llm-dsh-ai`](../../config-catalog.md#deepseek-aidsh-llm-dsh-ai) is the provider section this page configures. The [`dsh-llm-dsh-ai`](../../../packages/llm/llm-dsh-ai/README.md) and [`dsh-llm-deepseek`](../../../packages/llm/llm-deepseek/README.md) references own direct `settings.yaml` configuration, catalog resolution, reasoning controls, credentials, and adapter errors.

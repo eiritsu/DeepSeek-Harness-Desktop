@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-01-reasoning-capability-and-empty-row.md
-2026-09-01-reasoning-capability-and-empty-row.md: d4fc1c715de866b6d87071d94bc969a1a69359a4
-2026-09-01-reasoning-capability-and-empty-row.zh.md: 0e2929fa4d8faff60560bcab33d8aa9a8ac0a5ee
+2026-09-01-reasoning-capability-and-empty-row.md: 1eb0b8b7f0c748d5836de8fd31c3e71e6fcfdfe4
+2026-09-01-reasoning-capability-and-empty-row.zh.md: f1ea5545709d1b3996951b6f79a06ee76ba86555

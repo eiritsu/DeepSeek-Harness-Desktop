@@ -278,6 +278,7 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   LlmModelInputResolver: 'llm-streaming.md',
   LlmModelCapacity: 'llm-streaming.md',
   LlmModelCapacityResolver: 'llm-streaming.md',
+  LlmModelReasoningResolver: 'llm-streaming.md',
   ResolvedRetryPolicy: 'llm-streaming.md',
   Message: 'llm-streaming.md',
   MessageSource: 'llm-streaming.md',

@@ -6,11 +6,11 @@ English | [中文](2026-08-26-pi-ai-grant-payload-json-image.zh.md)
 
 ## Problem
 
-A GitHub Copilot sign-in against github.com failed at its commit step: `credentials-local: record "llm-pi-ai/github-copilot" payload holds a value JSON cannot represent`. pi-ai's Copilot credential carries its optional members as explicit `undefined` (`enterpriseUrl: undefined` when no Enterprise domain was given — idiomatic JavaScript that `JSON.stringify` would simply drop), and `llm-pi-ai`'s store bridge committed the credential object verbatim as the grant payload. The credential store's validator rightly refuses `undefined` as unrepresentable, so every grant whose flow left an optional member unset failed to store, and the sign-in reported failure after the provider had already authorized it.
+A GitHub Copilot sign-in against github.com failed at its commit step: `credentials-local: record "llm-dsh-ai/github-copilot" payload holds a value JSON cannot represent`. pi-ai's Copilot credential carries its optional members as explicit `undefined` (`enterpriseUrl: undefined` when no Enterprise domain was given — idiomatic JavaScript that `JSON.stringify` would simply drop), and `llm-dsh-ai`'s store bridge committed the credential object verbatim as the grant payload. The credential store's validator rightly refuses `undefined` as unrepresentable, so every grant whose flow left an optional member unset failed to store, and the sign-in reported failure after the provider had already authorized it.
 
 ## Decision
 
-`toRecord` in `packages/llm/llm-pi-ai/src/auth.ts` stores the JSON image of a grant credential: `jsonImage` drops explicitly-undefined members of plain objects and renders undefined array entries as `null`, exactly as `JSON.stringify` would. Everything else — non-finite numbers, foreign-prototype objects — passes through untouched, so a genuinely unstorable value still fails loud at the store's validator rather than being silently reshaped. Reading back is unchanged: an absent member and an explicitly-undefined one are indistinguishable to pi-ai's consumers, which access optional members by property read.
+`toRecord` in `packages/llm/llm-dsh-ai/src/auth.ts` stores the JSON image of a grant credential: `jsonImage` drops explicitly-undefined members of plain objects and renders undefined array entries as `null`, exactly as `JSON.stringify` would. Everything else — non-finite numbers, foreign-prototype objects — passes through untouched, so a genuinely unstorable value still fails loud at the store's validator rather than being silently reshaped. Reading back is unchanged: an absent member and an explicitly-undefined one are indistinguishable to pi-ai's consumers, which access optional members by property read.
 
 ## Testing
 

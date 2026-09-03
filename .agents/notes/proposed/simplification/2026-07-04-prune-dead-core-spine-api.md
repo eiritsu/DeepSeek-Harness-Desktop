@@ -34,7 +34,7 @@ The production corpus is `packages/*/*/src`, example sources/config, and runtime
 
 ### Grouped helper-export inventory
 
-- `dsh-llm-deepseek`: `httpErrorCode`, `serializeMessages`, `serializeRequest`, `DONE`, `parseSse`, `mapFinishReason`, `mapUsage`, and `translate`; `dsh-llm-pi-ai`: `buildModel`, `mapStopReason`, `mapUsage`, `toPiContext`, and `toStreamChunks`.
+- `dsh-llm-deepseek`: `httpErrorCode`, `serializeMessages`, `serializeRequest`, `DONE`, `parseSse`, `mapFinishReason`, `mapUsage`, and `translate`; `dsh-llm-dsh-ai`: `buildModel`, `mapStopReason`, `mapUsage`, `toPiContext`, and `toStreamChunks`.
 - `dsh-bash-local`: `DEFAULT_GRACE_MS`, `ENV_OVERRIDES`, `killGroup`, `OutputCollector`, and `runBash`; `dsh-bash-sandbox`: `shellQuote`, `classifyDenial`, and `classifyRunnerFailure`; `dsh-sandbox-local`: `bwrapProfileArgs`, `landlockProfileArgs`, and `seatbeltProfileArgs`. The public mutable test-injection fields and their types are outside this proposal.
 - `dsh-fs-local`: `applyLiteralEdit`, `listDirectory`, `probe`, `readForEdit`, `readTextForDiff`, `readWholeText`, `resolveLocalTarget`, `restoreLineEndings`, `streamWholeText`, and `writeFileAtomic`.
 - `dsh-web-fetch-http`: `classifyContentType`, `decoderForCharset`, `isSameOrigin`, `parseCharset`, and `validateFetchUrl`; `dsh-web-search-exa`: `mapExaResponse` and `mapExaResult`; `dsh-web-search-deepseek`: `citationSnippets` and `mapAnthropicResponse`; `dsh-web-search-perplexity`: `mapPerplexityResponse` and `mapPerplexityResult`.

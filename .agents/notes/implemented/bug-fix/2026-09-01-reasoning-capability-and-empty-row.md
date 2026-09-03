@@ -16,6 +16,12 @@ Only catalog or profile-declared reasoning capabilities are selectable. An expli
 
 The pi-ai catalog and adapter tests assert that an undeclared model exposes no reasoning control, while declared levels remain selectable. The chat coverage test asserts that an empty reasoning block renders no disclosure row.
 
+## Alternatives considered
+
+**Keep the generic provider list:** rejected because it advertises levels a model may not support.
+
+**Render empty reasoning blocks:** rejected because an empty disclosure row provides no user-visible information.
+
 ## Consequences
 
 An unlisted model must declare `reasoningEfforts` in its provider profile before the UI offers a working effort selector. Catalog models continue to expose the exact levels their adapter supports.

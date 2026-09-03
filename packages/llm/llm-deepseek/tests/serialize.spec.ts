@@ -275,7 +275,7 @@ describe('serializeRequest', () => {
     expect(wire.tools).toBeUndefined()
   })
 
-  it.each(['low', 'high', 'max'] as const)('maps adapter-default thinking and request effort %s', (effort) => {
+  it.each(['low', 'medium', 'high', 'xhigh', 'max'] as const)('maps adapter-default thinking and request effort %s', (effort) => {
     const wire = serializeRequest(
       request({ messages: history, reasoningEffort: ReasoningEffortId(effort) }),
       { thinking: 'enabled', reasoningEffort: 'high' },
@@ -337,7 +337,7 @@ describe('serializeRequest', () => {
   it('rejects an effort outside the DeepSeek capability', () => {
     expect(() => serializeRequest(request({
       messages: history,
-      reasoningEffort: ReasoningEffortId('medium'),
+      reasoningEffort: ReasoningEffortId('impossible'),
     }))).toThrow(expect.objectContaining({ code: 'UNSUPPORTED_REASONING_EFFORT' }))
   })
 })

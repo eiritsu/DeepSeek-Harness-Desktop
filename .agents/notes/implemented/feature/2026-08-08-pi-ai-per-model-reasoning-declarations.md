@@ -1,4 +1,4 @@
-# Agent Note: Per-Model Reasoning Declarations in llm-pi-ai
+# Agent Note: Per-Model Reasoning Declarations in llm-dsh-ai
 
 Status: implemented
 

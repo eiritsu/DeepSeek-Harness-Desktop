@@ -1,11 +1,6 @@
----
-kind: bug-fix
-status: implemented
----
+# Agent Note: 启动内置源码前安装工作区链接
 
-# Agent Note：启动内置源码前安装工作区链接
-
-状态：已实现
+Status: implemented
 
 [English](2026-09-02-bundled-source-dependency-install.md) | 中文
 
@@ -16,6 +11,12 @@ status: implemented
 ## 决策
 
 源码准备阶段现在会在存在 lockfile 时检查 CLI 下的 `@deepseek-ai/dsh-app-boot` 链接。发行快照缺少该链接时，使用固定版本的 pnpm 执行 frozen install，然后直接启动已有产物，不重复构建。发行打包还会把原生启动器入口的已构建 JavaScript 产物复制到快照。无 lockfile 的测试 fixture 保留原有的仅检查产物路径。
+
+## Alternatives considered
+
+**把 `node_modules` 嵌入发行包：**不采用，因为机器相关链接会让快照失去可移植性。
+
+**首次启动时重新构建：**不采用，因为发行版必须直接启动已验证产物，不能依赖本地源码编译。
 
 ## 结果
 

@@ -50,7 +50,7 @@ function failureMessage(
 
 /** Internal adapter codes stay in diagnostics, not beside user-facing failures. */
 function visibleFailureCode(code: unknown): code is string {
-  return typeof code === 'string' && code !== 'PI_AI_ERROR'
+  return typeof code === 'string' && code !== 'DSH_AI_ERROR' && code !== 'PI_AI_ERROR'
 }
 
 function ModelRetryItem({ node, active, t }: {

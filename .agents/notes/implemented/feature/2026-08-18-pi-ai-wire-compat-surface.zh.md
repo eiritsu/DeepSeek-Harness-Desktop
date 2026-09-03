@@ -1,4 +1,4 @@
-# Agent Note: pi-ai Wire-Compatibility Surface in llm-pi-ai
+# Agent Note: pi-ai Wire-Compatibility Surface in llm-dsh-ai
 
 Status: implemented
 

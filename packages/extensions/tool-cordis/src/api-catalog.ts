@@ -1136,7 +1136,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     methods: [
       {
         signature: 'registerModelMetadataEnricher(id: string, enrich: LlmModelMetadataEnricher): () => void',
-        description: 'Register one exact-route metadata enricher after adapter-owned resolution. Enrichers fill only fields the adapter or an earlier enricher left absent.',
+        description: 'Register one exact-route metadata enricher after adapter-owned resolution. Enrichers fill absent fields; an authoritative catalog may replace reasoning capabilities when the adapter\'s built-in declaration is stale.',
         parameters: [{ name: 'id', description: 'stable registration identity.' }, { name: 'enrich', description: 'asynchronous exact-route metadata lookup.' }],
         returns: 'disposer withdrawing this exact enricher.',
       },
@@ -1199,6 +1199,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Resolve exact capacities through previous-version catalog registrations.',
         parameters: [{ name: 'provider', description: 'configured provider route.' }, { name: 'model', description: 'exact model id.' }, { name: 'signal', description: 'operation-local cancellation.' }, { name: 'ownedBy', description: 'upstream owner supplied by discovery.' }, { name: 'baseURL', description: 'exact configured endpoint when available.' }],
         returns: 'the first non-empty validated capacity, or `undefined`.',
+      },
+      {
+        signature: 'registerModelReasoningResolver(resolve: LlmModelReasoningResolver): () => void',
+        description: 'Register an ordered compatibility resolver for exact model reasoning levels.',
+        parameters: [{ name: 'resolve', description: 'resolver consulted in registration order.' }],
+        returns: 'disposer that removes this resolver.',
+      },
+      {
+        signature: 'async resolveModelReasoning( provider: string, model: string, signal?: AbortSignal, ownedBy?: string, baseURL?: string, ): Promise<readonly string[] | undefined>',
+        description: 'Resolve exact reasoning levels through compatibility catalog registrations.',
+        parameters: [{ name: 'provider', description: 'configured provider route.' }, { name: 'model', description: 'exact model id.' }, { name: 'signal', description: 'operation-local cancellation.' }, { name: 'ownedBy', description: 'upstream owner supplied by discovery.' }, { name: 'baseURL', description: 'exact configured endpoint when available.' }],
+        returns: 'the first resolver answer, or `undefined`.',
       },
       {
         signature: 'async discoverModels( settingsNs: string, request: LlmModelDiscoveryRequest, signal?: AbortSignal, ): Promise<LlmDiscoveredModel[]>',
@@ -4493,11 +4505,15 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'LlmModelMetadataPatch',
-    declaration: 'export interface LlmModelMetadataPatch {\n    inputModalities?: readonly ModelModality[];\n    contextWindow?: number;\n    maxTokens?: number;\n}',
+    declaration: 'export interface LlmModelMetadataPatch {\n    inputModalities?: readonly ModelModality[];\n    contextWindow?: number;\n    maxTokens?: number;\n    reasoning?: LlmModelReasoningInfo;\n}',
   },
   {
     name: 'LlmModelReasoningInfo',
     declaration: 'export interface LlmModelReasoningInfo {\n    efforts: readonly LlmReasoningEffortInfo[];\n    defaultEffort?: ReasoningEffortId;\n}',
+  },
+  {
+    name: 'LlmModelReasoningResolver',
+    declaration: 'export type LlmModelReasoningResolver = (request: LlmModelInputRequest) => Promise<readonly string[] | undefined>;',
   },
   {
     name: 'LlmProviderInfo',
@@ -4513,7 +4529,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'LlmRuntime',
-    declaration: 'export class LlmRuntime extends TypertRemoteService {\n    constructor(ctx: Context);\n    registerModelMetadataEnricher(id: string, enrich: LlmModelMetadataEnricher): () => void;\n    registerAdapter(providers: string[], adapter: LlmAdapter): AdapterRegistrationHandle;\n    @Remote\n    listProviders(): LlmProviderInfo[];\n    registerConfigurableProviders(entries: readonly LlmConfigurableProvider[]): DirectoryRegistrationHandle;\n    @Remote\n    listConfigurableProviders(): LlmConfigurableProvider[];\n    registerModelDiscovery(settingsNs: string, discover: (request: LlmModelDiscoveryRequest, signal?: AbortSignal) => Promise<readonly LlmDiscoveredModel[]>): () => void;\n    registerModelDiscoveryEnricher(enrich: LlmModelDiscoveryEnricher): () => void;\n    registerModelInputResolver(resolve: LlmModelInputResolver): () => void;\n    async resolveModelInput(provider: string, model: string, signal?: AbortSignal, ownedBy?: string, baseURL?: string): Promise<readonly LegacyModelModality[] | undefined>;\n    registerModelCapacityResolver(resolve: LlmModelCapacityResolver): () => void;\n    async resolveModelCapacity(provider: string, model: string, signal?: AbortSignal, ownedBy?: string, baseURL?: string): Promise<LlmModelCapacity | undefined>;\n    async discoverModels(settingsNs: string, request: LlmModelDiscoveryRequest, signal?: AbortSignal): Promise<LlmDiscoveredModel[]>;\n    @Remote(\'discoverModels\')\n    async remoteDiscoverModels(settingsNs: string, request: LlmModelDiscoveryRequest, si /* …truncated — full shape in source */',
+    declaration: 'export class LlmRuntime extends TypertRemoteService {\n    constructor(ctx: Context);\n    registerModelMetadataEnricher(id: string, enrich: LlmModelMetadataEnricher): () => void;\n    registerAdapter(providers: string[], adapter: LlmAdapter): AdapterRegistrationHandle;\n    @Remote\n    listProviders(): LlmProviderInfo[];\n    registerConfigurableProviders(entries: readonly LlmConfigurableProvider[]): DirectoryRegistrationHandle;\n    @Remote\n    listConfigurableProviders(): LlmConfigurableProvider[];\n    registerModelDiscovery(settingsNs: string, discover: (request: LlmModelDiscoveryRequest, signal?: AbortSignal) => Promise<readonly LlmDiscoveredModel[]>): () => void;\n    registerModelDiscoveryEnricher(enrich: LlmModelDiscoveryEnricher): () => void;\n    registerModelInputResolver(resolve: LlmModelInputResolver): () => void;\n    async resolveModelInput(provider: string, model: string, signal?: AbortSignal, ownedBy?: string, baseURL?: string): Promise<readonly LegacyModelModality[] | undefined>;\n    registerModelCapacityResolver(resolve: LlmModelCapacityResolver): () => void;\n    async resolveModelCapacity(provider: string, model: string, signal?: AbortSignal, ownedBy?: string, baseURL?: string): Promise<LlmModelCapacity | undefined>;\n    registerModelReasoningResolver(resolve: LlmModelReasoningResolver): () => void;\n    async resolveModelReasoning(provider: string, model: string, signal?: AbortSignal, ownedBy?: string, baseURL?: string): Promise<readonly string[] | undefined>;\n     /* …truncated — full shape in source */',
   },
   {
     name: 'LspHover',

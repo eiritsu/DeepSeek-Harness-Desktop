@@ -151,7 +151,7 @@ Malformed base64, unsupported or mismatched media, truncated image payloads, exc
 | `packages/attachment/attachment` | Opaque attachment and request-version identifiers, image references, policies, failures, batch admission, derived reads, and crops through `ctx.attachments`. |
 | `packages/attachment/attachment-local` | Private content-addressed masters, deterministic request cache, complete raster decoding, integrity verification, and configuration. |
 | `packages/llm/llm` | Role-neutral `ImageBlock`, input-modality metadata, exact adapter generations, and text-only request projection. |
-| `packages/llm/llm-pi-ai` | Resolve durable images to deterministic inline request versions. |
+| `packages/llm/llm-dsh-ai` | Resolve durable images to deterministic inline request versions. |
 | `packages/llm/llm-deepseek` | Resolve official vision input to deterministic request versions and Files API ids. |
 | `packages/compaction/compaction-basic` | Preserve images in summary input and reject non-text checkpoint output explicitly. |
 | `packages/host/apiproxy` and `packages/bundle/base` | Narrow upload wire, shared batch admission, limits and routed-model preflight, persist-before-event ordering, session-authorized reads, and default profile composition. |

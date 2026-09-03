@@ -1,12 +1,6 @@
----
-kind: bug-fix
-status: implemented
----
-
 # Agent Note: Install workspace links before launching bundled source
 
 Status: implemented
-
 
 English | [中文](2026-09-02-bundled-source-dependency-install.zh.md)
 
@@ -17,6 +11,12 @@ The distribution app unpacked built Harness artifacts and its lockfile but inten
 ## Decision
 
 Source preparation now checks the CLI's `@deepseek-ai/dsh-app-boot` link when a lockfile is present. It runs the pinned frozen pnpm install for snapshots missing that link, then launches the existing artifacts without rebuilding them. Distribution packaging also copies the built native launcher entry face into the snapshot. Lockless test fixtures retain the previous artifact-only path.
+
+## Alternatives considered
+
+**Embedding `node_modules`:** rejected because machine-specific links make the distribution snapshot non-portable.
+
+**Rebuilding on first launch:** rejected because a release must launch the verified artifacts without requiring local source compilation.
 
 ## Consequences
 

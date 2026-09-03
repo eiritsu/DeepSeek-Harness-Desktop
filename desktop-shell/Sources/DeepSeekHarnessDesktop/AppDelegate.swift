@@ -248,7 +248,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
           self.statusLabel.isHidden = true
           self.spinner.isHidden = true
           self.webView.isHidden = false
-          self.webView.load(URLRequest(url: url))
+          self.loadRuntimePage(url)
           if let package = self.recoveredPluginNotice {
             self.recoveredPluginNotice = nil
             self.alert(
@@ -453,7 +453,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
   }
 
   @objc private func reload() {
-    if let runtimeURL { webView.load(URLRequest(url: runtimeURL)) }
+    if let runtimeURL { loadRuntimePage(runtimeURL) }
+  }
+
+  private func loadRuntimePage(_ url: URL) {
+    var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData)
+    request.timeoutInterval = 30
+    webView.load(request)
   }
 
   @objc private func openSourceDirectory() {
@@ -618,7 +624,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
           }
         }
       }
-    case "thirdPartyCatalog":
+    case "skillHubSkills":
+      let page = request["page"] as? Int ?? 1
+      let pageSize = request["pageSize"] as? Int ?? 24
+      let query = request["query"] as? String ?? ""
+      let sort = request["sort"] as? String ?? "score"
+      let category = request["category"] as? String ?? ""
+      let source = request["source"] as? String ?? "all"
+      plugins.skillHubSkills(page: page, pageSize: pageSize, query: query, sort: sort, category: category, source: source) { result in
+        DispatchQueue.main.async {
+          switch result {
+          case let .success(page): replyHandler(["items": page.items, "total": page.total], nil)
+          case let .failure(error): replyHandler(nil, error.localizedDescription)
+          }
+        }
+      }
+    case "skillHubPackages":
+      let page = request["page"] as? Int ?? 1
+      let pageSize = request["pageSize"] as? Int ?? 20
+      let query = request["query"] as? String ?? ""
+      let scene = request["scene"] as? String ?? ""
+      plugins.skillHubPackages(page: page, pageSize: pageSize, query: query, scene: scene) { result in
+        DispatchQueue.main.async {
+          switch result {
+          case let .success(page): replyHandler(["items": page.items, "total": page.total], nil)
+          case let .failure(error): replyHandler(nil, error.localizedDescription)
+          }
+        }
+      }
+    case "thirdPartyCatalog", "skillHubCatalog":
       let page = request["page"] as? Int ?? 1
       let pageSize = request["pageSize"] as? Int ?? 12
       let query = request["query"] as? String ?? ""

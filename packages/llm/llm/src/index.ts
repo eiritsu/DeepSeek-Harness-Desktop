@@ -18,6 +18,7 @@ import type {
   LegacyModelModality,
   LlmModelCapacity,
   LlmModelCapacityResolver,
+  LlmModelReasoningResolver,
   LlmModelDiscoveryEnricher,
   LlmModelContext,
   LlmModelDiscoveryRequest,
@@ -337,6 +338,7 @@ export class LlmRuntime extends TypertRemoteService {
   private discoveryEnrichers = new Map<symbol, LlmModelDiscoveryEnricher>()
   private modelInputResolvers = new Map<symbol, LlmModelInputResolver>()
   private modelCapacityResolvers = new Map<symbol, LlmModelCapacityResolver>()
+  private modelReasoningResolvers = new Map<symbol, LlmModelReasoningResolver>()
   private discoveries = new Map<
     string,
     (request: LlmModelDiscoveryRequest, signal?: AbortSignal) => Promise<readonly LlmDiscoveredModel[]>
@@ -348,7 +350,8 @@ export class LlmRuntime extends TypertRemoteService {
 
   /**
    * Register one exact-route metadata enricher after adapter-owned resolution.
-   * Enrichers fill only fields the adapter or an earlier enricher left absent.
+   * Enrichers fill absent fields; an authoritative catalog may replace reasoning
+   * capabilities when the adapter's built-in declaration is stale.
    * @param id - stable registration identity.
    * @param enrich - asynchronous exact-route metadata lookup.
    * @returns disposer withdrawing this exact enricher.
@@ -717,6 +720,50 @@ export class LlmRuntime extends TypertRemoteService {
     return undefined
   }
 
+  /** Register an ordered compatibility resolver for exact model reasoning levels.
+   * @param resolve - resolver consulted in registration order.
+   * @returns disposer that removes this resolver.
+   */
+  registerModelReasoningResolver(resolve: LlmModelReasoningResolver): () => void {
+    const registration = Symbol('llm.model-reasoning-resolver')
+    const dispose = this.ctx.effect(function* (this: LlmRuntime) {
+      this.modelReasoningResolvers.set(registration, resolve)
+      yield () => { this.modelReasoningResolvers.delete(registration) }
+    }.bind(this), 'llm.registerModelReasoningResolver()')
+    return () => void dispose()
+  }
+
+  /**
+   * Resolve exact reasoning levels through compatibility catalog registrations.
+   * @param provider - configured provider route.
+   * @param model - exact model id.
+   * @param signal - operation-local cancellation.
+   * @param ownedBy - upstream owner supplied by discovery.
+   * @param baseURL - exact configured endpoint when available.
+   * @returns the first resolver answer, or `undefined`.
+   */
+  async resolveModelReasoning(
+    provider: string,
+    model: string,
+    signal?: AbortSignal,
+    ownedBy?: string,
+    baseURL?: string,
+  ): Promise<readonly string[] | undefined> {
+    signal?.throwIfAborted()
+    for (const resolve of this.modelReasoningResolvers.values()) {
+      const levels = await resolve({
+        provider,
+        model,
+        ...ownedBy === undefined ? {} : { ownedBy },
+        ...baseURL === undefined ? {} : { baseURL },
+        ...signal === undefined ? {} : { signal },
+      })
+      if (levels !== undefined) return [...levels]
+      signal?.throwIfAborted()
+    }
+    return undefined
+  }
+
   /** Detach discovery metadata before it crosses plugin registrations. */
   private detachedDiscoveredModel(model: LlmDiscoveredModel): LlmDiscoveredModel {
     return {
@@ -927,6 +974,8 @@ export class LlmRuntime extends TypertRemoteService {
           ? { context: { contextWindow: patch.contextWindow } } : {},
         ...info.defaultMaxTokens === undefined && patch.maxTokens !== undefined
           ? { defaultMaxTokens: patch.maxTokens } : {},
+        ...patch.reasoning !== undefined
+          ? { reasoning: patch.reasoning } : {},
       })
     }
     return info

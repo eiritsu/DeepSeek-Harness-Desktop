@@ -299,10 +299,10 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
   const addRow = addTarget === undefined
     ? undefined
     : state.rows.find(row => row.entry.provider === addTarget.provider)
-  // Hand-declared routes live in the pi-ai namespace, which is also the only
+  // Hand-declared routes live in the dsh-ai namespace, which is also the only
   // one whose schema names the protocols one may speak; without it mounted
   // there is nothing to declare and the entry point stays disabled.
-  const protocols = protocolChoices(state.namespaces.get('llm-pi-ai'), schema)
+  const protocols = protocolChoices(state.namespaces.get('llm-dsh-ai'), schema)
 
   return (
     <div className={styles['section']}>
@@ -487,7 +487,7 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
                   taken={state.rows.map(row => row.entry.provider)}
                   protocols={protocols}
                   /* v8 ignore next -- the card only opens from a button disabled without this namespace */
-                  revision={state.namespaces.get('llm-pi-ai')?.revision ?? 0}
+                  revision={state.namespaces.get('llm-dsh-ai')?.revision ?? 0}
                   operations={operations}
                   t={t}
                   readOnly={!state.writable}

@@ -22,7 +22,7 @@ document-start bridge 只把不透明的当前会话选择记录保存到原生�
 
 源码更新只接受活动源码到配置 `origin` 分支的 fast-forward。已包含远端 commit 的源码就是当前版本。分叉会快速失败，并要求在仓库层完成集成，因此自动更新无法替换本地桌面 commit。允许的更新会在分离 worktree 中构建，并使用独立 probe 数据启动；只有成功交换 launch token 且获得 HTTP 200 后，才会切换活动源码指针。上一个指针仍可用于回退。
 
-Web 组合同时支持当前插件和上一代外部插件。client-runtime 兼容包把旧 snapshot-store 与 settings 导入转发给当前 owner，而不创建重复的客户端 service。附件服务仍只把 raster image 作为持久二进制类型，同时允许受信任 recognizer 把瞬时通用文件字节转换为已记录文本。LLM 把精确路由 metadata enrichment 作为当前 API，同时接受上一代 catalog 的 effect-scoped discovery、输入模态与容量注册。pi-ai 适配器消费两条路径，并把请求模态过滤到当前提供方无关的 text/image 词汇。
+Web 组合同时支持当前插件和上一代外部插件。client-runtime 兼容包把旧 snapshot-store 与 settings 导入转发给当前 owner，而不创建重复的客户端 service。附件服务仍只把 raster image 作为持久二进制类型，同时允许受信任 recognizer 把瞬时通用文件字节转换为已记录文本。LLM 把精确路由 metadata enrichment 作为当前 API，同时接受上一代 catalog 的 effect-scoped discovery、输入模态与容量注册。dsh-ai 适配器消费两条路径，并把请求模态过滤到当前提供方无关的 text/image 词汇。运行时 stdout 与 stderr 由两个独立的后台读取器持续排空，避免启动诊断填满管道后阻塞就绪信号。
 
 ## 考虑过的替代方案
 

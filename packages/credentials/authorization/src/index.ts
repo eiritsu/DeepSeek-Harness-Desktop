@@ -13,7 +13,7 @@
  *
  * ```ts
  * const dispose = ctx.authorization.registerFlow({
- *   key: credentialKey('llm-pi-ai', 'openai-codex'),
+ *   key: credentialKey('llm-dsh-ai', 'openai-codex'),
  *   label: 'ChatGPT (Codex)',
  *   methods: [{ id: 'oauth', label: 'Sign in with ChatGPT' }],
  *   async run(session) {

@@ -20,7 +20,7 @@ Status: implemented
 
 - **用 `Config` 开关选择回传策略。** 两种端点行为都真实存在，但该字段在不需要它的地方是惰性的，所以这个开关最多只换回一个轮次的思维链输入 token —— 代价却是一旦设置错误，会话就会静默地无法重建，两端都不会报错来归因。一个设错就静默失败的旋钮，比那点 token 更糟。
 - **根据 `baseURL` 判断。** 一个端点是否会转发给其他厂商，无法从它的主机名读出：内部端点可能直连代理 DeepSeek，公网端点也可能转发。适配器只能对自己看不透的部署方式做猜测。
-- **改为持久化签名，如 `dsh-llm-pi-ai` 的做法。** 该适配器在 replay state 中按块持久化 `thinkingSignature`，因为它的提供方会把签名放在协议里。DeepSeek chat-completions 不暴露签名，所以这个适配器没有可持久化的东西，回放文本是唯一通道。
+- **改为持久化签名，如 `dsh-llm-dsh-ai` 的做法。** 该适配器在 replay state 中按块持久化 `thinkingSignature`，因为它的提供方会把签名放在协议里。DeepSeek chat-completions 不暴露签名，所以这个适配器没有可持久化的东西，回放文本是唯一通道。
 
 ## Consequences
 

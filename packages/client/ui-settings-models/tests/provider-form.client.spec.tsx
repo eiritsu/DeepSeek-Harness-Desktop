@@ -50,7 +50,7 @@ const DISCOVERY_FAILURES: {
 } = {
   'gateway/internal': message => new RemoteError('gateway/internal', message, {}),
   'llm/model-discovery-rejected': message =>
-    new RemoteError('llm/model-discovery-rejected', message, { settingsNs: 'llm-pi-ai' }),
+    new RemoteError('llm/model-discovery-rejected', message, { settingsNs: 'llm-dsh-ai' }),
 }
 function fail(message: string, code: keyof typeof DISCOVERY_FAILURES) {
   return { ok: false as const, error: DISCOVERY_FAILURES[code](message) }
@@ -66,8 +66,8 @@ type RefusalCode = 'credential/rejected' | 'settings/conflict' | 'settings/rejec
 const REFUSALS: { [Code in RefusalCode]: (message: string) => RemoteError<Code> } = {
   'credential/rejected': message => new RemoteError('credential/rejected', message, { ref: 'OPENAI_API_KEY' }),
   'settings/conflict': message =>
-    new RemoteError('settings/conflict', message, { ns: 'llm-pi-ai', expected: 7, actual: 8 }),
-  'settings/rejected': message => new RemoteError('settings/rejected', message, { ns: 'llm-pi-ai' }),
+    new RemoteError('settings/conflict', message, { ns: 'llm-dsh-ai', expected: 7, actual: 8 }),
+  'settings/rejected': message => new RemoteError('settings/rejected', message, { ns: 'llm-dsh-ai' }),
 }
 function remoteFail(message: string, code: RefusalCode = 'credential/rejected') {
   return { ok: false as const, error: REFUSALS[code](message) }
@@ -79,7 +79,7 @@ function piAiNamespace(
   baseProviders: Record<string, JsonValue> = {},
 ): SettingsNamespaceView {
   return {
-    ns: 'llm-pi-ai',
+    ns: 'llm-dsh-ai',
     schema: JSON.parse(JSON.stringify(PiAiConfig.toJSON())) as JsonValue,
     // `value` is the effective section; `user` is only the layer this page
     // writes. They differ whenever a composition `base` supplies something.
@@ -120,7 +120,7 @@ function scriptedFace(options: {
         Object.keys(providers).map(provider => ({
           provider,
           displayName: provider,
-          settingsNs: 'llm-pi-ai',
+          settingsNs: 'llm-dsh-ai',
           settingsPath: ['providers', provider],
           declared: options.declaredRoutes?.includes(provider) ?? false,
         })),
@@ -271,7 +271,7 @@ describe('model list editing', () => {
 
     await waitFor(() => { expect(mutate).toHaveBeenCalled() })
     expect(firstMutate(mutate)).toMatchObject({
-      ns: 'llm-pi-ai',
+      ns: 'llm-dsh-ai',
       expectedRevision: 3,
       ops: [{ op: 'set', path: ['providers', 'openai', 'models'], value: [{ id: 'acme-large', contextWindow: 65_536 }] }],
     })
@@ -499,7 +499,7 @@ describe('endpoint interrogation', () => {
 
     await waitFor(() => { expect(discover).toHaveBeenCalled() })
     expect(firstProbe(discover)).toEqual({
-      settingsNs: 'llm-pi-ai',
+      settingsNs: 'llm-dsh-ai',
       // The route is named, so an adapter that already describes it answers
       // from its own registry rather than the endpoint.
       provider: 'openai',
@@ -520,7 +520,7 @@ describe('endpoint interrogation', () => {
 
     await waitFor(() => { expect(discover).toHaveBeenCalled() })
     expect(firstProbe(discover)).toEqual({
-      settingsNs: 'llm-pi-ai',
+      settingsNs: 'llm-dsh-ai',
       provider: 'openai',
       baseURL: 'https://proxy.example/v1',
       api: 'openai-responses',
@@ -584,7 +584,7 @@ describe('endpoint interrogation', () => {
     fireEvent.click(screen.getByText(en.fetchModels))
 
     await waitFor(() => { expect(discover).toHaveBeenCalled() })
-    expect(firstProbe(discover)).toEqual({ settingsNs: 'llm-pi-ai', provider: 'openai' })
+    expect(firstProbe(discover)).toEqual({ settingsNs: 'llm-dsh-ai', provider: 'openai' })
   })
 
   it('keeps the create card asking only once it has an endpoint', () => {
@@ -606,7 +606,7 @@ describe('endpoint interrogation', () => {
 
     // A provider being declared names no route, so only the endpoint travels.
     expect(firstProbe(scripted.discover)).toEqual({
-      settingsNs: 'llm-pi-ai',
+      settingsNs: 'llm-dsh-ai',
       baseURL: 'https://acme.test/v1',
       api: 'openai-completions',
     })
@@ -709,7 +709,7 @@ describe('provider rows', () => {
     scripted.face.llm.listConfigurableProviders = vi.fn(() => Promise.resolve(ok([{
       provider: 'openai',
       displayName: 'openai',
-      settingsNs: 'llm-pi-ai',
+      settingsNs: 'llm-dsh-ai',
       settingsPath: ['providers', 'openai'],
     }]))) as never
     const controller = new ModelsSettingsStore(
@@ -767,7 +767,7 @@ describe('hand-declared providers', () => {
 
     await waitFor(() => { expect(onClose).toHaveBeenCalledWith(true) })
     expect(firstMutate(mutate)).toEqual({
-      ns: 'llm-pi-ai',
+      ns: 'llm-dsh-ai',
       ops: [{
         op: 'set',
         path: ['providers', 'acme-gateway'],
@@ -870,7 +870,7 @@ describe('hand-declared providers', () => {
     face.llm.listConfigurableProviders = vi.fn(() => Promise.resolve(ok([{
       provider: 'acme-gateway',
       displayName: 'Acme 网关',
-      settingsNs: 'llm-pi-ai',
+      settingsNs: 'llm-dsh-ai',
       settingsPath: ['providers', 'acme-gateway'],
       declared: true,
     }])))
@@ -887,7 +887,7 @@ describe('hand-declared providers', () => {
   })
 
   it('drops the stored name rather than storing an empty one the adapter refuses', async () => {
-    // `llm-pi-ai` rejects an empty displayName outright, so clearing the field
+    // `llm-dsh-ai` rejects an empty displayName outright, so clearing the field
     // must unset it — which is also what the user means: use the route id.
     const { mutate } = await mountSection({
       providers: { 'acme-gateway': { displayName: 'Acme Gateway', api: 'openai-completions' } },
@@ -926,7 +926,7 @@ describe('hand-declared providers', () => {
     // Only the protocol travels: every other stored field is unchanged, so no
     // op restates it.
     expect(firstMutate(mutate)).toEqual({
-      ns: 'llm-pi-ai',
+      ns: 'llm-dsh-ai',
       ops: [{ op: 'set', path: ['providers', 'acme-gateway', 'api'], value: 'anthropic-messages' }],
       expectedRevision: 3,
     })

@@ -6,11 +6,11 @@ Status: implemented
 
 ## Problem
 
-一次面向 github.com 的 GitHub Copilot 登录在提交环节失败：`credentials-local: record "llm-pi-ai/github-copilot" payload holds a value JSON cannot represent`。pi-ai 的 Copilot 凭据以显式 `undefined` 携带可选成员（未填 Enterprise 域名时为 `enterpriseUrl: undefined`——这是 `JSON.stringify` 会直接丢弃的 JavaScript 惯用写法），而 `llm-pi-ai` 的存储桥接把凭据对象原样作为 grant payload 提交。凭据存储的校验器正当地拒绝 `undefined` 为不可表示，于是所有流程留有未填可选成员的 grant 都无法落盘，提供方已经完成授权之后登录却报失败。
+一次面向 github.com 的 GitHub Copilot 登录在提交环节失败：`credentials-local: record "llm-dsh-ai/github-copilot" payload holds a value JSON cannot represent`。pi-ai 的 Copilot 凭据以显式 `undefined` 携带可选成员（未填 Enterprise 域名时为 `enterpriseUrl: undefined`——这是 `JSON.stringify` 会直接丢弃的 JavaScript 惯用写法），而 `llm-dsh-ai` 的存储桥接把凭据对象原样作为 grant payload 提交。凭据存储的校验器正当地拒绝 `undefined` 为不可表示，于是所有流程留有未填可选成员的 grant 都无法落盘，提供方已经完成授权之后登录却报失败。
 
 ## Decision
 
-`packages/llm/llm-pi-ai/src/auth.ts` 的 `toRecord` 改为落盘 grant 凭据的 JSON 像：`jsonImage` 丢弃普通对象里显式为 undefined 的成员，把数组中的 undefined 条目渲染为 `null`，与 `JSON.stringify` 完全一致。其余一切——非有限数、异种原型对象——原样透传，因此真正不可存储的值仍会在存储校验器处大声失败，而不是被静默改写。读回不变：成员缺失与显式 undefined 对以属性读取访问可选成员的 pi-ai 消费方不可区分。
+`packages/llm/llm-dsh-ai/src/auth.ts` 的 `toRecord` 改为落盘 grant 凭据的 JSON 像：`jsonImage` 丢弃普通对象里显式为 undefined 的成员，把数组中的 undefined 条目渲染为 `null`，与 `JSON.stringify` 完全一致。其余一切——非有限数、异种原型对象——原样透传，因此真正不可存储的值仍会在存储校验器处大声失败，而不是被静默改写。读回不变：成员缺失与显式 undefined 对以属性读取访问可选成员的 pi-ai 消费方不可区分。
 
 ## Testing
 

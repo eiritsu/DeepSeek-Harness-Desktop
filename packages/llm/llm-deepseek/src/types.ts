@@ -18,7 +18,7 @@ export interface WireRequest {
   /** Thinking-mode toggle (top level, NOT inside extra_body on the wire). */
   thinking?: { type: 'enabled' | 'disabled' }
   /** Thinking effort (official levels). */
-  reasoning_effort?: 'low' | 'high' | 'max'
+  reasoning_effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
   tools?: WireTool[]
   temperature?: number
   max_tokens?: number

@@ -76,7 +76,7 @@ export function PluginLibraryOverlay({ bridge, controller, t }: PluginLibraryOve
   const [catalogSearchInput, setCatalogSearchInput] = useState('')
   const [catalogSearch, setCatalogSearch] = useState('')
   const [catalogFilter, setCatalogFilter] = useState<CatalogFilter>('profile-bundle')
-  const [discoverySource, setDiscoverySource] = useState<DiscoverySource>('github')
+  const [discoverySource] = useState<DiscoverySource>('thirdParty')
   const [thirdPartyCatalog, setThirdPartyCatalog] = useState<readonly ThirdPartyPlugin[]>([])
   const [thirdPartyLoaded, setThirdPartyLoaded] = useState(false)
   const [thirdPartyLoading, setThirdPartyLoading] = useState(false)
@@ -172,7 +172,7 @@ export function PluginLibraryOverlay({ bridge, controller, t }: PluginLibraryOve
     setThirdPartyError(undefined)
     try {
       const reply = await bridge.request({
-        action: 'thirdPartyCatalog',
+        action: 'skillHubCatalog',
         page,
         pageSize: 12,
         query: search,
@@ -222,11 +222,6 @@ export function PluginLibraryOverlay({ bridge, controller, t }: PluginLibraryOve
       window.removeEventListener('keydown', onKeyDown)
     }
   }, [bridge, controller, open])
-
-  useEffect(() => {
-    if (!open || catalogLoaded || catalogLoadingRef.current) return
-    void loadCatalogPage(1, catalogSearch, true)
-  }, [catalogLoaded, open])
 
   useEffect(() => {
     if (!open || thirdPartyLoaded || thirdPartyLoadingRef.current) return
@@ -578,27 +573,11 @@ export function PluginLibraryOverlay({ bridge, controller, t }: PluginLibraryOve
                       <p>{t('communityDescription')}</p>
                     </div>
                     <a
-                      href={discoverySource === 'github' ? 'https://github.com/topics/dsh-plugin' : 'https://deepseek1024.com/plugins'}
+                      href="https://skillhub.cloud.tencent.com/plugins"
                       rel="noreferrer"
                     >
-                      {discoverySource === 'github' ? t('openTopic') : t('openThirdParty')}
+                      {t('openThirdParty')}
                     </a>
-                  </div>
-                  <div className={css.discoveryTabs} aria-label={t('communitySources')}>
-                    <button
-                      type="button"
-                      aria-pressed={discoverySource === 'github'}
-                      onClick={() => { setDiscoverySource('github') }}
-                    >
-                      {t('githubTopicTab')}
-                    </button>
-                    <button
-                      type="button"
-                      aria-pressed={discoverySource === 'thirdParty'}
-                      onClick={() => { setDiscoverySource('thirdParty') }}
-                    >
-                      {t('thirdPartyTab')}
-                    </button>
                   </div>
                   {discoverySource === 'github' ? <>
                     <p className={css.discoveryNote}>{t('githubTopicDescription')}</p>

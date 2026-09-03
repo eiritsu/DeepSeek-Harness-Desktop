@@ -31,7 +31,7 @@ kind: "package-reference"
 
 审查接受精确 npm 版本、固定到 commit 的 HTTPS GitHub 仓库或本地目录。可直接安装的来源必须具有有效根 package manifest，并由 `dsh.bundle.patch` 指向实际存在的包内 YAML 入口。原生 bridge 会签发一个有效期 15 分钟的一次性审查 token，再用精确保存且禁用依赖 lifecycle script 的方式把安装委托给 `dsh plugin --profile web`。
 
-社区发现会区分 GitHub 的 `dsh-plugin` topic 与 deepseek1024.com。目录元数据只用于发现；选中的项目仍须解析为固定来源并通过本机结构审查。
+社区发现统一使用 [SkillHub Plugins 目录](https://skillhub.cloud.tencent.com/plugins)。目录元数据只用于发现；选中的 GitHub 仓库会先固定到 commit，再通过本机结构审查后才能安装。
 
 ### 挂载到其他 Web 组合
 

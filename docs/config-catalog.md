@@ -895,7 +895,7 @@ export interface Config {
   /** Deployment thinking policy; `disabled` limits every conversation request to `off`. */
   thinking?: 'enabled' | 'disabled'
   /** Default thinking effort (default `high`); `off` disables thinking per request. */
-  reasoningEffort?: 'off' | 'low' | 'high' | 'max'
+  reasoningEffort?: DeepSeekReasoningEffort
   /** Default per-request output cap (default 256,000); a model's own cap and explicit request values win. */
   maxTokens?: number
   /** Positive context capacity used when the selected model has no exact value (default 1,000,000). */
@@ -928,6 +928,9 @@ export interface Config {
   retryPolicy?: RetryPolicyConfig
 }
 
+/** Reasoning levels accepted by the DeepSeek-compatible endpoint. */
+export type DeepSeekReasoningEffort = 'off' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+
 /** One optional model entry advertised by the direct-fetch adapter. */
 export interface DeepSeekCatalogModel {
   /** Wire model id accepted by the configured endpoint. */
@@ -951,11 +954,11 @@ export interface DeepSeekCatalogModel {
 
 Depends on: [`ModelModality`](../packages/llm/llm/src/index.ts) · [`RetryPolicyConfig`](../packages/llm/llm/src/index.ts)
 
-Source: [`packages/llm/llm-deepseek/src/index.ts:125`](../packages/llm/llm-deepseek/src/index.ts)
+Source: [`packages/llm/llm-deepseek/src/index.ts:127`](../packages/llm/llm-deepseek/src/index.ts)
 
-<a id="deepseek-aidsh-llm-pi-ai"></a>
+<a id="deepseek-aidsh-llm-dsh-ai"></a>
 
-## `@deepseek-ai/dsh-llm-pi-ai`
+## `@deepseek-ai/dsh-llm-dsh-ai`
 
 Requires: `llm`
 
@@ -967,11 +970,11 @@ export interface Config {
    * the dormant settings-driven posture: the adapter mounts with no routes
    * and registers them the moment a settings section supplies profiles.
    */
-  providers?: Record<string, PiAiProviderProfile>
+  providers?: Record<string, DshAiProviderProfile>
 }
 
 /** Configuration for one pi-ai provider route; the `providers` dict key IS the route. */
-export interface PiAiProviderProfile {
+export interface DshAiProviderProfile {
   /** Credential reference (environment-variable name) resolved per request through `ctx.credentials`. */
   apiKeyEnv?: string
   /** Name shown by configuration surfaces; defaults to the route key. */
@@ -989,7 +992,7 @@ export interface PiAiProviderProfile {
    * route unchanged; an explicit list replaces it, each entry defaulting its
    * unset fields from the installed model of the same id.
    */
-  models?: PiAiModelProfile[]
+  models?: DshAiModelProfile[]
   /**
    * Installed-catalog customizations by model id: each entry reshapes that
    * one model with the same fields a {@link models} entry takes, while the
@@ -998,7 +1001,7 @@ export interface PiAiProviderProfile {
    * an override beside it, on a route the catalog does not ship, or naming a
    * model the catalog does not describe is refused rather than skipped.
    */
-  modelOverrides?: Record<string, PiAiModelOverride>
+  modelOverrides?: Record<string, DshAiModelOverride>
   /**
    * pi-ai wire-compatibility switches defaulting every model on this route
    * whose protocol declares them; each model's own `compat` overrides per
@@ -1006,7 +1009,7 @@ export interface PiAiProviderProfile {
    * pi-ai's own detection. A switch no model on the route could read is
    * refused rather than left looking applied.
    */
-  compat?: PiAiCompatProfile
+  compat?: DshAiCompatProfile
   /**
    * Context capacity for a model this route lists that neither the entry nor
    * the installed catalog sizes (default 262,144). A guess by construction, so
@@ -1021,7 +1024,7 @@ export interface PiAiProviderProfile {
   defaultMaxTokens?: number
   /**
    * Request modalities for a model this route lists that neither its entry's
-   * {@link PiAiModelProfile.input} nor the installed catalog declares (default
+   * {@link DshAiModelProfile.input} nor the installed catalog declares (default
    * `[text]`). A fallback like the capacities above, not an override: a
    * catalog model keeps the modalities the catalog records for it, and this
    * value never narrows one. A gateway serving vision models the catalog does
@@ -1029,7 +1032,7 @@ export interface PiAiProviderProfile {
    * Unlike an entry's list, this one may not be empty — nothing sits below it
    * to answer instead.
    */
-  defaultInput?: PiAiModality[]
+  defaultInput?: DshAiModality[]
   /** Provider request headers; Harness attribution wins reserved names. */
   headers?: Record<string, string>
   /** Provider-neutral pi-ai reasoning level. */
@@ -1065,7 +1068,7 @@ export interface PiAiProviderProfile {
 }
 
 /** One configured model entry: an id plus the catalog fields it overrides. */
-export interface PiAiModelProfile {
+export interface DshAiModelProfile {
   /** Model id sent to the provider and accepted by {@link GenerateOptions.model}. */
   id: string
   /** Upstream catalog owner retained when the configured route is an alias. */
@@ -1092,7 +1095,7 @@ export interface PiAiModelProfile {
    * claiming images its endpoint refuses is refused by the provider instead,
    * mid-turn.
    */
-  input?: PiAiModality[]
+  input?: DshAiModality[]
   /**
    * Selectable reasoning efforts. Absent inherits the installed catalog
    * entry's capability; when neither the entry nor its upstream owner has
@@ -1101,9 +1104,9 @@ export interface PiAiModelProfile {
    * reasoning from a catalog model its gateway cannot serve; a non-empty dict
    * declares the offered levels and their wire spellings.
    */
-  reasoningEfforts?: false | PiAiReasoningEfforts
+  reasoningEfforts?: false | DshAiReasoningEfforts
   /** pi-ai wire-compatibility switches for this model, winning over the route's per field; one its protocol does not declare is refused. */
-  compat?: PiAiCompatProfile
+  compat?: DshAiCompatProfile
 }
 
 /**
@@ -1113,7 +1116,7 @@ export interface PiAiModelProfile {
  * rest of the catalog serving untouched, which is what makes "correct one
  * model, keep the other thirty-seven" a three-line edit.
  */
-export type PiAiModelOverride = Omit<PiAiModelProfile, 'id'>
+export type DshAiModelOverride = Omit<DshAiModelProfile, 'id'>
 
 /**
  * pi-ai wire-compatibility switches, set on the route (its models' default) or
@@ -1133,7 +1136,7 @@ export type PiAiModelOverride = Omit<PiAiModelProfile, 'id'>
  * `openai-codex-responses`, which pi-ai gives one shared compat type, so a
  * switch settable on one is settable on all three.
  */
-export interface PiAiCompatProfile {
+export interface DshAiCompatProfile {
   /** Whether the endpoint accepts `store`; `openai-completions`. */
   supportsStore?: boolean
   /**
@@ -1162,7 +1165,7 @@ export interface PiAiCompatProfile {
   /** Whether replayed assistant messages need an empty `reasoning_content` while reasoning is on; `openai-completions`. */
   requiresReasoningContentOnAssistantMessages?: boolean
   /** Reasoning parameter format the endpoint expects; `openai-completions`. */
-  thinkingFormat?: PiAiThinkingFormat
+  thinkingFormat?: DshAiThinkingFormat
   /**
    * Kwargs sent as `chat_template_kwargs`, which pi-ai reads only under the
    * two `chat-template` thinking formats; `openai-completions`. Nothing checks
@@ -1202,7 +1205,7 @@ export interface PiAiCompatProfile {
 }
 
 /** One request modality a pi-ai model may accept. */
-export type PiAiModality = Model<Api>['input'][number]
+export type DshAiModality = Model<Api>['input'][number]
 
 /**
  * Selectable reasoning efforts for one model: each key is a level the model
@@ -1212,15 +1215,15 @@ export type PiAiModality = Model<Api>['input'][number]
  * absence; every other declared level must name a wire value. A level absent
  * from the dict is not offered.
  */
-export type PiAiReasoningEfforts = Partial<Record<ModelThinkingLevel, string | null>>
+export type DshAiReasoningEfforts = Partial<Record<ModelThinkingLevel, string | null>>
 
 /** One reasoning-dispatch wire format a profile may name. */
-export type PiAiThinkingFormat = NonNullable<OpenAICompletionsCompat['thinkingFormat']>
+export type DshAiThinkingFormat = NonNullable<OpenAICompletionsCompat['thinkingFormat']>
 ```
 
 Depends on: `Api` (`@earendil-works/pi-ai`) · `CacheRetention` (`@earendil-works/pi-ai`) · `Model` (`@earendil-works/pi-ai`) · `ModelThinkingLevel` (`@earendil-works/pi-ai`) · `OpenAICompletionsCompat` (`@earendil-works/pi-ai`) · [`RetryPolicyConfig`](../packages/llm/llm/src/index.ts) · `ThinkingBudgets` (`@earendil-works/pi-ai`) · `Transport` (`@earendil-works/pi-ai`)
 
-Source: [`packages/llm/llm-pi-ai/src/config.ts:222`](../packages/llm/llm-pi-ai/src/config.ts)
+Source: [`packages/llm/llm-dsh-ai/src/config.ts:224`](../packages/llm/llm-dsh-ai/src/config.ts)
 
 <a id="deepseek-aidsh-llm-replay"></a>
 
@@ -3337,6 +3340,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-client-ui-settings-plugins` ([`packages/client/ui-settings-plugins/src/index.ts`](../packages/client/ui-settings-plugins/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-sidebar` ([`packages/client/ui-sidebar/src/index.ts`](../packages/client/ui-sidebar/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-skill` ([`packages/client/ui-skill/src/index.ts`](../packages/client/ui-skill/src/index.ts))
+- `@deepseek-ai/dsh-client-ui-skill-library` ([`packages/client/ui-skill-library/src/index.ts`](../packages/client/ui-skill-library/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-subagent` ([`packages/client/ui-subagent/src/index.ts`](../packages/client/ui-subagent/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-theme` ([`packages/client/ui-theme/src/index.ts`](../packages/client/ui-theme/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-tool` ([`packages/client/ui-tool/src/index.ts`](../packages/client/ui-tool/src/index.ts))

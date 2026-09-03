@@ -238,6 +238,34 @@ final class PluginManager: @unchecked Sendable {
     }
   }
 
+  func skillHubSkills(
+    page: Int,
+    pageSize: Int,
+    query: String,
+    sort: String,
+    category: String,
+    source: String,
+    completion: @escaping @Sendable (Result<DesktopSkillHubPage, Error>) -> Void
+  ) {
+    queue.async {
+      do { completion(.success(try self.catalogClient.skillHubSkills(page: page, pageSize: pageSize, query: query, sort: sort, category: category, source: source))) }
+      catch { completion(.failure(error)) }
+    }
+  }
+
+  func skillHubPackages(
+    page: Int,
+    pageSize: Int,
+    query: String,
+    scene: String,
+    completion: @escaping @Sendable (Result<DesktopSkillHubPage, Error>) -> Void
+  ) {
+    queue.async {
+      do { completion(.success(try self.catalogClient.skillHubPackages(page: page, pageSize: pageSize, query: query, scene: scene))) }
+      catch { completion(.failure(error)) }
+    }
+  }
+
   func review(source: String, completion: @escaping @Sendable (Result<DesktopPluginReview, Error>) -> Void) {
     queue.async {
       do {
@@ -400,7 +428,7 @@ final class PluginManager: @unchecked Sendable {
     queue.async {
       do {
         guard let plugin = self.thirdPartyPluginsByID[id] else {
-          throw DesktopError.message("第三方目录条目已过期，请刷新目录后重试。")
+          throw DesktopError.message("SkillHub 插件条目已过期，请刷新目录后重试。")
         }
         let source = try self.catalogClient.resolveThirdPartySource(plugin: plugin)
         let report = try self.makeReview(source: source)

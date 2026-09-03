@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-01-model-selection-capability.md
-2026-09-01-model-selection-capability.md: 0f80c27a454c792011aef8d186e755fe65b314a4
-2026-09-01-model-selection-capability.zh.md: 5c7c23ae373b9824cfdd1922229f10495d8eda2e
+2026-09-01-model-selection-capability.md: 44cd833202e874471cb9963e33f9c041ef3a777b
+2026-09-01-model-selection-capability.zh.md: 59d1392fc535e7bfb4978c9593f646abf2eae2ce

@@ -3506,9 +3506,9 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
           ok: true,
           value: [
             { provider: 'deepseek-official', displayName: 'DeepSeek', settingsNs: 'llm-deepseek', settingsPath: [] },
-            { provider: 'openai', displayName: 'openai', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'openai'], declared: false },
-            { provider: 'anthropic', displayName: 'anthropic', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'anthropic'], declared: false },
-            { provider: 'acme-gateway', displayName: 'Acme Gateway', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'acme-gateway'], declared: true },
+            { provider: 'openai', displayName: 'openai', settingsNs: 'llm-dsh-ai', settingsPath: ['providers', 'openai'], declared: false },
+            { provider: 'anthropic', displayName: 'anthropic', settingsNs: 'llm-dsh-ai', settingsPath: ['providers', 'anthropic'], declared: false },
+            { provider: 'acme-gateway', displayName: 'Acme Gateway', settingsNs: 'llm-dsh-ai', settingsPath: ['providers', 'acme-gateway'], declared: true },
           ],
         })
         // The fixture endpoint is imaginary, so interrogation answers the

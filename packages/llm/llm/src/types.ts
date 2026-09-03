@@ -346,6 +346,11 @@ export type LlmModelCapacityResolver = (
   request: LlmModelCapacityRequest,
 ) => Promise<LlmModelCapacity | undefined>
 
+/** Compatibility plugin that supplies exact model reasoning levels. */
+export type LlmModelReasoningResolver = (
+  request: LlmModelInputRequest,
+) => Promise<readonly string[] | undefined>
+
 /** One adapter-discovered model; catalog membership is advisory, not request validation. */
 export interface LlmModelInfo {
   /** Provider route that owns this model entry. */
@@ -405,6 +410,8 @@ export interface LlmModelMetadataPatch {
   contextWindow?: number
   /** Adapter-default output cap when the owning adapter leaves it unknown. */
   maxTokens?: number
+  /** Adapter-owned selectable reasoning levels when the owning adapter leaves them unknown. */
+  reasoning?: LlmModelReasoningInfo
 }
 
 /** Exact-route input supplied to a model metadata enricher. */

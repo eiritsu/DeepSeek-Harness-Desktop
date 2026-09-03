@@ -14,7 +14,7 @@ harness 的凭据平面只能表达一种机密：藏在某个环境变量名之
 
 ## Decision
 
-三个 seam，各自拥有一个问题；所有 pi-ai 概念都藏在 `llm-pi-ai` 内部的适配器背后。
+三个 seam，各自拥有一个问题；所有 pi-ai 概念都藏在 `llm-dsh-ai` 内部的适配器背后。
 
 **`dsh-credentials` 长出第二个键空间。** `CredentialRef` 回答*这个环境变量名背后是什么*；`CredentialKey` 回答*这个插件为这个 id 持有什么凭据*。记录联合体是 `{ kind: 'api-key', key?, env? } | { kind: 'grant', payload }`——api-key 那半是结构化的，因为 seam 能描述它；grant 那半是不透明的，因为拥有 token 格式的库应当继续拥有它。对 payload 的唯一约束是它能原样通过一次 JSON 往返，读写两个方向都会校验。
 
@@ -29,7 +29,7 @@ harness 的凭据平面只能表达一种机密：藏在某个环境变量名之
 - **写入由 flow 拥有。** `run()` 返回即表示记录已通过 `ctx.credentials` 提交；seam 核实的是本次尝试期间观察到的提交——只看记录存在与否，会让重新授权把陈旧记录冒充成新鲜的——并拒绝返回时没提交记录的 flow。正是这一点让 `Models.login()`——它把持久化当作登录的一部分，经由 store 适配器完成——保持为唯一写入方，而不是把凭据复制出来再写第二遍。
 - **交互随请求传入，而非注册表。** 发起授权的一方才是能与人对话的一方，因此提示恰好抵达发问的那个页面，无头调用方传入一个直接拒绝的交互实现，也不存在"环境提供方缺席"或"该归两个已打开标签页中哪一个"的问题。
 
-**三处翻译全都留在 `llm-pi-ai`。** `credentialStoreFrom` 把 pi-ai 的 `CredentialStore` 映射到记录；`authContextFrom` 先查凭据 seam 再查启动环境来回答 pi-ai 的环境提问，文件存在性则按宿主进程的文件系统判断；`registerPiAiFlows` 把 pi-ai 的 `AuthEvent`/`AuthPrompt` 重述为中立词汇并运行 `Models.login()`。每个集合都用前两者构造，正是这一点让已登录的提供方在配置变更导致集合重建之后仍然处于登录状态。有了行得通的姿态之后，目录不再扣留仅 OAuth 的路由，`openai-codex` 重新被提供。
+**三处翻译全都留在 `llm-dsh-ai`。** `credentialStoreFrom` 把 pi-ai 的 `CredentialStore` 映射到记录；`authContextFrom` 先查凭据 seam 再查启动环境来回答 pi-ai 的环境提问，文件存在性则按宿主进程的文件系统判断；`registerPiAiFlows` 把 pi-ai 的 `AuthEvent`/`AuthPrompt` 重述为中立词汇并运行 `Models.login()`。每个集合都用前两者构造，正是这一点让已登录的提供方在配置变更导致集合重建之后仍然处于登录状态。有了行得通的姿态之后，目录不再扣留仅 OAuth 的路由，`openai-codex` 重新被提供。
 
 凭据平面仍是可选的，正如它在引用解析上一贯如此。没有凭据服务时读取回答"未存储"，因为这样的组合确实不持有任何凭据；写入则指名拒绝，因为一次 grant 凭空蒸发的登录会先报告成功、再让每个请求失败。flow 注册通过 `ctx.inject` 限定在授权 seam 之下，因此 headless 或 ACP 组合挂载后没有登录能力，其余一切不变。
 
@@ -37,7 +37,7 @@ harness 的凭据平面只能表达一种机密：藏在某个环境变量名之
 
 `withFileLock` 接受按调用声明的等待上限。pi-ai 在 `credentials.modify()` **内部**执行 OAuth 刷新，因此记录写入路径要跨越一次网络往返持锁；2 秒的默认值是按"渲染并 rename"的量级选的，会让该文档的每一个其他写入方失败。重试节奏保持固定——那是协议常量——而等待时长按争用方可能遇到的最长持锁方来定：refs 与 records 共享同一份文件、同一把锁，因此该文档的每一个写入方（`DOCUMENT_LOCK_WAIT_MS`，含引用写入与记录删除）都要等得起一次 OAuth 刷新，而不只是执行刷新的那个 mutation。
 
-seam 的边缘与写入路径同一纪律。prompt 被拒是结果而非故障——交互实现以 `AuthorizationDeclinedError` 拒绝，尝试以 `cancelled` 结算；渲染不了 notice 的界面只丢那条 notice、绝不拖垮 flow；`authorization/settled` 按 credentials seam 的条款以遏制方式分发监听器故障。存储侧，api-key 记录在渲染前先行准入（`parseRecord` 下次启动会拒绝的，写入时就拒绝），`llm-pi-ai` 在寻址记录前先问 `isCredentialKeySegment`，任意手写路由键读作「没有存储任何东西」，而不是在解析途中抛错。
+seam 的边缘与写入路径同一纪律。prompt 被拒是结果而非故障——交互实现以 `AuthorizationDeclinedError` 拒绝，尝试以 `cancelled` 结算；渲染不了 notice 的界面只丢那条 notice、绝不拖垮 flow；`authorization/settled` 按 credentials seam 的条款以遏制方式分发监听器故障。存储侧，api-key 记录在渲染前先行准入（`parseRecord` 下次启动会拒绝的，写入时就拒绝），`llm-dsh-ai` 在寻址记录前先问 `isCredentialKeySegment`，任意手写路由键读作「没有存储任何东西」，而不是在解析途中抛错。
 
 撤销会结算一次尝试，无论其 flow 是否响应信号。flow 本应在信号触发时停止，但不停止的那个会把键占到进程结束，而被卡住的键从外部看与忙碌中的键无法区分。被遗弃的执行体听任其自行结束。
 
@@ -63,6 +63,6 @@ seam 的边缘与写入路径同一纪律。prompt 被拒是结果而非故障�
 
 seam 自己的套件钉住它拥有的生命周期：单飞的拒绝与释放、flow 启动前与进行中的撤销、一个忽略自身信号的 flow、提交核实，以及包含"调用方看到的是抛出错误"那种 `failed` 情形的结算事件。invariant companion 钉住"已结算的键就是空闲的键"，因为被卡住的键否则不可见。
 
-`llm-pi-ai` 针对一份真实的 `$DSH_HOME` 文档覆盖三处翻译——逐字段的 api-key 凭据、连 refresh 半边一起原样保存的 OAuth 凭据、按 scope 跳过的他插件记录，以及没有凭据服务时的写入拒绝——外加每一个 `AuthEvent` 与 `AuthPrompt` 成员的重述；`Models.login()` 在集合边界处被 mock，因为真实登录会打开浏览器。两个真实组合测试分别在挂载与不挂载授权 seam 的情况下启动插件。
+`llm-dsh-ai` 针对一份真实的 `$DSH_HOME` 文档覆盖三处翻译——逐字段的 api-key 凭据、连 refresh 半边一起原样保存的 OAuth 凭据、按 scope 跳过的他插件记录，以及没有凭据服务时的写入拒绝——外加每一个 `AuthEvent` 与 `AuthPrompt` 成员的重述；`Models.login()` 在集合边界处被 mock，因为真实登录会打开浏览器。两个真实组合测试分别在挂载与不挂载授权 seam 的情况下启动插件。
 
 `models-settings` 与 `onboarding-usable-provider` 两条 web e2e golden 恰好收回了被扣留时失去的那一行 `openai-codex` 选项——这是本决策记录的唯一装配后应用差异，因为 Models 页还没有可录制的登录控件。

@@ -38,7 +38,7 @@ const FLASH = 'deepseek-v4-flash'
 const VISION = 'deepseek-v4-flash-vision-exp'
 const VISION_E2E_ENABLED = process.env.DEEPSEEK_VISION_E2E === '1'
 const TEST_PNG = Uint8Array.from(readFileSync(
-  new URL('../../llm-pi-ai/tests/fixtures/qr-code.png', import.meta.url),
+  new URL('../../llm-dsh-ai/tests/fixtures/qr-code.png', import.meta.url),
 ))
 const contexts: Context[] = []
 let identityHome: string

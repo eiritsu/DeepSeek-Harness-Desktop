@@ -35,7 +35,7 @@ Provider ID 是永久的，因为请求、已保存会话、模型默认值和�
 因此自定义提供方下的视觉模型需要加一行。表单没有对应字段；请在 `$DSH_HOME/settings.yaml` 中给该模型加上 `input`：
 
 ```yaml
-llm-pi-ai:
+llm-dsh-ai:
   providers:
     my-gateway:
       apiKeyEnv: GATEWAY_API_KEY
@@ -52,7 +52,7 @@ llm-pi-ai:
 如果你手动录入的模型全都接受图片，可以在路由上设置一次回退值，不必逐个模型写：
 
 ```yaml
-llm-pi-ai:
+llm-dsh-ai:
   providers:
     vision-gateway:
       apiKeyEnv: GATEWAY_API_KEY
@@ -67,7 +67,7 @@ llm-pi-ai:
 `defaultInput` 是回退值而不是覆盖值，默认为 `[text]`：在目录提供方上，它只为目录未描述的模型作答，因此绝不会把目录中本就具备图片能力的模型的该能力去掉。要收窄这类模型，请用它自己的 `input`。目录提供方没有可供填写的 `models` 列表，因此写在 `modelOverrides` 下，以模型 id 为键：
 
 ```yaml
-llm-pi-ai:
+llm-dsh-ai:
   providers:
     anthropic:
       modelOverrides:
@@ -86,7 +86,7 @@ llm-pi-ai:
 其中两样占了绝大多数。声明了推理能力的模型，其系统提示词会以 `role: "developer"` 发出，很多网关直接拒绝；输出上限则写作 `max_completion_tokens`，只认 `max_tokens` 的服务端会拒绝。表单里没有这两个字段；请在 `$DSH_HOME/settings.yaml` 的路由上更正：
 
 ```yaml
-llm-pi-ai:
+llm-dsh-ai:
   providers:
     my-gateway:
       apiKeyEnv: GATEWAY_API_KEY
@@ -113,7 +113,7 @@ llm-pi-ai:
 
 每个开关归属于声明了它的那些协议，因此在某个 `api` 上合法的开关，在另一个上可能被拒绝——报错会点名该协议实际提供哪些。与上面的 `input` 一样，开关陈述的是关于你的端点的一个断言，而不是对它的检查：设置一个网关其实并不需要的开关，只是发出一个不同的请求而已。
 
-全部开关、各自接受的取值，以及接受它们的协议，都列在[生成的 `dsh-llm-pi-ai` 配置参考](../../config-catalog.zh.md#deepseek-aidsh-llm-pi-ai)的 `PiAiCompatProfile` 之下——该参考派生自源码，因此不会落后于适配器实际接受的内容。
+全部开关、各自接受的取值，以及接受它们的协议，都列在[生成的 `dsh-llm-dsh-ai` 配置参考](../../config-catalog.zh.md#deepseek-aidsh-llm-dsh-ai)的 `PiAiCompatProfile` 之下——该参考派生自源码，因此不会落后于适配器实际接受的内容。
 
 ## 选择模型
 
@@ -134,4 +134,4 @@ llm-pi-ai:
 
 ## 进阶配置
 
-自动生成的[插件配置目录](../../config-catalog.zh.md)列出每个插件的所有受支持字段与默认值；[`dsh-llm-pi-ai`](../../config-catalog.zh.md#deepseek-aidsh-llm-pi-ai) 就是本页所配置的那个提供方段落。[`dsh-llm-pi-ai`](../../../packages/llm/llm-pi-ai/README.zh.md) 和 [`dsh-llm-deepseek`](../../../packages/llm/llm-deepseek/README.zh.md) 参考文档负责直接 `settings.yaml` 配置、目录解析、推理控制、凭据与适配器错误。
+自动生成的[插件配置目录](../../config-catalog.zh.md)列出每个插件的所有受支持字段与默认值；[`dsh-llm-dsh-ai`](../../config-catalog.zh.md#deepseek-aidsh-llm-dsh-ai) 就是本页所配置的那个提供方段落。[`dsh-llm-dsh-ai`](../../../packages/llm/llm-dsh-ai/README.zh.md) 和 [`dsh-llm-deepseek`](../../../packages/llm/llm-deepseek/README.zh.md) 参考文档负责直接 `settings.yaml` 配置、目录解析、推理控制、凭据与适配器错误。

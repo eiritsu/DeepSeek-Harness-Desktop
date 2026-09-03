@@ -1,5 +1,5 @@
 /**
- * The model list of one pi-ai provider profile, plus the action that asks the
+ * The model list of one dsh-ai provider profile, plus the action that asks the
  * provider what it serves.
  *
  * The list is the profile's `models` array as the card holds it: an empty list
@@ -118,7 +118,7 @@ type CapacityField = 'contextWindow' | 'maxTokens'
  * What an empty capacity field is worth, shown as its placeholder so a row left
  * blank does not read as a model with no capacity at all.
  *
- * The magnitudes are the adapter's own route-level fallbacks (`llm-pi-ai`'s
+ * The magnitudes are the adapter's own route-level fallbacks (`llm-dsh-ai`'s
  * `defaultContextWindow` and `defaultMaxTokens`), spelled the way a person
  * would say them. They are a hint, not a mirror: this page counts `K` as 1000,
  * so typing `256K` stores 256000 while leaving the field blank keeps the

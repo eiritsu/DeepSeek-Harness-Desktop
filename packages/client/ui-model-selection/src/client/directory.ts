@@ -46,6 +46,7 @@ export class ModelDirectory {
   private generation = 0
   private disposed = false
   private resolved = false
+  private repairing: Promise<void> | undefined
   private readonly unsubscribeCatalog: () => void
   private readonly unsubscribeSelection: () => void
 
@@ -63,19 +64,28 @@ export class ModelDirectory {
     private readonly catalog: ModelCatalogDirectory,
     private readonly projected: ObservableSnapshot<unknown>,
   ) {
-    this.unsubscribeCatalog = catalog.store.subscribe(() => { this.syncInputs() })
-    this.unsubscribeSelection = projected.subscribe(() => { this.syncInputs() })
+    this.unsubscribeCatalog = catalog.store.subscribe(() => {
+      this.syncInputs()
+      this.scheduleRepair()
+    })
+    this.unsubscribeSelection = projected.subscribe(() => {
+      this.syncInputs()
+      this.scheduleRepair()
+    })
     this.syncInputs()
   }
 
   /**
    * Ensure the Host generation's shared advisory catalog is loaded.
+   * A projected effort that the selected model no longer advertises is replaced
+   * with the model's default through the durable selection command.
    * @returns the fresh directory value.
    */
   async load(): Promise<ModelDirectoryState> {
     this.assertAvailable()
     await this.catalog.load()
     this.syncInputs()
+    await this.repairStaleEffort()
     return this.store.getSnapshot()
   }
 
@@ -159,7 +169,7 @@ export class ModelDirectory {
       })
       return
     }
-    const current = projected.next ?? catalog.value.default
+    const current = normalizeSelection(projected.next ?? catalog.value.default, catalog.value.groups)
     this.resolved = true
     this.store.set({
       current,
@@ -172,6 +182,64 @@ export class ModelDirectory {
       error: null,
     })
   }
+
+  /** Repair a stale projection after an asynchronous catalog or session update. */
+  private scheduleRepair(): void {
+    const catalog = this.catalog.store.getSnapshot()
+    if (catalog.status !== 'ready' || catalog.value === null) return
+    void this.repairStaleEffort().catch((error: unknown) => {
+      if (this.disposed) return
+      this.store.update((state) => {
+        state.status = 'error'
+        state.error = error instanceof Error ? error.message : String(error)
+      })
+    })
+  }
+
+  /** Replace a persisted effort that the freshly loaded model no longer serves. */
+  private async repairStaleEffort(): Promise<void> {
+    if (this.repairing !== undefined) return this.repairing
+    const catalog = this.catalog.store.getSnapshot().value
+    if (catalog === null) return
+    const projected = modelSelectionProjection(this.projected.getSnapshot())
+    const candidate = projected?.next ?? catalog.default
+    const normalized = normalizeSelection(candidate, catalog.groups)
+    if (sameSelection(candidate, normalized)) return
+    const operation = this.select(normalized)
+    this.repairing = operation
+    try {
+      await operation
+    } finally {
+      if (this.repairing === operation) this.repairing = undefined
+    }
+  }
+}
+
+function normalizeSelection(
+  selection: ModelSelection,
+  groups: readonly ModelProviderGroup[],
+): ModelSelection {
+  const model = groups
+    .find(group => group.id === selection.provider)
+    ?.models.find(entry => entry.id === selection.model)
+  // Catalog membership is advisory: an unlisted but routable model keeps its
+  // persisted effort because the Host remains authoritative for that route.
+  if (model === undefined || selection.reasoningEffort === undefined) return selection
+  const supported = model.reasoning?.efforts.some(effort => effort.id === selection.reasoningEffort) ?? false
+  if (supported) return selection
+  return {
+    provider: selection.provider,
+    model: selection.model,
+    ...(model.reasoning?.defaultEffort === undefined
+      ? {}
+      : { reasoningEffort: model.reasoning.defaultEffort }),
+  }
+}
+
+function sameSelection(left: ModelSelection, right: ModelSelection): boolean {
+  return left.provider === right.provider
+    && left.model === right.model
+    && left.reasoningEffort === right.reasoningEffort
 }
 
 function modelSelectionProjection(value: unknown): ModelSelectionProjection | undefined {
