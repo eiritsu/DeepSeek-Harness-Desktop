@@ -51,13 +51,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     )
     webContent.add(self, name: SessionSelectionBridge.messageName)
     webContent.addScriptMessageHandler(self, contentWorld: .page, name: DesktopPluginBridge.messageName)
-    let configuration = WKWebViewConfiguration()
-    configuration.userContentController = webContent
+    let configuration = Self.makeWebViewConfiguration(userContentController: webContent)
     return WKWebView(frame: .zero, configuration: configuration)
   }()
   private let statusLabel = NSTextField(wrappingLabelWithString: "正在启动…")
   private let spinner = NSProgressIndicator()
   private let windowDragRegion = WindowDragRegionView()
+
+  static func makeWebViewConfiguration(
+    userContentController: WKUserContentController
+  ) -> WKWebViewConfiguration {
+    let configuration = WKWebViewConfiguration()
+    configuration.userContentController = userContentController
+    configuration.websiteDataStore = .nonPersistent()
+    return configuration
+  }
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     do {

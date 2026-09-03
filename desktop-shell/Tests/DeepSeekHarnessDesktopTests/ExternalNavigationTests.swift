@@ -5,6 +5,15 @@ import WebKit
 
 @Suite("External navigation")
 struct ExternalNavigationTests {
+  @Test @MainActor
+  func desktopWebViewUsesAnEphemeralWebsiteDataStore() {
+    let configuration = AppDelegate.makeWebViewConfiguration(
+      userContentController: WKUserContentController()
+    )
+
+    #expect(!configuration.websiteDataStore.isPersistent)
+  }
+
   @Test("opens explicit external links")
   func externalLink() throws {
     let url = try #require(URL(string: "https://github.com/eiritsu/DeepSeek-Plugin"))

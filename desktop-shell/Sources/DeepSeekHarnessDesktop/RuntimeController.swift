@@ -118,6 +118,14 @@ final class StartupState: @unchecked Sendable {
 }
 
 final class RuntimeController: @unchecked Sendable {
+  private static let readinessSession: URLSession = {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.httpCookieStorage = nil
+    configuration.httpShouldSetCookies = false
+    configuration.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+    return URLSession(configuration: configuration)
+  }()
+
   private let queue = DispatchQueue(label: "ai.deepseek.harness.desktop.runtime", qos: .userInitiated)
   private let lock = NSLock()
   private let supportRoot: URL
@@ -266,7 +274,7 @@ final class RuntimeController: @unchecked Sendable {
     let result = LockedBox<(data: Data, status: Int)?>(nil)
     var request = URLRequest(url: url)
     request.timeoutInterval = 2
-    URLSession.shared.dataTask(with: request) { data, response, _ in
+    readinessSession.dataTask(with: request) { data, response, _ in
       if let status = (response as? HTTPURLResponse)?.statusCode {
         result.set((data ?? Data(), status))
       }
@@ -412,7 +420,10 @@ final class RuntimeController: @unchecked Sendable {
     let url = try result.get()
     let response = DispatchSemaphore(value: 0)
     let healthError = LockedBox<Error?>(nil)
-    URLSession.shared.dataTask(with: url) { _, reply, error in
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+    let session = URLSession(configuration: configuration)
+    session.dataTask(with: url) { _, reply, error in
       if let error { healthError.set(error) }
       else if (reply as? HTTPURLResponse)?.statusCode != 200 {
         healthError.set(DesktopError.message("更新版本健康检查未返回 HTTP 200。"))
@@ -422,6 +433,7 @@ final class RuntimeController: @unchecked Sendable {
     if response.wait(timeout: .now() + 15) == .timedOut {
       healthError.set(DesktopError.message("更新版本 HTTP 健康检查超时。"))
     }
+    session.finishTasksAndInvalidate()
     let stopped = DispatchSemaphore(value: 0)
     runtime.stop { stopped.signal() }
     _ = stopped.wait(timeout: .now() + 10)
