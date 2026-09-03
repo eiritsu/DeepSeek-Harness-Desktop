@@ -10,7 +10,7 @@ The desktop runtime printed its loopback URL as soon as the HTTP listener bound.
 
 ## Decision
 
-After the runtime announces its URL, the desktop shell polls the authenticated boot page, extracts an advertised combo URL, and waits until that bundle returns HTTP 200 before handing the URL to WKWebView. The wait is bounded and reports a clear startup failure if the registry never becomes ready.
+After the runtime announces its URL, the desktop shell polls an unauthenticated readiness route owned by the client-module registry before handing the one-time-token URL to WKWebView. The wait is bounded and reports a clear startup failure if the registry never becomes ready.
 
 ## Alternatives considered
 
@@ -20,6 +20,6 @@ After the runtime announces its URL, the desktop shell polls the authenticated b
 
 ## Consequences
 
-The first desktop navigation now starts only after the server has published both its boot HTML and at least one client combo. The probe uses the same authenticated loopback URL and follows the same revisioned `/plugins/??...&rev=...` resource advertised to the browser. Startup can take a few hundred milliseconds longer while the registry composes, but transient bundle 404s no longer become permanent plugin-load failures.
+The first desktop navigation now starts only after the client-module route has been registered and its composed bundle responses are available. The probe calls `/plugins/__dsh_ready` without the process token, preserving the one-time token for WKWebView's cookie exchange. Startup can take a few hundred milliseconds longer while the registry composes, but transient bundle 404s no longer become permanent plugin-load failures.
 
-Native tests cover HTML entity decoding for advertised combo URLs; the existing Swift suite remains the focused lifecycle and packaging gate.
+Native tests cover the token-free readiness URL and the client-module readiness route; the existing Swift suite remains the focused lifecycle and packaging gate.

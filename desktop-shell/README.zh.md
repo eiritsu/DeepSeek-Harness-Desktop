@@ -15,6 +15,7 @@ DeepSeek Harness Desktop 在 WKWebView 中嵌入官方 `dsh web` 应用。用户
 ## 桌面行为
 
 - **运行时生命周期。** 应用会为 Application Support 目录持有 advisory lock，使用 `--profile web --no-open --port 0` 启动仓库构建出的 CLI，并在 WKWebView 中打开 CLI 公布的 loopback URL。第二个应用副本只会激活既有进程，不会针对同一份数据启动另一套运行时。
+- **启动就绪。** 导航前，桌面壳会等待客户端模块 registry 的免 token `/plugins/__dsh_ready` 路由。这会把一次性认证 token 保留给 WKWebView，并防止短暂的 bundle 404 变成永久插件加载失败。
 - **一次性 Web 认证。** CLI 就绪行包含一次性 token。首次请求由 WKWebView 发起，以便把 token 换成当前 origin 的 cookie；后续重新载入使用移除 query 与 fragment 的同一 URL，不会重复消费 token。
 - **会话延续。** document-start bridge 从原生偏好恢复不透明的当前会话选择记录，并同步后续选择变化。会话日志、草稿、设置与插件状态仍由 Harness 管理。
 - **原生呈现。** 标准“编辑”菜单沿 AppKit responder chain 分发，外部链接在默认浏览器打开，透明标题栏则在侧边栏控件之外保留拖拽区域。

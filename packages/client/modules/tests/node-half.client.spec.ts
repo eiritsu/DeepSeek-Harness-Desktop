@@ -657,6 +657,19 @@ describe('client bundle activation', () => {
     })
   })
 
+  it('answers the desktop startup readiness probe without authentication', async () => {
+    writeBuiltPackage('@fixture/readiness-probe', {})
+    const { route } = constructWithRoute(['@fixture/readiness-probe'])
+    expect((await routeRequest(route, '/plugins/__dsh_ready')).status).toBe(503)
+    await new Promise<void>(resolve => queueMicrotask(resolve))
+    expect(await routeRequest(route, '/plugins/__dsh_ready')).toMatchObject({
+      status: 204,
+      body: Buffer.alloc(0),
+    })
+    expect((await routeRequest(route, '/plugins/__dsh_ready', 'HEAD')).status).toBe(204)
+    expect((await routeRequest(route, '/plugins/__dsh_ready', 'POST')).status).toBe(405)
+  })
+
   it('applies sourceRoot before relocating absolute-looking section sources', async () => {
     const packageName = '@fixture/source-root'
     const clientPath = writePackage(packageName)

@@ -220,21 +220,22 @@ final class RuntimeController: @unchecked Sendable {
     return resolvedURL
   }
 
-  /// Wait until the Web profile has published its boot page and first client bundle.
+  /// Wait until the Web profile has registered its client-bundle route.
   ///
-  /// The CLI announces its listening URL before the client module registry finishes
-  /// composing the initial graph. Loading the WebView at that point can race the
-  /// registry and turn a temporary 404 into a permanent boot failure.
+  /// The CLI announces its listening URL before the WebView should navigate. The
+  /// readiness route is unauthenticated and therefore does not consume the
+  /// one-time process token reserved for the WebView's first request.
   private func waitForWebReady(
     _ authenticatedURL: URL,
     progress: @escaping @Sendable (String) -> Void
   ) throws {
+    guard let readinessURL = Self.readinessURL(for: authenticatedURL) else {
+      throw DesktopError.message("Harness 返回的本地地址无效。")
+    }
     let deadline = Date().addingTimeInterval(20)
     var announced = false
     while Date() < deadline {
-      if let html = Self.fetchText(authenticatedURL),
-         let bundle = Self.advertisedBundleURLs(in: html, baseURL: authenticatedURL).first,
-         Self.fetchStatus(bundle) == 200 {
+      if Self.fetchStatus(readinessURL) == 204 {
         return
       }
       if !announced {
@@ -246,21 +247,14 @@ final class RuntimeController: @unchecked Sendable {
     throw DesktopError.message("本地 Web 服务已启动，但插件模块未及时就绪。请查看桌面日志后重试。")
   }
 
-  /// Extract the revisioned combo URLs that the Web profile advertises in its HTML.
-  static func advertisedBundleURLs(in html: String, baseURL: URL) -> [URL] {
-    guard let expression = try? NSRegularExpression(pattern: #"(?:href|src)=\"(/plugins/\?\?[^\"]+)\""#) else {
-      return []
+  static func readinessURL(for authenticatedURL: URL) -> URL? {
+    guard var components = URLComponents(url: authenticatedURL, resolvingAgainstBaseURL: false) else {
+      return nil
     }
-    let range = NSRange(html.startIndex..., in: html)
-    return expression.matches(in: html, range: range).compactMap { match in
-      guard let capture = Range(match.range(at: 1), in: html) else { return nil }
-      let raw = String(html[capture]).replacingOccurrences(of: "&amp;", with: "&")
-      return URL(string: raw, relativeTo: baseURL)?.absoluteURL
-    }
-  }
-
-  private static func fetchText(_ url: URL) -> String? {
-    fetch(url).flatMap { String(data: $0.data, encoding: .utf8) }
+    components.path = "/plugins/__dsh_ready"
+    components.query = nil
+    components.fragment = nil
+    return components.url
   }
 
   private static func fetchStatus(_ url: URL) -> Int? {

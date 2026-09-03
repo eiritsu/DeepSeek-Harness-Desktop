@@ -15,6 +15,7 @@ This release differs from 0.1.10 in four desktop-data guarantees: SQLite WAL sta
 ## Desktop behavior
 
 - **Runtime lifecycle.** The application holds an advisory lock for its Application Support directory, starts the repository-built CLI with `--profile web --no-open --port 0`, and opens the announced loopback URL in WKWebView. A second application copy activates the existing process instead of starting another runtime against the same data.
+- **Startup readiness.** Before navigation, the shell waits for the client-module registry's token-free `/plugins/__dsh_ready` route. This preserves the one-time authentication token for WKWebView and prevents a transient bundle 404 from becoming a permanent plugin-load failure.
 - **One-time Web authentication.** The CLI readiness line includes a one-time token. WKWebView performs the first request so it can exchange that token for its origin cookie; reloads use the same URL without query or fragment and therefore never reuse the token.
 - **Session continuity.** A document-start bridge restores the opaque current-session selection from native preferences and mirrors later selection changes. Session logs, drafts, settings, and plugin state remain owned by Harness.
 - **Native presentation.** The standard Edit menu follows the AppKit responder chain, external links open in the default browser, and a transparent title bar preserves a drag region outside sidebar controls.

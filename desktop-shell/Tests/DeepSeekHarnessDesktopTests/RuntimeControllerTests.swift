@@ -102,13 +102,12 @@ import Testing
   #expect(RuntimeController.reloadURL(for: startup) == URL(string: "http://127.0.0.1:43210/"))
 }
 
-@Test func advertisedBundleURLsDecodeHTMLAttributeEscaping() throws {
-  let base = try #require(URL(string: "http://127.0.0.1:43210/?token=test"))
-  let html = #"<link rel="preload" as="script" href="/plugins/??@deepseek-ai/dsh-typert-registry/client.js&amp;rev=abc123">"#
+@Test func readinessURLDropsTheOneTimeAuthenticationToken() throws {
+  let startup = try #require(
+    URL(string: "http://127.0.0.1:43210/?token=authenticated_process_token#fragment")
+  )
 
-  #expect(RuntimeController.advertisedBundleURLs(in: html, baseURL: base) == [
-    URL(string: "http://127.0.0.1:43210/plugins/??@deepseek-ai/dsh-typert-registry/client.js&rev=abc123")!
-  ])
+  #expect(RuntimeController.readinessURL(for: startup) == URL(string: "http://127.0.0.1:43210/plugins/__dsh_ready"))
 }
 
 @Test func startupFailureIdentifiesTheRootSideloadedPackage() {

@@ -561,6 +561,7 @@ export class ClientModuleRegistry extends Service {
   /** One prior graph generation covers a request racing the HMR recomposition that replaced its URL. */
   private previousBatchResponses = new Map<string, { body: Buffer; contentType: string }>()
   private flushQueued = false
+  private startupReady = false
   private composed: WebBootGraph
 
   /**
@@ -573,6 +574,7 @@ export class ClientModuleRegistry extends Service {
     // same dirty set (Set idempotence makes the overlap harmless). An entry-less
     // fiber is a child plugin or a manual mount — never a loader row; O(1) drop.
     ctx.on('internal/plugin', (fiber) => {
+      this.startupReady = false
       const entryName = fiber.entry?.options.name
       if (entryName === undefined) return
       this.dirty.add(entryName)
@@ -581,6 +583,7 @@ export class ClientModuleRegistry extends Service {
       queueMicrotask(() => {
         this.flushQueued = false
         this.flush((err) => { ctx.logger.warn(err) })
+        if (this.dirty.size === 0) this.startupReady = true
       })
     })
 
@@ -594,6 +597,12 @@ export class ClientModuleRegistry extends Service {
     if (failures.length > 0) {
       throw new ClientPackageCompositionError(failures)
     }
+    // Loader activation can deliver the final internal/plugin events in the
+    // same microtask turn as construction. Do not advertise readiness until
+    // that turn has drained and any queued recomposition has completed.
+    queueMicrotask(() => {
+      if (!this.flushQueued && this.dirty.size === 0) this.startupReady = true
+    })
 
     ctx.effect(
       () => ctx.webServer.register({ kind: 'prefix', path: '/plugins', handler: this.serveBundle }),
@@ -1020,6 +1029,11 @@ export class ClientModuleRegistry extends Service {
     }
     /* v8 ignore next -- `?? '/'` arm: node:http always sets url on server requests. */
     const requestUrl = new URL(req.url ?? '/', 'http://x')
+    if (requestUrl.pathname === '/plugins/__dsh_ready') {
+      res.writeHead(this.startupReady ? 204 : 503, { 'cache-control': 'no-store' })
+      res.end()
+      return
+    }
     const resourceUrl = `${requestUrl.pathname}${requestUrl.search}`
     const response = this.responses.get(resourceUrl) ?? this.previousBatchResponses.get(resourceUrl)
     if (response !== undefined) {

@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-运行时打印地址后，桌面壳会轮询带认证的启动页面，提取页面公布的 combo URL，并等待该 bundle 返回 HTTP 200，然后才把地址交给 WKWebView。如果 registry 一直没有就绪，则在有界等待后报告明确的启动失败。
+运行时打印地址后，桌面壳会轮询客户端模块 registry 所有的免认证就绪路由，然后才把带一次性 token 的地址交给 WKWebView。如果 registry 一直没有就绪，则在有界等待后报告明确的启动失败。
 
 ## Alternatives considered
 
@@ -20,6 +20,6 @@ Status: implemented
 
 ## Consequences
 
-首次桌面导航现在会在服务公布启动 HTML 和至少一个 client combo 后才开始。探针使用同一个带认证的本地地址，并检查浏览器实际使用的带 revision 的 `/plugins/??...&rev=...` 资源。registry 生成期间启动可能增加几百毫秒等待，但短暂的 bundle 404 不会再变成永久插件加载失败。
+首次桌面导航现在会在客户端模块路由注册且组合 bundle 响应可用后才开始。探针调用不带 process token 的 `/plugins/__dsh_ready`，把一次性 token 保留给 WKWebView 完成 cookie 交换。registry 生成期间启动可能增加几百毫秒等待，但短暂的 bundle 404 不会再变成永久插件加载失败。
 
-原生测试覆盖启动页面中 combo URL 的 HTML 实体解码；现有 Swift 测试套件继续作为生命周期和打包的聚焦门禁。
+原生测试覆盖不消费 token 的就绪 URL 及客户端模块就绪路由；现有 Swift 测试套件继续作为生命周期和打包的聚焦门禁。
