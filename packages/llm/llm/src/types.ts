@@ -296,6 +296,12 @@ export interface LlmDiscoveredModel {
   inputModalities?: readonly LegacyModelModality[]
 }
 
+/** Candidate metadata contributed by a discovery enricher. */
+export interface LlmModelDiscoveryPatch extends LlmDiscoveredModel {
+  /** Replace candidate fields when the catalog is newer and authoritative. */
+  authoritative?: boolean
+}
+
 /** Input presented to a compatibility model-discovery enrichment plugin. */
 export interface LlmModelDiscoveryEnrichmentRequest {
   /** Settings namespace whose discovery produced the candidates. */
@@ -309,7 +315,7 @@ export interface LlmModelDiscoveryEnrichmentRequest {
 /** Compatibility plugin that fills missing fields on discovered model ids. */
 export type LlmModelDiscoveryEnricher = (
   request: LlmModelDiscoveryEnrichmentRequest,
-) => Promise<readonly LlmDiscoveredModel[]>
+) => Promise<readonly LlmModelDiscoveryPatch[]>
 
 /** Exact route/model identity presented to a compatibility input resolver. */
 export interface LlmModelInputRequest {
@@ -404,13 +410,15 @@ export interface LlmResolvedModelInfo extends LlmModelInfo {
 
 /** Metadata fields an effect-scoped catalog may fill for one exact model route. */
 export interface LlmModelMetadataPatch {
-  /** Accepted request modalities when the owning adapter leaves them unknown. */
+  /** Replace adapter fields when the catalog is newer and authoritative. */
+  authoritative?: boolean
+  /** Accepted request modalities. */
   inputModalities?: readonly ModelModality[]
   /** Maximum combined request and response context in tokens. */
   contextWindow?: number
-  /** Adapter-default output cap when the owning adapter leaves it unknown. */
+  /** Adapter-default output cap. */
   maxTokens?: number
-  /** Adapter-owned selectable reasoning levels when the owning adapter leaves them unknown. */
+  /** Adapter-owned selectable reasoning levels. */
   reasoning?: LlmModelReasoningInfo
 }
 

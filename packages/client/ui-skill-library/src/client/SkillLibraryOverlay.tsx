@@ -32,6 +32,7 @@ export function SkillLibraryOverlay({ controller, bridge, t }: SkillLibraryOverl
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string>()
   const [downloading, setDownloading] = useState<string>()
+  const [installedSkills, setInstalledSkills] = useState<readonly string[]>([])
   const [openFilter, setOpenFilter] = useState<FilterMenu>(null)
   const viewport = useRef<HTMLDivElement>(null)
   const requestVersion = useRef(0)
@@ -75,18 +76,25 @@ export function SkillLibraryOverlay({ controller, bridge, t }: SkillLibraryOverl
     return () => { window.removeEventListener('keydown', onKeyDown) }
   }, [open, tab, query, sort, category, sourceFilter])
 
+  useEffect(() => {
+    if (!open || tab !== 'installed') return
+    void bridge.request({ action: 'listSkills' }).then((result) => { setInstalledSkills(result.skills) }).catch((reason) => { setError(message(reason)) })
+  }, [bridge, open, tab])
+
   const onScroll = (element: HTMLDivElement): void => {
     if (element.scrollHeight - element.scrollTop - element.clientHeight < 180 && hasMore && !loadingRef.current) void load(page + 1, false)
   }
 
-  const download = (skill: SkillHubSkill): void => {
+  const download = async (skill: SkillHubSkill): Promise<void> => {
     setDownloading(skill.slug)
-    const anchor = document.createElement('a')
-    anchor.href = `https://api.skillhub.cn/api/v1/download?slug=${encodeURIComponent(skill.slug)}`
-    anchor.download = `${skill.slug}.zip`
-    anchor.rel = 'noreferrer'
-    anchor.click()
-    window.setTimeout(() => { setDownloading(undefined) }, 800)
+    setError(undefined)
+    try {
+      await bridge.request({ action: 'downloadSkill', slug: skill.slug })
+    } catch (reason) {
+      setError(message(reason))
+    } finally {
+      setDownloading(undefined)
+    }
   }
 
   const filterMenu = (kind: Exclude<FilterMenu, null>, label: string, value: string, options: readonly { value: string; label: string }[], select: (value: string) => void): JSX.Element => <div className={css.filter}><button type="button" className={css.filterTrigger} aria-haspopup="menu" aria-expanded={openFilter === kind} onClick={() => { setOpenFilter(openFilter === kind ? null : kind) }}>{label}<span className={css.chevron} aria-hidden="true">⌄</span></button>{openFilter === kind ? <div className={css.filterMenu} role="menu">{options.map(option => <button key={option.value} type="button" role="menuitemradio" aria-checked={value === option.value} className={value === option.value ? css.filterSelected : undefined} onClick={() => { select(option.value); setOpenFilter(null) }}>{value === option.value ? <span aria-hidden="true">✓</span> : <span className={css.filterCheck} aria-hidden="true" />}{option.label}</button>)}</div> : null}</div>
@@ -100,7 +108,7 @@ export function SkillLibraryOverlay({ controller, bridge, t }: SkillLibraryOverl
       </nav>
       <div className={css.body} aria-busy={loading}>
         {error !== undefined ? <p className={css.error} role="alert">{t('failed', { message: error })}</p> : null}
-        {tab === 'installed' ? <section className={css.panel}><h2>{t('installed')}</h2><p>{t('installedEmpty')}</p></section> : null}
+        {tab === 'installed' ? <section className={css.panel}><h2>{t('installed')} ({installedSkills.length})</h2>{installedSkills.length === 0 ? <p>{t('installedEmpty')}</p> : <ul>{installedSkills.map(skill => <li key={skill}>{skill}</li>)}</ul>}</section> : null}
         {tab === 'review' ? <section className={css.panel}><h2>{t('review')}</h2><p>{t('reviewEmpty')}</p></section> : null}
         {tab === 'logs' ? <section className={css.panel}><h2>{t('logs')}</h2><p>{t('logsEmpty')}</p></section> : null}
         {tab === 'discovery' ? <section className={css.catalog}>
@@ -111,7 +119,7 @@ export function SkillLibraryOverlay({ controller, bridge, t }: SkillLibraryOverl
           <div className={css.viewport} ref={viewport} onScroll={(event) => { onScroll(event.currentTarget) }}>
             {loading && visibleItems.length === 0 ? <p className={css.note}>{t('loading')}</p> : null}
             {!loading && visibleItems.length === 0 ? <p className={css.note}>{t('empty')}</p> : null}
-            {visibleItems.length > 0 ? <ul className={css.grid}>{visibleItems.map(item => <li key={item.slug} className={css.card}><div className={css.cardHeading}>{item.iconUrl ? <img className={css.icon} src={item.iconUrl} alt="" /> : <span className={css.icon}><IconSkillOutline16 size={20} /></span>}<strong title={item.name}>{item.name}</strong>{item.category ? <span className={css.badge}>{item.category}</span> : null}</div><p>{item.descriptionZh ?? item.description ?? ''}</p><div className={css.meta}><span>☆ {item.stars.toLocaleString()}</span><span>⇩ {item.downloads.toLocaleString()}</span><span>{item.publisher ?? item.source ?? t('sourceSkillHub')}</span></div><div className={css.actions}><a href={skillUrl(item.slug)} target="_blank" rel="noreferrer">{t('open')}</a><button type="button" onClick={() => { download(item) }}>{downloading === item.slug ? t('downloading') : t('download')}</button></div></li>)}</ul> : null}
+            {visibleItems.length > 0 ? <ul className={css.grid}>{visibleItems.map(item => <li key={item.slug} className={css.card}><div className={css.cardHeading}>{item.iconUrl ? <img className={css.icon} src={item.iconUrl} alt="" /> : <span className={css.icon}><IconSkillOutline16 size={20} /></span>}<strong title={item.name}>{item.name}</strong>{item.category ? <span className={css.badge}>{item.category}</span> : null}</div><p>{item.descriptionZh ?? item.description ?? ''}</p><div className={css.meta}><span>☆ {item.stars.toLocaleString()}</span><span>⇩ {item.downloads.toLocaleString()}</span><span>{item.publisher ?? item.source ?? t('sourceSkillHub')}</span></div><div className={css.actions}><a href={skillUrl(item.slug)} target="_blank" rel="noreferrer">{t('open')}</a><button type="button" onClick={() => { void download(item) }}>{downloading === item.slug ? t('downloading') : t('download')}</button></div></li>)}</ul> : null}
             <div className={css.loadMore}>{loading && visibleItems.length > 0 ? <span>{t('loadingMore')}</span> : null}{!loading && hasMore && visibleItems.length > 0 ? <button type="button" onClick={() => { void load(page + 1, false) }}>{t('loadMore')}</button> : null}{!loading && !hasMore && visibleItems.length > 0 ? <span>{t('allLoaded')}</span> : null}</div>
           </div>
           <div className={css.pager}><button type="button" disabled={page <= 1 || loading} onClick={() => { void load(page - 1, true) }}>{t('previous')}</button><span>{t('page', { page })}</span><button type="button" disabled={!hasMore || loading} onClick={() => { void load(page + 1, true) }}>{t('next')}</button></div>

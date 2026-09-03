@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-client-ui-plugin-library` adds a plugin-management entry and overlay when the macOS shell exposes `window.dshDesktopPluginBridge`. It lists the Web profile's out-of-tree dependencies, discovers community projects, reviews immutable or local sources, and delegates approved mutations to the native shell. A normal browser receives the same package in the Web composition but no UI registration because the privileged bridge is absent. Source review is an installation preflight, not a sandbox or publisher endorsement.
+`dsh-client-ui-plugin-library` adds a plugin-management entry and overlay when the macOS shell exposes `window.dshDesktopPluginBridge`. It lists built-in Web profile bundles and out-of-tree dependencies, discovers community projects, reviews immutable or local sources, and delegates approved mutations to the native shell. Installed plugin dependencies and Skill data live in the desktop app's Application Support data directory. A normal browser receives the same package in the Web composition but no UI registration because the privileged bridge is absent. Source review is an installation preflight, not a sandbox or publisher endorsement.
 
 ## Table of Contents
 

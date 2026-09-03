@@ -36,9 +36,11 @@
  */
 
 import { Context, Service } from '@deepseek-ai/cordis'
+import { DatabaseSync } from 'node:sqlite'
 import z from '@deepseek-ai/schemastery'
 import { watch as chokidarWatch } from 'chokidar'
 import { mkdir, readFile, stat } from 'node:fs/promises'
+import { mkdirSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { Document, isMap, isScalar, parseDocument, type YAMLError } from 'yaml'
 import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
@@ -70,6 +72,8 @@ export interface Config {
   watch?: boolean
   /** Watcher write-settle window in milliseconds; defaults to 100. */
   debounceMs?: number
+  /** SQLite database used as the desktop canonical store. */
+  sqlitePath?: string
 }
 
 /** Fully resolved provider parameters; defaulting happens here, never inline. */
@@ -77,6 +81,7 @@ interface ResolvedSpec {
   filename: string
   watch: boolean
   debounceMs: number
+  sqlitePath?: string
 }
 
 /**
@@ -90,6 +95,7 @@ export function resolveSpec(config: Config): ResolvedSpec {
     filename: resolve(config.path ?? join(resolveDshHome(config.dshHome), CREDENTIALS_FILENAME)),
     watch: config.watch ?? true,
     debounceMs: config.debounceMs ?? 100,
+    ...config.sqlitePath === undefined ? {} : { sqlitePath: resolve(config.sqlitePath) },
   }
 }
 
@@ -519,6 +525,7 @@ export class LocalCredentialProvider extends CredentialProvider {
     dshHome: z.string(),
     watch: z.boolean().default(true),
     debounceMs: z.number().min(0).default(100),
+    sqlitePath: z.string(),
   })
 
   private readonly spec: ResolvedSpec
@@ -540,6 +547,7 @@ export class LocalCredentialProvider extends CredentialProvider {
   private operations: Promise<void> = Promise.resolve()
   /** Set at dispose: refuse new writes and let in-flight work no-op. */
   private closed = false
+  private readonly database: DatabaseSync | undefined
 
   /** Opaque read of {@link closed}: control flow cannot narrow it across awaits. */
   private isClosed(): boolean {
@@ -552,6 +560,11 @@ export class LocalCredentialProvider extends CredentialProvider {
     // Programmatic construction may bypass Schemastery normalization; resolve
     // the same defaults in one explicit step either way.
     this.spec = resolveSpec(config)
+    if (this.spec.sqlitePath !== undefined) {
+      mkdirSync(dirname(this.spec.sqlitePath), { recursive: true, mode: 0o700 })
+      this.database = new DatabaseSync(this.spec.sqlitePath)
+      this.database.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; CREATE TABLE IF NOT EXISTS credentials (reference TEXT PRIMARY KEY, payload_json TEXT NOT NULL, updated_at TEXT NOT NULL) STRICT;')
+    }
   }
 
   /** The inherited-environment value for a reference, or `undefined` when empty or unset. */
@@ -578,7 +591,7 @@ export class LocalCredentialProvider extends CredentialProvider {
       await this.operations
     }
     await this.loadInitial()
-    if (!this.spec.watch) return
+    if (!this.spec.watch || this.database !== undefined) return
     /* jscpd:ignore-start -- same watcher discipline as settings-file by design:
        the serialized-refresh and quiesce-on-dispose shape is the reviewed
        lifecycle contract, not accidental repetition. */
@@ -610,6 +623,7 @@ export class LocalCredentialProvider extends CredentialProvider {
       this.closed = true
       await watcher.close()
       await this.operations
+      this.database?.close()
     }
     /* jscpd:ignore-end */
   }
@@ -680,6 +694,17 @@ export class LocalCredentialProvider extends CredentialProvider {
       if (this.isClosed()) {
         throw new Error(`credentials-local was disposed before the queued "${key}" modify ran`)
       }
+      if (this.database !== undefined) {
+        const current = this.records.get(key)
+        const next = await mutate(current)
+        if (next === undefined) return current
+        if (next.kind === 'grant') assertJsonValue(`record "${key}" payload`, next.payload, new Set())
+        else assertStorableApiKey(key, next)
+        this.records.set(key, next)
+        this.persistSqlite()
+        this.notifyRecordUpdated(key)
+        return next
+      }
       await mkdir(dirname(this.spec.filename), { recursive: true, mode: 0o700 })
       return withFileLock(this.spec.filename, async () => {
         // Read-modify-write: `mutate` must decide against the record as it
@@ -711,6 +736,13 @@ export class LocalCredentialProvider extends CredentialProvider {
     await this.enqueue(async () => {
       if (this.isClosed()) {
         throw new Error(`credentials-local was disposed before the queued "${key}" delete ran`)
+      }
+      if (this.database !== undefined) {
+        if (!this.records.has(key)) return
+        this.records.delete(key)
+        this.persistSqlite()
+        this.notifyRecordUpdated(key)
+        return
       }
       await mkdir(dirname(this.spec.filename), { recursive: true, mode: 0o700 })
       await withFileLock(this.spec.filename, async () => {
@@ -762,6 +794,13 @@ export class LocalCredentialProvider extends CredentialProvider {
       }
       // Re-judged at run time: the environment may have changed while queued.
       this.assertUnshadowed(ref, verb)
+      if (this.database !== undefined) {
+        if (value === undefined) this.values.delete(ref)
+        else this.values.set(ref, value)
+        this.persistSqlite()
+        this.notifyUpdated(ref)
+        return
+      }
       // The writer lock's exclusive create needs the parent to exist; 0700
       // because the harness home holds user-private data.
       await mkdir(dirname(this.spec.filename), { recursive: true, mode: 0o700 })
@@ -809,6 +848,18 @@ export class LocalCredentialProvider extends CredentialProvider {
    * the layout change without a hand edit.
    */
   private async loadInitial(): Promise<void> {
+    if (this.database !== undefined) {
+      const row = this.database.prepare("SELECT payload_json FROM credentials WHERE reference = 'file'").get() as { payload_json: string } | undefined
+      if (row === undefined) return
+      let raw = row.payload_json
+      const legacy = JSON.parse(raw) as { format?: string; content?: string }
+      if (legacy.format === 'text' && typeof legacy.content === 'string') raw = legacy.content
+      const document = parseCredentialsDocument(raw, `${this.spec.sqlitePath ?? 'sqlite'}:credentials`)
+      this.values = document.refs
+      this.records = document.records
+      this.text = raw
+      return
+    }
     await assertOwnerOnly(this.spec.filename)
     let text: string
     try {
@@ -884,6 +935,7 @@ export class LocalCredentialProvider extends CredentialProvider {
    * overwriting a document it could not understand.
    */
   private async reconcileFromDisk(): Promise<void> {
+    if (this.database !== undefined) return
     // Re-checked on every reload and before every write: an external editor or
     // a restored backup can loosen the mode after boot.
     await assertOwnerOnly(this.spec.filename)
@@ -905,6 +957,21 @@ export class LocalCredentialProvider extends CredentialProvider {
     this.records = next.records
     for (const ref of changedRefs) this.notifyUpdated(ref)
     for (const key of changedRecords) this.notifyRecordUpdated(key)
+  }
+
+  /** Persist the complete credentials snapshot as one transactional SQLite document. */
+  private persistSqlite(): void {
+    if (this.database === undefined) return
+    const document = {
+      version: DOCUMENT_VERSION,
+      refs: Object.fromEntries(this.values),
+      records: Object.fromEntries(this.records),
+    }
+    const payload = JSON.stringify(document)
+    this.database.prepare(
+      "INSERT INTO credentials(reference, payload_json, updated_at) VALUES ('file', ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) ON CONFLICT(reference) DO UPDATE SET payload_json = excluded.payload_json, updated_at = excluded.updated_at",
+    ).run(payload)
+    this.text = payload
   }
   /* jscpd:ignore-end */
 

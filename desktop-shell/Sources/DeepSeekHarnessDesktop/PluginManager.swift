@@ -98,6 +98,14 @@ struct DesktopRecoveryProfile: Sendable {
 }
 
 final class PluginManager: @unchecked Sendable {
+  /// Bundles shipped by the desktop distribution and managed by the app.
+  private static let managedBundleNames = [
+    "@deepseek-ai/dsh-client-ui-plugin-library",
+    "@deepseek-ai/dsh-client-ui-skill-library",
+    "@deepseek-ai/dsh-file-recognizer-office",
+    "@deepseek-ai/dsh-lark",
+    "@deepseek-ai/dsh-model-catalog",
+  ]
   private struct CatalogCacheKey: Hashable {
     let page: Int
     let pageSize: Int
@@ -125,6 +133,7 @@ final class PluginManager: @unchecked Sendable {
   private let supportRoot: URL
   private let dshHome: URL
   private let auditURL: URL
+  private let dataStore: DesktopDataStore?
   private let catalogClient: PluginCatalogClient
   private var pendingReviews: [String: PendingReview] = [:]
   private var catalogCache: [CatalogCacheKey: (
@@ -146,6 +155,32 @@ final class PluginManager: @unchecked Sendable {
     self.dshHome = dshHome
     self.auditURL = supportRoot.appendingPathComponent("logs/plugin-audit.jsonl")
     self.catalogClient = catalogClient
+    if let store = try? DesktopDataStore(supportRoot: supportRoot) {
+      try? store.initialize()
+      self.dataStore = store
+    } else {
+      self.dataStore = nil
+    }
+  }
+
+  deinit { dataStore?.close() }
+
+  /// Close the desktop catalog before a maintenance operation replaces its files.
+  func closeDataStore() {
+    queue.sync { self.dataStore?.close() }
+  }
+
+  /// Reopen the desktop catalog after a maintenance operation replaced its files.
+  func reloadDataStore() {
+    queue.sync { try? self.dataStore?.initialize() }
+  }
+
+  private func refreshSQLitePayloads() {
+    do {
+      try dataStore?.synchronizePayloads(from: dshHome, force: true)
+    } catch {
+      LogStore.shared.append("SQLite payload refresh failed: \(error.localizedDescription)")
+    }
   }
 
   func run(
@@ -177,6 +212,50 @@ final class PluginManager: @unchecked Sendable {
     }
   }
 
+  /// Add available shipped bundles to the persistent Web profile without replacing user dependencies.
+  func ensureManagedProfile(
+    sourceRoot: URL,
+    progress: @escaping @Sendable (String) -> Void,
+    completion: @escaping @Sendable (Result<Void, Error>) -> Void
+  ) {
+    queue.async {
+      do {
+        let profile = self.dshHome.appendingPathComponent("profiles/web", isDirectory: true)
+        try FileManager.default.createDirectory(at: profile, withIntermediateDirectories: true)
+        let manifestURL = profile.appendingPathComponent("package.json")
+        var root: [String: Any]
+        if FileManager.default.fileExists(atPath: manifestURL.path) {
+          guard let parsed = try JSONSerialization.jsonObject(with: Data(contentsOf: manifestURL)) as? [String: Any] else {
+            throw DesktopError.message("Web profile 的插件清单格式无效。")
+          }
+          root = parsed
+        } else {
+          root = [:]
+        }
+        var dsh = (root["dsh"] as? [String: Any]) ?? [:]
+        var profileConfig = (dsh["profile"] as? [String: Any]) ?? [:]
+        var bundles = (profileConfig["bundles"] as? [String]) ?? ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app"]
+        let available = Self.managedBundleNames.filter { self.hasPackage(named: $0, in: sourceRoot) }
+        let additions = available.filter { !bundles.contains($0) }
+        guard !additions.isEmpty || !FileManager.default.fileExists(atPath: manifestURL.path) else {
+          completion(.success(()))
+          return
+        }
+        bundles.append(contentsOf: additions)
+        profileConfig["bundles"] = bundles
+        dsh["profile"] = profileConfig
+        root["dsh"] = dsh
+        let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys]) + Data("\n".utf8)
+        try data.write(to: manifestURL, options: .atomic)
+        self.refreshSQLitePayloads()
+        if !additions.isEmpty { progress("已启用桌面内置插件：\(additions.joined(separator: "、"))\n") }
+        completion(.success(()))
+      } catch {
+        completion(.failure(error))
+      }
+    }
+  }
+
   func removeRecoveryProfile(
     _ profile: DesktopRecoveryProfile,
     completion: @escaping @Sendable () -> Void = {}
@@ -192,7 +271,7 @@ final class PluginManager: @unchecked Sendable {
   }
 
   func list(
-    sourceRoot _: URL,
+    sourceRoot: URL,
     completion: @escaping @Sendable (Result<[DesktopInstalledPlugin], Error>) -> Void
   ) {
     queue.async {
@@ -211,6 +290,17 @@ final class PluginManager: @unchecked Sendable {
         } else {
           dependencies = [:]
         }
+        let bundles = ((root["dsh"] as? [String: Any])?["profile"] as? [String: Any])?["bundles"] as? [String] ?? []
+        let managed = Set(Self.managedBundleNames)
+        let builtIns = bundles.filter { managed.contains($0) && dependencies[$0] == nil }.map { name in
+          DesktopInstalledPlugin(
+            name: name,
+            displayName: name,
+            version: self.packageVersion(named: name, in: sourceRoot) ?? "内置",
+            latestVersion: nil,
+            removable: false
+          )
+        }
         let plugins = dependencies.map { dependency in
           let latestVersion: String?
           if let current = DesktopPluginVersion(dependency.value),
@@ -226,16 +316,47 @@ final class PluginManager: @unchecked Sendable {
             displayName: dependency.key,
             version: dependency.value,
             latestVersion: latestVersion,
-            removable: true
+            removable: !managed.contains(dependency.key)
           )
         }
-        let sorted = plugins
+        let sorted = (plugins + builtIns)
           .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         completion(.success(sorted))
       } catch {
         completion(.failure(error))
       }
     }
+  }
+
+  private func hasPackage(named name: String, in sourceRoot: URL) -> Bool {
+    packageManifest(named: name, in: sourceRoot) != nil
+  }
+
+  private func packageVersion(named name: String, in sourceRoot: URL) -> String? {
+    guard let manifest = packageManifest(named: name, in: sourceRoot),
+          let data = try? Data(contentsOf: manifest),
+          let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    else { return nil }
+    return root["version"] as? String
+  }
+
+  private func packageManifest(named name: String, in sourceRoot: URL) -> URL? {
+    let candidates = [
+      sourceRoot.appendingPathComponent("node_modules", isDirectory: true).appendingPathComponent(name),
+      sourceRoot.appendingPathComponent("apps/cli/node_modules", isDirectory: true).appendingPathComponent(name),
+    ] + [sourceRoot.appendingPathComponent("packages", isDirectory: true)]
+      .flatMap { root in
+        FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])?
+          .compactMap { $0 as? URL }
+          .filter { url in
+            guard url.lastPathComponent == "package.json", let data = try? Data(contentsOf: url),
+                  let manifest = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else { return false }
+            return manifest["name"] as? String == name
+          }
+          ?? []
+      }
+    return candidates.first { FileManager.default.fileExists(atPath: $0.path) }
   }
 
   func skillHubSkills(
@@ -264,6 +385,97 @@ final class PluginManager: @unchecked Sendable {
       do { completion(.success(try self.catalogClient.skillHubPackages(page: page, pageSize: pageSize, query: query, scene: scene))) }
       catch { completion(.failure(error)) }
     }
+  }
+
+  /// Download a SkillHub archive into the Application Support skill root.
+  func downloadSkill(
+    slug: String,
+    progress: @escaping @Sendable (String) -> Void,
+    completion: @escaping @Sendable (Result<String, Error>) -> Void
+  ) {
+    queue.async {
+      do {
+        guard slug.range(of: #"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"#, options: .regularExpression) != nil else {
+          throw DesktopError.message("Skill 标识无效。")
+        }
+        guard let url = URL(string: "https://api.skillhub.cn/api/v1/download?slug=\(slug.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? slug)") else {
+          throw DesktopError.message("Skill 下载地址无效。")
+        }
+        progress("正在下载 Skill：\(slug)…\n")
+        let archive = try Data(contentsOf: url)
+        let skillsRoot = self.dshHome.appendingPathComponent("skills", isDirectory: true)
+        let stage = self.supportRoot.appendingPathComponent(".skill-download-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: stage) }
+        try FileManager.default.createDirectory(at: stage, withIntermediateDirectories: true)
+        let archiveURL = stage.appendingPathComponent("skill.zip")
+        try archive.write(to: archiveURL, options: .atomic)
+        let extraction = try CommandRunner.run(
+          executable: URL(fileURLWithPath: "/usr/bin/ditto"),
+          arguments: ["-x", "-k", archiveURL.path, stage.path],
+          progress: progress
+        )
+        guard extraction.status == 0 else { throw DesktopError.message("Skill 解压失败：\n\(extraction.output)") }
+        try FileManager.default.createDirectory(at: skillsRoot, withIntermediateDirectories: true)
+        let entries = try FileManager.default.contentsOfDirectory(at: stage, includingPropertiesForKeys: nil)
+          .filter { $0.lastPathComponent != "skill.zip" && $0.lastPathComponent != "__MACOSX" }
+        guard !entries.isEmpty else { throw DesktopError.message("Skill 压缩包为空。") }
+        for entry in entries {
+          let destination = skillsRoot.appendingPathComponent(entry.lastPathComponent)
+          guard !FileManager.default.fileExists(atPath: destination.path) else {
+            throw DesktopError.message("Skill 已存在：\(entry.lastPathComponent)")
+          }
+          try FileManager.default.copyItem(at: entry, to: destination)
+        }
+        self.appendAudit(action: "skill-install", subject: slug, status: "success", message: "Skill 已保存到 Application Support。")
+        self.refreshSQLitePayloads()
+        completion(.success(skillsRoot.path))
+      } catch {
+        self.appendAudit(action: "skill-install", subject: slug, status: "failure", message: error.localizedDescription)
+        completion(.failure(error))
+      }
+    }
+  }
+
+  /// List Skill bundles imported into the desktop-managed skill root.
+  func listSkills(completion: @escaping @Sendable (Result<[String], Error>) -> Void) {
+    queue.async {
+      do {
+        let root = self.dshHome.appendingPathComponent("skills", isDirectory: true)
+        guard FileManager.default.fileExists(atPath: root.path) else {
+          completion(.success([]))
+          return
+        }
+        if let name = Self.skillName(at: root) {
+          completion(.success([name]))
+          return
+        }
+        let entries = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey])
+          .filter { !$0.lastPathComponent.hasPrefix(".") }
+        let names = entries.flatMap { entry -> [String] in
+          if let name = Self.skillName(at: entry) { return [name] }
+          return []
+        }
+          .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        completion(.success(names))
+      } catch {
+        completion(.failure(error))
+      }
+    }
+  }
+
+  private static func skillName(at entry: URL) -> String? {
+    let marker = entry.appendingPathComponent("SKILL.md")
+    guard FileManager.default.fileExists(atPath: marker.path) else { return nil }
+    guard let text = try? String(contentsOf: marker, encoding: .utf8) else {
+      return entry.lastPathComponent
+    }
+    let name = text
+      .split(whereSeparator: \Character.isNewline)
+      .first(where: { $0.trimmingCharacters(in: .whitespaces).hasPrefix("name:") })
+      .map(String.init)?
+      .replacingOccurrences(of: "name:", with: "")
+      .trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: "\"'")))
+    return name.flatMap { $0.isEmpty ? nil : $0 } ?? entry.lastPathComponent
   }
 
   func review(source: String, completion: @escaping @Sendable (Result<DesktopPluginReview, Error>) -> Void) {
@@ -480,6 +692,7 @@ final class PluginManager: @unchecked Sendable {
           ? "用户确认风险后强制安装固定来源；lifecycle scripts 未执行。"
           : "已安装固定来源；lifecycle scripts 未执行。"
         self.appendAudit(action: "install", subject: review.subject, status: "success", message: message)
+        self.refreshSQLitePayloads()
         completion(.success(()))
       } catch {
         self.appendAudit(action: "install", subject: auditSubject, status: "failure", message: error.localizedDescription)
@@ -585,6 +798,7 @@ final class PluginManager: @unchecked Sendable {
           progress: progress
         )
         self.appendAudit(action: "remove", subject: package, status: "success", message: "已从 Web profile 移除。")
+        self.refreshSQLitePayloads()
         completion(.success(()))
       } catch {
         self.appendAudit(action: "remove", subject: package, status: "failure", message: error.localizedDescription)
@@ -737,6 +951,7 @@ final class PluginManager: @unchecked Sendable {
         status: status,
         message: message
       )
+      try dataStore?.recordAudit(id: record.id, timestamp: record.timestamp, action: record.action, subject: record.subject, status: record.status, message: record.message)
       let data = try JSONEncoder().encode(record) + Data("\n".utf8)
       if !FileManager.default.fileExists(atPath: auditURL.path) {
         try data.write(to: auditURL, options: .atomic)

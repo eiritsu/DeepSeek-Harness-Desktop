@@ -60,6 +60,8 @@ export interface FileRecognitionResult {
 export interface FileRecognizer {
   /** Stable registration identity. */
   id: string
+  /** Higher values run first; equal priorities are ordered by `id`. Default: `0`. */
+  priority?: number
   /** Whether this recognizer owns the file or normalized image format. */
   supports(input: FileAttachmentRef | ImageAttachmentRef | FileRecognitionInput): boolean
   /** Extract bounded semantic text without changing the stored attachment. */

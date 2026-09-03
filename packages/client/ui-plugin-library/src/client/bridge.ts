@@ -107,6 +107,9 @@ export type PluginBridgeRequest =
   | { readonly action: 'install'; readonly reviewId: string; readonly force: boolean }
   | { readonly action: 'cancelReview'; readonly reviewId: string }
   | { readonly action: 'remove'; readonly package: string }
+  | { readonly action: 'exportConfig' }
+  | { readonly action: 'importConfig' }
+  | { readonly action: 'resetData' }
 
 /** Reply map for each native operation. */
 export interface PluginBridgeReplies {
@@ -132,6 +135,9 @@ export interface PluginBridgeReplies {
   readonly install: { readonly ok: true }
   readonly cancelReview: { readonly ok: true }
   readonly remove: { readonly ok: true }
+  readonly exportConfig: { readonly path?: string }
+  readonly importConfig: { readonly ok?: true }
+  readonly resetData: { readonly ok?: true }
 }
 
 /** Promise-returning native bridge; unavailable in a normal browser. */

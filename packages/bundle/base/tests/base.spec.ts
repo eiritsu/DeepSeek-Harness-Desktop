@@ -41,7 +41,13 @@ describe('dsh-base bundle', () => {
     })
     expect(rows.filter(row => row.id === 'subagent-codex')).toHaveLength(0)
     expect(rows.filter(row => row.id === 'subagent-claude-code')).toHaveLength(0)
-    expect(rows.find(row => row.id === 'web')?.config).toMatchObject({ fetchProvider: 'http' })
+    const webConfig = rows.find(row => row.id === 'web')?.config
+    expect(webConfig).toMatchObject({
+      searchProvider: { __jsExpr: "process.env.DSH_DESKTOP_SHELL === '1' ? undefined : 'deepseek-official'" },
+      fetchProvider: 'http',
+    })
+    const searchExpression = (webConfig?.searchProvider as { __jsExpr?: string } | undefined)?.__jsExpr
+    expect(evaluate({ process: { env: { DSH_DESKTOP_SHELL: '1' } } }, searchExpression!)).toBeUndefined()
     expect(rows.find(row => row.id === 'web-fetch-http')).toBeDefined()
     expect(rows.find(row => row.id === 'tool-web')?.config).toMatchObject({ fetch: false })
     expect(manifest.dependencies).not.toHaveProperty('@deepseek-ai/dsh-subagent-codex')
@@ -81,5 +87,36 @@ describe('dsh-base bundle', () => {
     }
     // The platform layer folded into these rows: no separate patch file ships.
     expect(existsSync(resolve(root, 'windows.cordis.patch.yml'))).toBe(false)
+  })
+
+  it('does not mount the official DeepSeek route in the desktop profile', () => {
+    const root = fileURLToPath(new URL('..', import.meta.url))
+    const parsed = yaml.load(
+      readFileSync(resolve(root, 'cordis.patch.yml'), 'utf8'),
+      { schema: entryListSchema },
+    )
+    if (!Array.isArray(parsed)) throw new TypeError('base patch must parse to a patch list')
+    const rows = parsed.flatMap((patch): Record<string, unknown>[] =>
+      typeof patch === 'object' && patch !== null
+        ? (patch as { insert?: Record<string, unknown>[] }).insert ?? []
+        : [],
+    )
+    const defaultModel = rows.find(row => row.id === 'agent-default-model')
+    const officialAdapter = rows.find(row => row.id === 'llm-deepseek')
+    if (defaultModel === undefined || officialAdapter === undefined) {
+      throw new Error('desktop provider rows must remain explicit in the base patch')
+    }
+    const providerExpression = ((defaultModel.config as Record<string, unknown>).provider as { __jsExpr?: string }).__jsExpr
+    const modelExpression = ((defaultModel.config as Record<string, unknown>).model as { __jsExpr?: string }).__jsExpr
+    const disabledExpression = (officialAdapter.disabled as { __jsExpr?: string }).__jsExpr
+    expect(providerExpression).toContain('DSH_DESKTOP_SHELL')
+    expect(modelExpression).toContain('DSH_DESKTOP_SHELL')
+    expect(disabledExpression).toContain('DSH_DESKTOP_SHELL')
+    expect(evaluate({ process: { env: { DSH_DESKTOP_SHELL: '1' } } }, providerExpression!)).toBe('')
+    expect(evaluate({ process: { env: { DSH_DESKTOP_SHELL: '1' } } }, modelExpression!)).toBe('')
+    expect(evaluate({ process: { env: { DSH_DESKTOP_SHELL: '1' } } }, disabledExpression!)).toBe(true)
+    expect(evaluate({ process: { env: {} } }, providerExpression!)).toBe('deepseek-official')
+    expect(evaluate({ process: { env: {} } }, modelExpression!)).toBe('deepseek-v4-flash')
+    expect(evaluate({ process: { env: {} } }, disabledExpression!)).toBe(false)
   })
 })

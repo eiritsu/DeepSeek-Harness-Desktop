@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import UniformTypeIdentifiers
 import WebKit
 
 @main
@@ -33,6 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
   private let sources = SourceManager()
   private lazy var runtime = RuntimeController(supportRoot: sources.supportRoot)
   private lazy var plugins = PluginManager(supportRoot: sources.supportRoot, dshHome: sources.dshHome)
+  private lazy var backup = DesktopBackupManager(supportRoot: sources.supportRoot)
   private var instanceLock: RuntimeInstanceLock?
   private var sourceRoot: URL?
   private var runtimeURL: URL?
@@ -219,7 +221,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         switch result {
         case let .success(root):
           self.sourceRoot = root
-          self.startRuntime(source: root, progress: progress)
+          self.plugins.ensureManagedProfile(sourceRoot: root, progress: progress) { result in
+            DispatchQueue.main.async {
+              switch result {
+              case .success:
+                self.startRuntime(source: root, progress: progress)
+              case let .failure(error):
+                self.showFailure(error)
+              }
+            }
+          }
         case let .failure(error): self.showFailure(error)
         }
       }
@@ -652,6 +663,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
           }
         }
       }
+    case "downloadSkill":
+      guard let slug = request["slug"] as? String else {
+        replyHandler(nil, "Skill 标识缺失。")
+        return
+      }
+      // Keep the WebView visible while an in-app Skill download runs. Startup
+      // status hides the WebView and is reserved for runtime maintenance.
+      plugins.downloadSkill(slug: slug, progress: { _ in }) { result in
+        DispatchQueue.main.async {
+          switch result {
+          case let .success(path): replyHandler(["path": path], nil)
+          case let .failure(error): replyHandler(nil, error.localizedDescription)
+          }
+        }
+      }
+    case "listSkills":
+      plugins.listSkills { result in
+        DispatchQueue.main.async {
+          switch result {
+          case let .success(skills): replyHandler(["skills": skills], nil)
+          case let .failure(error): replyHandler(nil, error.localizedDescription)
+          }
+        }
+      }
     case "thirdPartyCatalog", "skillHubCatalog":
       let page = request["page"] as? Int ?? 1
       let pageSize = request["pageSize"] as? Int ?? 12
@@ -816,8 +851,109 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
           completion: completion
         )
       }
+    case "exportConfig":
+      exportConfiguration(replyHandler: replyHandler)
+    case "importConfig":
+      importConfiguration(replyHandler: replyHandler)
+    case "resetData":
+      resetConfiguration(replyHandler: replyHandler)
     default:
       replyHandler(nil, "不支持的插件操作：\(action)")
+    }
+  }
+
+  private func exportConfiguration(
+    replyHandler: @escaping @MainActor @Sendable (Any?, String?) -> Void
+  ) {
+    guard !updating else {
+      replyHandler(nil, "桌面运行时正在执行其他维护操作。")
+      return
+    }
+    let panel = NSSavePanel()
+    panel.nameFieldStringValue = "dsh-desktop-configuration.dshbackup"
+    panel.allowedContentTypes = [.zip]
+    panel.beginSheetModal(for: window) { [weak self] response in
+      guard let self, response == .OK, let url = panel.url else {
+        replyHandler([:], nil)
+        return
+      }
+      self.runBackupMutation(replyHandler: replyHandler) {
+        try self.backup.export(to: url)
+        return ["path": url.path]
+      }
+    }
+  }
+
+  private func importConfiguration(
+    replyHandler: @escaping @MainActor @Sendable (Any?, String?) -> Void
+  ) {
+    guard !updating else {
+      replyHandler(nil, "桌面运行时正在执行其他维护操作。")
+      return
+    }
+    let panel = NSOpenPanel()
+    panel.allowedContentTypes = [.zip]
+    panel.allowsMultipleSelection = false
+    panel.beginSheetModal(for: window) { [weak self] response in
+      guard let self, response == .OK, let url = panel.url else {
+        replyHandler([:], nil)
+        return
+      }
+      self.runBackupMutation(replyHandler: replyHandler) {
+        try self.backup.import(from: url)
+        return ["ok": true]
+      }
+    }
+  }
+
+  private func resetConfiguration(
+    replyHandler: @escaping @MainActor @Sendable (Any?, String?) -> Void
+  ) {
+    guard !updating else {
+      replyHandler(nil, "桌面运行时正在执行其他维护操作。")
+      return
+    }
+    let confirmation = NSAlert()
+    confirmation.messageText = "清空本地数据？"
+    confirmation.informativeText = "会删除会话、凭据、工作区、插件状态和 Skill 数据；源码和应用本体不会删除。"
+    confirmation.addButton(withTitle: "清空")
+    confirmation.addButton(withTitle: "取消")
+    guard confirmation.runModal() == .alertFirstButtonReturn else {
+      replyHandler([:], nil)
+      return
+    }
+    runBackupMutation(replyHandler: replyHandler) {
+      try self.backup.resetData()
+      UserDefaults.standard.removeObject(forKey: SessionSelectionBridge.nativeStorageKey)
+      return ["ok": true]
+    }
+  }
+
+  private func runBackupMutation(
+    replyHandler: @escaping @MainActor @Sendable (Any?, String?) -> Void,
+    operation: @escaping @MainActor @Sendable () throws -> [String: Any]
+  ) {
+    updating = true
+    runtime.stop {
+      DispatchQueue.main.async { [weak self] in
+        guard let self else {
+          replyHandler(nil, "桌面应用已关闭。")
+          return
+        }
+        do {
+          self.plugins.closeDataStore()
+          let result = try operation()
+          self.plugins.reloadDataStore()
+          self.updating = false
+          replyHandler(result, nil)
+          self.start()
+        } catch {
+          self.plugins.reloadDataStore()
+          self.updating = false
+          replyHandler(nil, error.localizedDescription)
+          self.start()
+        }
+      }
     }
   }
 

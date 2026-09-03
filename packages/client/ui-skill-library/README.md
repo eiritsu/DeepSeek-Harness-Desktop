@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-client-ui-skill-library` adds a Skill Library sidebar entry and shell overlay when the macOS shell exposes `window.dshDesktopPluginBridge`. It discovers SkillHub skills, filters and paginates the catalog, opens the selected SkillHub page, and downloads the selected SkillHub ZIP for review. Native installation into a local skill root remains a separate capability owned by the desktop shell.
+`dsh-client-ui-skill-library` adds a Skill Library sidebar entry and shell overlay when the macOS shell exposes `window.dshDesktopPluginBridge`. It discovers SkillHub skills, filters and paginates the catalog, opens the selected SkillHub page, and asks the desktop shell to import selected archives into the Application Support skill root.
 
 ## Table of Contents
 
@@ -25,7 +25,7 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
-The Web application mounts this package, but the entry is visible only inside the matching macOS shell. Open **Skill Library** from the sidebar to browse SkillHub skills, narrow results by source, scene, or API key, and download a package for review.
+The Web application mounts this package, but the entry is visible only inside the matching macOS shell. Open **Skill Library** from the sidebar to browse SkillHub skills, narrow results by source, scene, or API key, and import a package into the desktop-managed skill root.
 
 ### Mount in another Web composition
 

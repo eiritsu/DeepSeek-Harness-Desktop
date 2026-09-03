@@ -9,7 +9,7 @@ kind: "package-bundle"
 
 ## 概述
 
-`dsh-client-ui-skill-library` 在 macOS 桌面壳公开 `window.dshDesktopPluginBridge` 时增加技能库侧边栏入口和 shell overlay。它发现 SkillHub 技能，按来源、场景或 API Key 筛选并分页，打开选中的 SkillHub 页面，并下载选中的 SkillHub ZIP 供审查。本地技能目录的原生安装仍由桌面壳的独立能力负责。
+`dsh-client-ui-skill-library` 在 macOS 桌面壳公开 `window.dshDesktopPluginBridge` 时增加技能库侧边栏入口和 shell overlay。它发现 SkillHub 技能，按来源、场景或 API Key 筛选并分页，打开选中的 SkillHub 页面，并请求桌面壳把选中的压缩包导入 Application Support 下的技能根目录。
 
 ## 目录
 
@@ -25,7 +25,7 @@ kind: "package-bundle"
 <a id="use-this-package"></a>
 ## 使用这个包
 
-Web 应用会挂载这个包，但入口只在配套 macOS 桌面壳内可见。从侧边栏打开“技能库”，即可浏览 SkillHub 技能，按来源、场景或 API Key 缩小结果范围，并下载待审查的 package。
+Web 应用会挂载这个包，但入口只在配套 macOS 桌面壳内可见。从侧边栏打开“技能库”，即可浏览 SkillHub 技能，按来源、场景或 API Key 缩小结果范围，并把 package 导入桌面管理的技能根目录。
 
 ### 挂载到其他 Web 组合
 

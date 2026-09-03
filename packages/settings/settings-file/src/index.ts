@@ -8,9 +8,11 @@
  */
 
 import { Context, Service } from '@deepseek-ai/cordis'
+import { DatabaseSync } from 'node:sqlite'
 import z from '@deepseek-ai/schemastery'
 import { watch as chokidarWatch } from 'chokidar'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdirSync } from 'node:fs'
 import { dirname, extname, join, resolve } from 'node:path'
 import { Document, parseDocument } from 'yaml'
 import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
@@ -28,6 +30,8 @@ export interface Config {
   watch?: boolean
   /** Watcher write-settle window in milliseconds; defaults to 100. */
   debounceMs?: number
+  /** SQLite database used as the desktop canonical store. */
+  sqlitePath?: string
 }
 
 /** Document format derived from the configured file extension. */
@@ -45,6 +49,7 @@ interface ResolvedSpec {
   format: SettingsFormat
   watch: boolean
   debounceMs: number
+  sqlitePath?: string
 }
 
 /**
@@ -64,6 +69,7 @@ export function resolveSpec(config: Config): ResolvedSpec {
     format,
     watch: config.watch ?? true,
     debounceMs: config.debounceMs ?? 100,
+    ...config.sqlitePath === undefined ? {} : { sqlitePath: resolve(config.sqlitePath) },
   }
 }
 
@@ -109,6 +115,7 @@ export class FileSettingsProvider extends SettingsProvider {
     dshHome: z.string(),
     watch: z.boolean().default(true),
     debounceMs: z.number().min(0).default(100),
+    sqlitePath: z.string(),
   })
 
   private readonly spec: ResolvedSpec
@@ -127,6 +134,7 @@ export class FileSettingsProvider extends SettingsProvider {
   private operations: Promise<void> = Promise.resolve()
   /** Set at dispose: refuse new watcher events and let in-flight work no-op. */
   private closed = false
+  private readonly database: DatabaseSync | undefined
 
   /** Opaque read of {@link closed}: control flow cannot narrow it across awaits. */
   private isClosed(): boolean {
@@ -138,6 +146,11 @@ export class FileSettingsProvider extends SettingsProvider {
     // Programmatic construction may bypass Schemastery normalization; resolve
     // the same defaults in one explicit step either way.
     this.spec = resolveSpec(config)
+    if (this.spec.sqlitePath !== undefined) {
+      mkdirSync(dirname(this.spec.sqlitePath), { recursive: true, mode: 0o700 })
+      this.database = new DatabaseSync(this.spec.sqlitePath)
+      this.database.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; CREATE TABLE IF NOT EXISTS settings (namespace TEXT PRIMARY KEY, payload_json TEXT NOT NULL, updated_at TEXT NOT NULL) STRICT;')
+    }
   }
 
   /** The local document is always writable through {@link SettingsProvider.update}. */
@@ -146,7 +159,8 @@ export class FileSettingsProvider extends SettingsProvider {
   }
 
   /** The resolved YAML/JSON document path exposed to local configuration surfaces. */
-  override get documentPath(): string {
+  override get documentPath(): string | undefined {
+    if (this.database !== undefined) return undefined
     return this.spec.filename
   }
 
@@ -169,6 +183,14 @@ export class FileSettingsProvider extends SettingsProvider {
   }
 
   protected async load(): Promise<Record<string, unknown>> {
+    if (this.database !== undefined) {
+      const rows = this.database.prepare('SELECT namespace, payload_json FROM settings ORDER BY namespace').all() as { namespace: string; payload_json: string }[]
+      if (rows.length === 1 && rows[0]?.namespace === 'global') {
+        const legacy = JSON.parse(rows[0].payload_json) as { format?: string; content?: string }
+        if (legacy.format === 'text' && typeof legacy.content === 'string') return this.parse(legacy.content)
+      }
+      return Object.fromEntries(rows.map(row => [row.namespace, JSON.parse(row.payload_json)]))
+    }
     let text: string
     try {
       text = await readFile(this.spec.filename, 'utf8')
@@ -209,6 +231,13 @@ export class FileSettingsProvider extends SettingsProvider {
   }
 
   private async persistSection(ns: SettingsNamespace, section: Record<string, unknown>): Promise<void> {
+    if (this.database !== undefined) {
+      this.database.prepare("DELETE FROM settings WHERE namespace = 'global'").run()
+      this.database.prepare(
+        "INSERT INTO settings(namespace, payload_json, updated_at) VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) ON CONFLICT(namespace) DO UPDATE SET payload_json = excluded.payload_json, updated_at = excluded.updated_at",
+      ).run(ns, JSON.stringify(section))
+      return
+    }
     // The writer lock's exclusive create needs the parent to exist before
     // writeFileAtomic gets its own chance to create it.
     // 0700: the harness home holds user-private documents.
@@ -266,6 +295,7 @@ export class FileSettingsProvider extends SettingsProvider {
       this.closed = true
       await watcher?.close()
       await this.operations
+      this.database?.close()
     }
   }
 

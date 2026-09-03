@@ -12,6 +12,7 @@ let package = Package(
       linkerSettings: [
         .linkedFramework("AppKit"),
         .linkedFramework("WebKit"),
+        .linkedLibrary("sqlite3"),
       ],
     ),
     .testTarget(

@@ -180,6 +180,8 @@ type BatchArtifact = ComboArtifact & { descriptor: WebBootBatch }
 const IMMUTABLE_CACHE = 'public, max-age=31536000, immutable'
 /** Keep generated request URLs below WebKit's conservative request-target limit. */
 const MAX_COMBO_URL_BYTES = 2 * 1024
+/** Keep one generated classic script below WebKit's conservative source limit. */
+const MAX_COMBO_SCRIPT_BYTES = 2 * 1024 * 1024
 const HASH_REVISION_LENGTH = 12
 const COMBO_REVISION_PLACEHOLDER = '0'.repeat(HASH_REVISION_LENGTH)
 
@@ -265,13 +267,24 @@ function projectedComboUrlBytes(records: readonly WebPluginRecord[]): number {
   ))
 }
 
+/** Upper-bound the generated script bytes, including each bundle separator. */
+function projectedComboScriptBytes(records: readonly WebPluginRecord[]): number {
+  return records.reduce((total, record) => total + record.bundle.byteLength + 2, 0)
+}
+
+/** Check both request-target and script-size limits before extending a batch. */
+function comboWithinLimits(records: readonly WebPluginRecord[]): boolean {
+  return projectedComboUrlBytes(records) <= MAX_COMBO_URL_BYTES
+    && projectedComboScriptBytes(records) <= MAX_COMBO_SCRIPT_BYTES
+}
+
 /** Partition one phase in graph order without allowing a generated URL above the protocol limit. */
 function partitionComboRecords(records: readonly WebPluginRecord[]): WebPluginRecord[][] {
   const chunks: WebPluginRecord[][] = []
   let current: WebPluginRecord[] = []
   for (const record of records) {
     const candidate = [...current, record]
-    if (projectedComboUrlBytes(candidate) <= MAX_COMBO_URL_BYTES) {
+    if (comboWithinLimits(candidate)) {
       current = candidate
       continue
     }
@@ -282,7 +295,7 @@ function partitionComboRecords(records: readonly WebPluginRecord[]): WebPluginRe
     }
     chunks.push(current)
     current = [record]
-    if (projectedComboUrlBytes(current) > MAX_COMBO_URL_BYTES) {
+    if (!comboWithinLimits(current)) {
       throw new Error(
         `client-modules: ${record.entry.id} exceeds the ${String(MAX_COMBO_URL_BYTES)}-byte combo URL limit`,
       )

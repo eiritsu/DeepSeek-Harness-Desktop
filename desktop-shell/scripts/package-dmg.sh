@@ -30,7 +30,7 @@ if [ ! -f "$APP_ROOT/Contents/Resources/SourceBootstrap.tar.gz" ]; then
   echo "package-dmg: bundled source snapshot is missing" >&2
   exit 1
 fi
-if [ "$(/usr/libexec/PlistBuddy -c 'Print :DSHSourceBranch' "$APP_ROOT/Contents/Info.plist")" != "codex/upstream-alpha3-adaptation" ]; then
+if [ "$(/usr/libexec/PlistBuddy -c 'Print :DSHSourceBranch' "$APP_ROOT/Contents/Info.plist")" != "main" ]; then
   echo "package-dmg: distribution app does not point at the release source branch" >&2
   exit 1
 fi
@@ -51,6 +51,7 @@ if rg -n -I -F "$HOME" "$AUDIT_ROOT" >/dev/null \
 fi
 for PACKAGE in \
   packages/client/ui-plugin-library \
+  packages/client/ui-skill-library \
   packages/client/ui-deepseek-files \
   packages/attachment/file-recognizer-office \
   packages/lark/lark \
@@ -66,6 +67,7 @@ if ! grep -F './packages/boot/app-boot/src/profile.ts' "$ARCHIVE_LIST" >/dev/nul
   exit 1
 fi
 if ! grep -F "@deepseek-ai/dsh-client-ui-plugin-library" "$AUDIT_ROOT/packages/boot/app-boot/src/profile.ts" \
+  | grep -F "@deepseek-ai/dsh-client-ui-skill-library" \
   | grep -F "@deepseek-ai/dsh-file-recognizer-office" \
   | grep -F "@deepseek-ai/dsh-lark" \
   | grep -F "@deepseek-ai/dsh-model-catalog" >/dev/null; then

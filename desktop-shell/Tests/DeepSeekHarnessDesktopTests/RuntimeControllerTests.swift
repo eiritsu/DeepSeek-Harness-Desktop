@@ -93,6 +93,38 @@ import Testing
   #expect(bundleFailure.failingPluginPackage == "plain-plugin")
 }
 
+@Test func desktopDataStoreInventoriesLegacyUserDataInSQLite() throws {
+  let temporaryRoot = FileManager.default.temporaryDirectory
+    .appendingPathComponent("dsh-desktop-data-(UUID().uuidString)", isDirectory: true)
+  defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+  let legacy = temporaryRoot.appendingPathComponent("legacy", isDirectory: true)
+  for directory in ["sessions", "storages", "skills"] {
+    try FileManager.default.createDirectory(
+      at: legacy.appendingPathComponent(directory, isDirectory: true),
+      withIntermediateDirectories: true
+    )
+  }
+  try Data("settings: {}\n".utf8).write(to: legacy.appendingPathComponent("settings.yaml"))
+  try Data("{}\n".utf8).write(to: legacy.appendingPathComponent("storages/workspace.json"))
+  try Data("{}\n".utf8).write(to: legacy.appendingPathComponent("sessions/session-a.jsonl.zstd"))
+  try Data("# Skill\n".utf8).write(to: legacy.appendingPathComponent("skills/SKILL.md"))
+
+  let store = try DesktopDataStore(supportRoot: temporaryRoot.appendingPathComponent("support"))
+  try store.initialize(legacyHome: legacy)
+  defer { store.close() }
+
+  let rows = try store.inventory()
+  #expect(rows.map(\.relativePath) == [
+    "sessions/session-a.jsonl.zstd",
+    "settings.yaml",
+    "skills/SKILL.md",
+    "storages/workspace.json",
+  ].sorted())
+  #expect(rows.first { $0.relativePath == "settings.yaml" }?.kind == "settings")
+  #expect(rows.first { $0.relativePath == "sessions/session-a.jsonl.zstd" }?.kind == "session-events")
+  #expect(FileManager.default.fileExists(atPath: store.databaseURL.path))
+}
+
 @Test func compatibleHostNodeSkipsManagedInstallation() throws {
   let temporaryRoot = FileManager.default.temporaryDirectory
     .appendingPathComponent("dsh-host-node-\(UUID().uuidString)", isDirectory: true)
@@ -397,11 +429,81 @@ private func createSourceArchive(from source: URL, at archive: URL) throws {
   #expect(try String(contentsOf: source.appendingPathComponent(".dsh-desktop-bootstrap-version"), encoding: .utf8) == "0.1.2\n")
 }
 
+@Test func distributionIgnoresAnExternalActiveSourcePath() async throws {
+  let temporaryRoot = FileManager.default.temporaryDirectory
+    .appendingPathComponent("dsh-distribution-source-(UUID().uuidString)", isDirectory: true)
+  defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+  let fixture = temporaryRoot.appendingPathComponent("fixture", isDirectory: true)
+  try writePreparedSource(at: fixture, revision: "bundled")
+  let archive = temporaryRoot.appendingPathComponent("SourceBootstrap.tar.gz")
+  try createSourceArchive(from: fixture, at: archive)
+  let external = temporaryRoot.appendingPathComponent("external", isDirectory: true)
+  try writePreparedSource(at: external, revision: "developer")
+  let suiteName = "dsh-distribution-source-(UUID().uuidString)"
+  let defaults = try #require(UserDefaults(suiteName: suiteName))
+  defer { defaults.removePersistentDomain(forName: suiteName) }
+  defaults.set(external.path, forKey: "activeSourceRoot")
+  let support = temporaryRoot.appendingPathComponent("support", isDirectory: true)
+  let manager = SourceManager(
+    supportRoot: support,
+    defaults: defaults,
+    bootstrapArchive: archive,
+    bootstrapVersion: "0.1.2",
+    allowsExternalSourceRoot: false
+  )
+
+  let source = try await withCheckedThrowingContinuation { continuation in
+    manager.resolveAndPrepare(progress: { _ in }) { continuation.resume(with: $0) }
+  }
+
+  #expect(source == support.appendingPathComponent("source", isDirectory: true))
+  #expect(try String(contentsOf: source.appendingPathComponent("revision.txt"), encoding: .utf8) == "bundled\n")
+}
+
 @Test func bootstrapIdentityChangesWithEveryApplicationBuild() {
   #expect(SourceManager.bootstrapIdentity(version: "0.1.3", build: "20260826070000") == "0.1.3+20260826070000")
   #expect(SourceManager.bootstrapIdentity(version: "0.1.3", build: "20260826070001") == "0.1.3+20260826070001")
   #expect(SourceManager.bootstrapIdentity(version: nil, build: "1") == nil)
   #expect(SourceManager.bootstrapIdentity(version: "0.1.3", build: nil) == nil)
+}
+
+@Test func legacyHomeIsMergedIntoApplicationSupportWithoutDeletingTheSource() async throws {
+  let temporaryRoot = FileManager.default.temporaryDirectory
+    .appendingPathComponent("dsh-home-migration-\(UUID().uuidString)", isDirectory: true)
+  defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+  let legacy = temporaryRoot.appendingPathComponent("legacy", isDirectory: true)
+  let support = temporaryRoot.appendingPathComponent("support", isDirectory: true)
+  try FileManager.default.createDirectory(at: legacy.appendingPathComponent("sessions", isDirectory: true), withIntermediateDirectories: true)
+  try Data("model: legacy\n".utf8).write(to: legacy.appendingPathComponent("settings.yaml"))
+  try Data("legacy-credentials\n".utf8).write(to: legacy.appendingPathComponent(".credentials.yaml"))
+  try Data("legacy-identity\n".utf8).write(to: legacy.appendingPathComponent(".anonymous-user-id"))
+  try Data("{\"sessions\":[\"legacy\"]}\n".utf8).write(to: legacy.appendingPathComponent("workspace.json"))
+  try Data("session log\n".utf8).write(to: legacy.appendingPathComponent("sessions/legacy.jsonl"))
+  let profile = legacy.appendingPathComponent("profiles/web", isDirectory: true)
+  try FileManager.default.createDirectory(at: profile, withIntermediateDirectories: true)
+  try Data(#"{"dependencies":{"@fixture/plugin":"1.0.0"},"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base","@fixture/plugin"]}}}"#.utf8)
+    .write(to: profile.appendingPathComponent("package.json"))
+  let suiteName = "dsh-home-migration-\(UUID().uuidString)"
+  let defaults = try #require(UserDefaults(suiteName: suiteName))
+  defer { defaults.removePersistentDomain(forName: suiteName) }
+  let manager = SourceManager(
+    supportRoot: support,
+    defaults: defaults,
+    bootstrapArchive: nil,
+    legacyHome: legacy
+  )
+  let fixture = temporaryRoot.appendingPathComponent("source", isDirectory: true)
+  try writePreparedSource(at: fixture, revision: "migration")
+  defaults.set(fixture.path, forKey: "activeSourceRoot")
+  _ = try await withCheckedThrowingContinuation { continuation in
+    manager.resolveAndPrepare(progress: { _ in }) { continuation.resume(with: $0) }
+  }
+  let dataHome = support.appendingPathComponent("data", isDirectory: true)
+  #expect(try String(contentsOf: dataHome.appendingPathComponent("settings.yaml"), encoding: .utf8) == "model: legacy\n")
+  #expect(try String(contentsOf: dataHome.appendingPathComponent(".credentials.yaml"), encoding: .utf8) == "legacy-credentials\n")
+  #expect(try String(contentsOf: dataHome.appendingPathComponent(".anonymous-user-id"), encoding: .utf8) == "legacy-identity\n")
+  #expect(FileManager.default.fileExists(atPath: dataHome.appendingPathComponent("sessions/legacy.jsonl").path))
+  #expect(FileManager.default.fileExists(atPath: legacy.appendingPathComponent("sessions/legacy.jsonl").path))
 }
 
 @Test func sourceUpdateTopologyNeverTreatsDivergenceAsAnUpgrade() {

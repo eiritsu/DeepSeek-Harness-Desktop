@@ -45,6 +45,32 @@ import Testing
   #expect(byName["@fixture/local"]?.latestVersion == nil)
 }
 
+@Test func installedListIncludesAppManagedBundles() async throws {
+  let temporaryRoot = FileManager.default.temporaryDirectory
+    .appendingPathComponent("dsh-managed-list-\(UUID().uuidString)", isDirectory: true)
+  defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+  let profileRoot = temporaryRoot.appendingPathComponent("home/profiles/web", isDirectory: true)
+  let packageRoot = temporaryRoot.appendingPathComponent("packages/client/ui-plugin-library", isDirectory: true)
+  try FileManager.default.createDirectory(at: profileRoot, withIntermediateDirectories: true)
+  try FileManager.default.createDirectory(at: packageRoot, withIntermediateDirectories: true)
+  try Data(#"{"name":"@deepseek-ai/dsh-client-ui-plugin-library","version":"0.1.1"}"#.utf8)
+    .write(to: packageRoot.appendingPathComponent("package.json"))
+  try Data(#"{"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base","@deepseek-ai/dsh-client-ui-plugin-library"]}}}"#.utf8)
+    .write(to: profileRoot.appendingPathComponent("package.json"))
+  let manager = PluginManager(
+    supportRoot: temporaryRoot.appendingPathComponent("support", isDirectory: true),
+    dshHome: temporaryRoot.appendingPathComponent("home", isDirectory: true)
+  )
+
+  let plugins = try await withCheckedThrowingContinuation { continuation in
+    manager.list(sourceRoot: temporaryRoot) { continuation.resume(with: $0) }
+  }
+
+  let plugin = try #require(plugins.first { $0.name == "@deepseek-ai/dsh-client-ui-plugin-library" })
+  #expect(plugin.version == "0.1.1")
+  #expect(!plugin.removable)
+}
+
 @Test func installedUpdateCreatesANewPinnedReview() async throws {
   let temporaryRoot = FileManager.default.temporaryDirectory
     .appendingPathComponent("dsh-installed-update-review-\(UUID().uuidString)", isDirectory: true)

@@ -172,6 +172,27 @@ describe('AttachmentStore file recognition', () => {
     store.registerFileRecognizer(recognizer)
     expect(() => store.registerFileRecognizer(recognizer)).toThrow('already registered')
   })
+
+  it('selects recognizers by priority instead of activation timing', async () => {
+    const store = new RecordingStore(new Context())
+    store.registerFileRecognizer({
+      id: 'fallback',
+      priority: 0,
+      supports: () => true,
+      recognize: () => Promise.resolve({ text: 'fallback' }),
+    })
+    store.registerFileRecognizer({
+      id: 'ocr',
+      priority: 100,
+      supports: () => true,
+      recognize: () => Promise.resolve({ text: 'ocr' }),
+    })
+
+    await expect(store.recognizeFile({
+      data: new Uint8Array(),
+      mediaType: 'application/pdf',
+    })).resolves.toEqual({ text: 'ocr' })
+  })
 })
 
 describe('AttachmentStore.readImageRequest', () => {

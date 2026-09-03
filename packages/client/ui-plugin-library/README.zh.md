@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-client-ui-plugin-library` 在 macOS 桌面壳公开 `window.dshDesktopPluginBridge` 时增加插件管理入口和覆盖层。它列出 Web profile 的树外依赖、发现社区项目、审查不可变或本地来源，并把通过审查的变更委托给原生桌面壳。普通浏览器使用相同 Web 组合，但由于不存在特权 bridge，这个包不会注册任何界面。来源审查是安装预检，不是沙箱或发布者背书。
+`dsh-client-ui-plugin-library` 在 macOS 桌面壳公开 `window.dshDesktopPluginBridge` 时增加插件管理入口和覆盖层。它列出 Web profile 的内置 Bundle 与树外依赖、发现社区项目、审查不可变或本地来源，并把通过审查的变更委托给原生桌面壳。安装的插件依赖和 Skill 数据保存在桌面 App 的 Application Support 数据目录中。普通浏览器使用相同 Web 组合，但由于不存在特权 bridge，这个包不会注册任何界面。来源审查是安装预检，不是沙箱或发布者背书。
 
 ## 目录
 

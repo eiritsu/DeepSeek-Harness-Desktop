@@ -145,7 +145,7 @@ Immutable binary attachment service. Implementations validate bytes before publi
 
 ```ts cordis-catalog
 /**
- * Register one trusted file recognizer in precedence order.
+ * Register one trusted file recognizer in deterministic priority order.
  * @param recognizer - effect-scoped format recognizer.
  * @returns disposer removing this exact recognizer.
  */

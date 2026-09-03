@@ -48,8 +48,8 @@ flowchart LR
   cfg --> plugin_dsh_base_credentials
   plugin_dsh_base_llm_dsh_ai["llm-dsh-ai<br/>@deepseek-ai/dsh-llm-dsh-ai"]
   cfg --> plugin_dsh_base_llm_dsh_ai
-  plugin_dsh_base_session_persistence_jsonl["session-persistence-jsonl<br/>@deepseek-ai/dsh-session-persistence-jsonl"]
-  cfg --> plugin_dsh_base_session_persistence_jsonl
+  plugin_dsh_base_session_persistence_sqlite["session-persistence-sqlite<br/>@deepseek-ai/dsh-session-persistence-sqlite"]
+  cfg --> plugin_dsh_base_session_persistence_sqlite
   plugin_dsh_base_attachment_local["attachment-local<br/>@deepseek-ai/dsh-attachment-local"]
   cfg --> plugin_dsh_base_attachment_local
   plugin_dsh_base_session_query_sqlite["session-query-sqlite<br/>@deepseek-ai/dsh-session-query-sqlite"]
@@ -58,8 +58,8 @@ flowchart LR
   cfg --> plugin_dsh_base_session_projection
   plugin_dsh_base_storage["storage<br/>@deepseek-ai/dsh-storage"]
   cfg --> plugin_dsh_base_storage
-  plugin_dsh_base_storage_json["storage-json<br/>@deepseek-ai/dsh-storage-json"]
-  cfg --> plugin_dsh_base_storage_json
+  plugin_dsh_base_storage_sqlite["storage-sqlite<br/>@deepseek-ai/dsh-storage-sqlite"]
+  cfg --> plugin_dsh_base_storage_sqlite
   plugin_dsh_base_storage_domain["storage-domain<br/>@deepseek-ai/dsh-storage-domain"]
   cfg --> plugin_dsh_base_storage_domain
   plugin_dsh_base_session_projection_cache["session-projection-cache<br/>@deepseek-ai/dsh-session-projection-cache"]
@@ -204,12 +204,12 @@ flowchart LR
 | `settings` | `@deepseek-ai/dsh-settings-file` |
 | `credentials` | `@deepseek-ai/dsh-credentials-local` |
 | `llm-dsh-ai` | `@deepseek-ai/dsh-llm-dsh-ai` |
-| `session-persistence-jsonl` | `@deepseek-ai/dsh-session-persistence-jsonl` |
+| `session-persistence-sqlite` | `@deepseek-ai/dsh-session-persistence-sqlite` |
 | `attachment-local` | `@deepseek-ai/dsh-attachment-local` |
 | `session-query-sqlite` | `@deepseek-ai/dsh-session-query-sqlite` |
 | `session-projection` | `@deepseek-ai/dsh-session-projection` |
 | `storage` | `@deepseek-ai/dsh-storage` |
-| `storage-json` | `@deepseek-ai/dsh-storage-json` |
+| `storage-sqlite` | `@deepseek-ai/dsh-storage-sqlite` |
 | `storage-domain` | `@deepseek-ai/dsh-storage-domain` |
 | `session-projection-cache` | `@deepseek-ai/dsh-session-projection-cache` |
 | `session-telemetry-otel` | `@deepseek-ai/dsh-session-telemetry-otel` |

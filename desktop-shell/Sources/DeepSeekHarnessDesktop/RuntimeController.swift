@@ -121,6 +121,7 @@ final class RuntimeController: @unchecked Sendable {
   private let queue = DispatchQueue(label: "ai.deepseek.harness.desktop.runtime", qos: .userInitiated)
   private let lock = NSLock()
   private let supportRoot: URL
+  private let runtimePIDURL: URL
   private var process: Process?
   private var stopping = false
 
@@ -129,6 +130,7 @@ final class RuntimeController: @unchecked Sendable {
       for: .applicationSupportDirectory,
       in: .userDomainMask
     )[0].appendingPathComponent("DeepSeek Harness Desktop", isDirectory: true)
+    self.runtimePIDURL = self.supportRoot.appendingPathComponent("runtime.pid")
   }
 
   func start(
@@ -140,6 +142,7 @@ final class RuntimeController: @unchecked Sendable {
   ) {
     queue.async {
       do {
+        try self.reapOrphanedRuntime()
         let toolchain = try Toolchain.resolve(supportRoot: self.supportRoot, progress: progress)
         try FileManager.default.createDirectory(at: dshHome, withIntermediateDirectories: true)
         let executable = sourceRoot.appendingPathComponent("apps/cli/lib/bin.js")
@@ -195,6 +198,7 @@ final class RuntimeController: @unchecked Sendable {
     readOutput(stderr, state: state, isError: true)
     child.terminationHandler = { process in
       state.terminated(status: process.terminationStatus)
+      self.clearRuntimePID(process.processIdentifier)
     }
 
     lock.lock()
@@ -202,6 +206,7 @@ final class RuntimeController: @unchecked Sendable {
     stopping = false
     lock.unlock()
     try child.run()
+    try writeRuntimePID(child.processIdentifier)
 
     if state.wait(timeout: .now() + 120) == .timedOut {
       stopSynchronously()
@@ -268,6 +273,67 @@ final class RuntimeController: @unchecked Sendable {
     process = nil
     stopping = false
     lock.unlock()
+    clearRuntimePID(child.processIdentifier)
+  }
+
+  /// Remove a runtime left behind when the desktop process was force-killed.
+  /// The PID file is validated against the exact Harness CLI command before a
+  /// signal is sent, so PID reuse cannot terminate an unrelated process.
+  private func reapOrphanedRuntime() throws {
+    guard let value = try? String(contentsOf: runtimePIDURL, encoding: .utf8),
+          let pid = pid_t(value.trimmingCharacters(in: .whitespacesAndNewlines)),
+          pid > 0,
+          pid != getpid()
+    else {
+      clearRuntimePID(nil)
+      return
+    }
+    guard let command = processCommand(pid: pid),
+          command.contains("/apps/cli/lib/bin.js") else {
+      clearRuntimePID(pid)
+      return
+    }
+    LogStore.shared.append("runtime: terminating orphaned Harness process \(pid)")
+    guard kill(pid, SIGTERM) == 0 || errno == ESRCH else {
+      throw DesktopError.message("无法结束上一次遗留的 Harness 运行时（PID \(pid)）。")
+    }
+    let deadline = Date().addingTimeInterval(5)
+    while processExists(pid), Date() < deadline { usleep(100_000) }
+    if processExists(pid) { kill(pid, SIGKILL) }
+    clearRuntimePID(pid)
+  }
+
+  private func processCommand(pid: pid_t) -> String? {
+    let process = Process()
+    let output = Pipe()
+    process.executableURL = URL(fileURLWithPath: "/bin/ps")
+    process.arguments = ["-p", String(pid), "-o", "command="]
+    process.standardOutput = output
+    process.standardError = FileHandle.nullDevice
+    guard (try? process.run()) != nil else { return nil }
+    process.waitUntilExit()
+    guard process.terminationStatus == 0 else { return nil }
+    return String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)
+  }
+
+  private func processExists(_ pid: pid_t) -> Bool {
+    kill(pid, 0) == 0 || errno == EPERM
+  }
+
+  private func writeRuntimePID(_ pid: pid_t) throws {
+    try FileManager.default.createDirectory(at: supportRoot, withIntermediateDirectories: true)
+    try "\(pid)\n".write(to: runtimePIDURL, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: runtimePIDURL.path)
+  }
+
+  private func clearRuntimePID(_ pid: pid_t?) {
+    guard let value = try? String(contentsOf: runtimePIDURL, encoding: .utf8),
+          let recorded = pid_t(value.trimmingCharacters(in: .whitespacesAndNewlines))
+    else {
+      try? FileManager.default.removeItem(at: runtimePIDURL)
+      return
+    }
+    if pid == nil || pid == recorded { try? FileManager.default.removeItem(at: runtimePIDURL) }
   }
 
   static func healthCheck(

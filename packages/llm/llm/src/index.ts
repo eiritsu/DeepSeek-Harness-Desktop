@@ -13,6 +13,7 @@ import type {
   GenerateOptions,
   LlmConfigurableProvider,
   LlmDiscoveredModel,
+  LlmModelDiscoveryPatch,
   LlmFailure,
   LlmImageRequestPricing,
   LegacyModelModality,
@@ -350,8 +351,8 @@ export class LlmRuntime extends TypertRemoteService {
 
   /**
    * Register one exact-route metadata enricher after adapter-owned resolution.
-   * Enrichers fill absent fields; an authoritative catalog may replace reasoning
-   * capabilities when the adapter's built-in declaration is stale.
+   * Enrichers fill absent fields by default; an authoritative catalog replaces
+   * every capability field it supplies when the adapter declaration is stale.
    * @param id - stable registration identity.
    * @param enrich - asynchronous exact-route metadata lookup.
    * @returns disposer withdrawing this exact enricher.
@@ -602,8 +603,8 @@ export class LlmRuntime extends TypertRemoteService {
 
   /**
    * Register an ordered compatibility enricher for provider discovery results.
-   * Existing candidate fields remain authoritative and patches for unknown ids
-   * are ignored.
+   * Existing candidate fields remain authoritative unless a patch marks itself
+   * authoritative; patches for unknown ids are ignored.
    * @param enrich - candidate metadata lookup retained for previous-version plugins.
    * @returns disposer withdrawing this registration.
    */
@@ -817,18 +818,23 @@ export class LlmRuntime extends TypertRemoteService {
         request: { ...request, ...signal === undefined ? {} : { signal } },
         models: models.map(model => this.detachedDiscoveredModel(model)),
       })
-      const byId = new Map<string, LlmDiscoveredModel>()
+      const byId = new Map<string, LlmModelDiscoveryPatch>()
       for (const patch of patches) {
         if (seen.has(patch.id) && !byId.has(patch.id)) byId.set(patch.id, patch)
       }
       models = models.map((model) => {
         const patch = byId.get(model.id)
         if (patch === undefined) return model
-        const ownedBy = model.ownedBy ?? patch.ownedBy
-        const name = model.name ?? patch.name
-        const contextWindow = model.contextWindow ?? patch.contextWindow
-        const maxTokens = model.maxTokens ?? patch.maxTokens
-        const inputModalities = model.inputModalities ?? patch.inputModalities
+        const authoritative = patch.authoritative === true
+        const ownedBy = authoritative ? patch.ownedBy ?? model.ownedBy : model.ownedBy ?? patch.ownedBy
+        const name = authoritative ? patch.name ?? model.name : model.name ?? patch.name
+        const contextWindow = authoritative
+          ? patch.contextWindow ?? model.contextWindow
+          : model.contextWindow ?? patch.contextWindow
+        const maxTokens = authoritative ? patch.maxTokens ?? model.maxTokens : model.maxTokens ?? patch.maxTokens
+        const inputModalities = authoritative
+          ? patch.inputModalities ?? model.inputModalities
+          : model.inputModalities ?? patch.inputModalities
         return this.detachedDiscoveredModel({
           id: model.id,
           ...ownedBy === undefined ? {} : { ownedBy },
@@ -956,7 +962,17 @@ export class LlmRuntime extends TypertRemoteService {
     signal?: AbortSignal,
   ): Promise<LlmResolvedModelInfo> {
     const resolved = await registration.adapter.resolveModel(registration.provider.id, model, signal)
-    let info = this.normalizeModelInfo(registration, model, resolved)
+    const info = this.normalizeModelInfo(registration, model, resolved)
+    return this.enrichModelInfo(registration, model, info, signal)
+  }
+
+  private async enrichModelInfo(
+    registration: AdapterRegistration,
+    model: string,
+    initial: LlmResolvedModelInfo,
+    signal?: AbortSignal,
+  ): Promise<LlmResolvedModelInfo> {
+    let info = initial
     for (const enrich of this.modelMetadataEnrichers.values()) {
       signal?.throwIfAborted()
       const patch = await enrich({
@@ -966,13 +982,14 @@ export class LlmRuntime extends TypertRemoteService {
         ...signal === undefined ? {} : { signal },
       })
       if (patch === undefined) continue
+      const authoritative = patch.authoritative === true
       info = this.normalizeModelInfo(registration, model, {
         ...info,
-        ...info.inputModalities === undefined && patch.inputModalities !== undefined
+        ...(authoritative || info.inputModalities === undefined) && patch.inputModalities !== undefined
           ? { inputModalities: patch.inputModalities } : {},
-        ...info.context === undefined && patch.contextWindow !== undefined
+        ...(authoritative || info.context === undefined) && patch.contextWindow !== undefined
           ? { context: { contextWindow: patch.contextWindow } } : {},
-        ...info.defaultMaxTokens === undefined && patch.maxTokens !== undefined
+        ...(authoritative || info.defaultMaxTokens === undefined) && patch.maxTokens !== undefined
           ? { defaultMaxTokens: patch.maxTokens } : {},
         ...patch.reasoning !== undefined
           ? { reasoning: patch.reasoning } : {},
@@ -1145,7 +1162,8 @@ export class LlmRuntime extends TypertRemoteService {
   async prepareCall(config: LlmCallConfig, signal?: AbortSignal): Promise<PreparedLlmCall> {
     const registration = this.registration(config.provider)
     const adapterCall = await registration.adapter.prepareCall(config.provider, config.model, signal)
-    const modelInfo = this.normalizeModelInfo(registration, config.model, adapterCall.model)
+    const adapterModelInfo = this.normalizeModelInfo(registration, config.model, adapterCall.model)
+    const modelInfo = await this.enrichModelInfo(registration, config.model, adapterModelInfo, signal)
     const resolved = this.resolveCallWithInfo(config, modelInfo)
     const resolvedConfig = deepFreeze(structuredClone(resolved.config))
     const context = resolved.context === undefined

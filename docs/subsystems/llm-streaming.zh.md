@@ -880,8 +880,8 @@ The abstract `llm` service: an adapter registry plus a streaming model-call API,
 ```ts cordis-catalog
 /**
  * Register one exact-route metadata enricher after adapter-owned resolution.
- * Enrichers fill absent fields; an authoritative catalog may replace reasoning
- * capabilities when the adapter's built-in declaration is stale.
+ * Enrichers fill absent fields by default; an authoritative catalog replaces
+ * every capability field it supplies when the adapter declaration is stale.
  * @param id - stable registration identity.
  * @param enrich - asynchronous exact-route metadata lookup.
  * @returns disposer withdrawing this exact enricher.
@@ -934,8 +934,8 @@ registerModelDiscovery( settingsNs: string, discover: ( request: LlmModelDiscove
 
 /**
  * Register an ordered compatibility enricher for provider discovery results.
- * Existing candidate fields remain authoritative and patches for unknown ids
- * are ignored.
+ * Existing candidate fields remain authoritative unless a patch marks itself
+ * authoritative; patches for unknown ids are ignored.
  * @param enrich - candidate metadata lookup retained for previous-version plugins.
  * @returns disposer withdrawing this registration.
  */

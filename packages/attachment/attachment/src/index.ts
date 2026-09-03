@@ -72,7 +72,7 @@ export abstract class AttachmentStore extends Service {
   })
 
   /**
-   * Register one trusted file recognizer in precedence order.
+   * Register one trusted file recognizer in deterministic priority order.
    * @param recognizer - effect-scoped format recognizer.
    * @returns disposer removing this exact recognizer.
    */
@@ -81,6 +81,8 @@ export abstract class AttachmentStore extends Service {
       throw new Error(`attachment recognizer "${recognizer.id}" is already registered`)
     }
     this.fileRecognizers.push(recognizer)
+    this.fileRecognizers.sort((left, right) =>
+      (right.priority ?? 0) - (left.priority ?? 0) || left.id.localeCompare(right.id))
     return () => {
       const index = this.fileRecognizers.indexOf(recognizer)
       if (index >= 0) this.fileRecognizers.splice(index, 1)

@@ -1,0 +1,13 @@
+.row {
+  align-items: center;
+  border-bottom: 1px solid var(--dsh-color-border, #e5e7eb);
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+  padding: 20px 0;
+}
+.copy { min-width: 0; }
+.title { font-size: 15px; font-weight: 600; }
+.description { color: var(--dsh-color-text-secondary, #6b7280); font-size: 13px; margin-top: 4px; }
+.status { color: var(--dsh-color-success, #16a34a); font-size: 12px; margin-top: 6px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }

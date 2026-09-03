@@ -64,7 +64,7 @@ if [ "$DISTRIBUTION" = true ]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ai.deepseek.harness.desktop" "$APP_ROOT/Contents/Info.plist"
   /usr/libexec/PlistBuddy -c "Delete :DSHSourceRoot" "$APP_ROOT/Contents/Info.plist"
   /usr/libexec/PlistBuddy -c "Set :DSHSourceRepository https://github.com/eiritsu/DeepSeek-Harness-Desktop.git" "$APP_ROOT/Contents/Info.plist"
-  /usr/libexec/PlistBuddy -c "Set :DSHSourceBranch codex/upstream-alpha3-adaptation" "$APP_ROOT/Contents/Info.plist"
+  /usr/libexec/PlistBuddy -c "Set :DSHSourceBranch main" "$APP_ROOT/Contents/Info.plist"
   SNAPSHOT_WORK=$(mktemp -d)
   SNAPSHOT_ROOT="$SNAPSHOT_WORK/source"
   mkdir -p "$SNAPSHOT_ROOT"
@@ -205,6 +205,56 @@ const dependencies = {
 }
 manifest.dependencies = { ...manifest.dependencies, ...dependencies }
 fs.writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`)
+NODE
+  # Side-loaded plugin manifests were developed against the previous rc
+  # version. In the distribution snapshot they must resolve every Harness
+  # package from this same workspace, otherwise pnpm may install an older
+  # registry peer beside the bundled package (and mix incompatible exports).
+  node - "$SNAPSHOT_ROOT" <<'NODE'
+const fs = require('node:fs')
+const path = require('node:path')
+const root = process.argv[2]
+const packageNames = new Set()
+function collect(directory) {
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const file = path.join(directory, entry.name)
+    if (entry.isDirectory()) {
+      if (entry.name === 'node_modules' || entry.name === 'lib' || entry.name === 'dist') continue
+      collect(file)
+    } else if (entry.name === 'package.json') {
+      try {
+        const manifest = JSON.parse(fs.readFileSync(file, 'utf8'))
+        if (typeof manifest.name === 'string' && manifest.name.startsWith('@deepseek-ai/dsh-')) packageNames.add(manifest.name)
+      } catch {}
+    }
+  }
+}
+collect(root)
+function rewrite(directory) {
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const file = path.join(directory, entry.name)
+    if (entry.isDirectory()) {
+      if (entry.name === 'node_modules' || entry.name === 'lib' || entry.name === 'dist') continue
+      rewrite(file)
+    } else if (entry.name === 'package.json') {
+      let manifest
+      try { manifest = JSON.parse(fs.readFileSync(file, 'utf8')) } catch { continue }
+      let changed = false
+      for (const field of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']) {
+        const values = manifest[field]
+        if (!values) continue
+        for (const [name, specifier] of Object.entries(values)) {
+          if (packageNames.has(name) && specifier !== 'workspace:^') {
+            values[name] = 'workspace:^'
+            changed = true
+          }
+        }
+      }
+      if (changed) fs.writeFileSync(file, `${JSON.stringify(manifest, null, 2)}\n`)
+    }
+  }
+}
+rewrite(root)
 NODE
   # The release snapshot has to install the workspace packages and their
   # external runtime dependencies on first launch. Regenerate the lockfile

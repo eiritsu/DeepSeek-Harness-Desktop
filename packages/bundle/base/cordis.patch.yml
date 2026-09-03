@@ -71,12 +71,12 @@
       name: '@deepseek-ai/dsh-plugin-package-inventory-deepseek'
 
     # The transport-independent default for Agents created by entry points.
-    # Settings may supply a saved selection; consumers read it at creation time.
+    # Desktop disables this built-in selection until the user configures one.
     - id: agent-default-model
       name: '@deepseek-ai/dsh-agent-default-model'
       config:
-        provider: deepseek-official
-        model: deepseek-v4-flash
+        provider: !!js "process.env.DSH_DESKTOP_SHELL === '1' ? '' : 'deepseek-official'"
+        model: !!js "process.env.DSH_DESKTOP_SHELL === '1' ? '' : 'deepseek-v4-flash'"
 
     - id: jobs
       name: '@deepseek-ai/dsh-jobs-local'
@@ -89,6 +89,8 @@
     # below without a restart, and is what the web Models page writes.
     - id: settings
       name: '@deepseek-ai/dsh-settings-file'
+      config:
+        sqlitePath: !!js dshHomePath('dsh-desktop.sqlite')
 
     # Credential sources: inherited environment over the managed
     # `$DSH_HOME/.credentials.yaml`, with project and user `.env` fallbacks.
@@ -96,6 +98,8 @@
     # managed document, which is never materialized into the process environment.
     - id: credentials
       name: '@deepseek-ai/dsh-credentials-local'
+      config:
+        sqlitePath: !!js dshHomePath('dsh-desktop.sqlite')
 
     # The pi-ai multi-provider twin, mounted dormant: zero routes (and no extra
     # models in the picker) until a `llm-dsh-ai:` settings section supplies provider
@@ -107,10 +111,11 @@
     - id: llm-dsh-ai
       name: '@deepseek-ai/dsh-llm-dsh-ai'
 
-    - id: session-persistence-jsonl
-      name: '@deepseek-ai/dsh-session-persistence-jsonl'
+    - id: session-persistence-sqlite
+      name: '@deepseek-ai/dsh-session-persistence-sqlite'
       config:
-        root: !!js dshHomePath('sessions')
+        path: !!js dshHomePath('dsh-desktop.sqlite')
+        legacyRoot: !!js dshHomePath('sessions')
 
     # Durable image bytes live outside the append-only session log. Messages
     # keep content-addressed references that this shared backend resolves for
@@ -138,22 +143,22 @@
     - id: session-projection
       name: '@deepseek-ai/dsh-session-projection'
 
-    # Durable KV storage: the storage hub, the json backend, and the
+    # Durable KV storage: the storage hub, the SQLite backend, and the
     # schema-validated domain form over them. Session-layer persistence (the
     # projection cache below; workspace and message-feedback in web layers)
     # routes through this stack, so it belongs to the shared base.
     - id: storage
       name: '@deepseek-ai/dsh-storage'
 
-    - id: storage-json
-      name: '@deepseek-ai/dsh-storage-json'
+    - id: storage-sqlite
+      name: '@deepseek-ai/dsh-storage-sqlite'
       config:
-        root: !!js dshHomePath('storages')
+        path: !!js dshHomePath('dsh-desktop.sqlite')
 
     - id: storage-domain
       name: '@deepseek-ai/dsh-storage-domain'
       config:
-        backend: json
+        backend: sqlite
 
     # Persisted projection cache: throttled write-behind over the
     # session_projcache domain (per-record layout — one version-stamped
@@ -450,7 +455,7 @@
     - id: web
       name: '@deepseek-ai/dsh-web'
       config:
-        searchProvider: deepseek-official
+        searchProvider: !!js "process.env.DSH_DESKTOP_SHELL === '1' ? undefined : 'deepseek-official'"
         fetchProvider: http
 
     - id: web-search-deepseek
@@ -495,7 +500,8 @@
 
     # The native DeepSeek adapter. No key or endpoint is inlined: both resolve per
     # request from the `llm-deepseek:` settings section over this entry, with the
-    # key coming from the credential store below. Thinking defaults are a deployment
-    # choice.
+    # key coming from the credential store below. The desktop profile disables
+    # this optional official route so users start with a provider they configure.
     - id: llm-deepseek
       name: '@deepseek-ai/dsh-llm-deepseek'
+      disabled: !!js process.env.DSH_DESKTOP_SHELL === '1'

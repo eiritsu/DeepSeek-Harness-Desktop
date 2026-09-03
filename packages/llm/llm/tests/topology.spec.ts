@@ -423,6 +423,40 @@ describe('model metadata enrichment', () => {
     })
   })
 
+  it('lets an explicitly authoritative catalog replace every stale adapter capability', async () => {
+    const ctx = await setup()
+    class StaleAdapter extends NoopAdapter {
+      override resolveModel(provider: string, model: string) {
+        return Promise.resolve({
+          provider,
+          id: model,
+          name: 'Owned',
+          inputModalities: ['text'] as const,
+          context: { contextWindow: 4096 },
+          defaultMaxTokens: 512,
+        })
+      }
+    }
+    ctx.llm.registerAdapter(['catalog'], new StaleAdapter())
+    ctx.llm.registerModelMetadataEnricher('authoritative-catalog', async () => ({
+      authoritative: true,
+      inputModalities: ['text', 'image'],
+      contextWindow: 8192,
+      maxTokens: 1024,
+    }))
+
+    await expect(ctx.llm.resolveModelInfo('catalog', 'model')).resolves.toMatchObject({
+      inputModalities: ['text', 'image'],
+      context: { contextWindow: 8192 },
+      defaultMaxTokens: 1024,
+    })
+    await expect(ctx.llm.prepareCall({ provider: 'catalog', model: 'model' })).resolves.toMatchObject({
+      inputModalities: ['text', 'image'],
+      context: { contextWindow: 8192 },
+      config: { maxTokens: 1024 },
+    })
+  })
+
   it('rejects duplicate identities and validates enriched capacities', async () => {
     const ctx = await setup()
     ctx.llm.registerAdapter(['catalog'], new NoopAdapter())

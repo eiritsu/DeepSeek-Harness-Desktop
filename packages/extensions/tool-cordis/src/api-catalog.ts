@@ -477,7 +477,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: 'registerFileRecognizer(recognizer: FileRecognizer): () => void',
-        description: 'Register one trusted file recognizer in precedence order.',
+        description: 'Register one trusted file recognizer in deterministic priority order.',
         parameters: [{ name: 'recognizer', description: 'effect-scoped format recognizer.' }],
         returns: 'disposer removing this exact recognizer.',
       },
@@ -1136,7 +1136,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     methods: [
       {
         signature: 'registerModelMetadataEnricher(id: string, enrich: LlmModelMetadataEnricher): () => void',
-        description: 'Register one exact-route metadata enricher after adapter-owned resolution. Enrichers fill absent fields; an authoritative catalog may replace reasoning capabilities when the adapter\'s built-in declaration is stale.',
+        description: 'Register one exact-route metadata enricher after adapter-owned resolution. Enrichers fill absent fields by default; an authoritative catalog replaces every capability field it supplies when the adapter declaration is stale.',
         parameters: [{ name: 'id', description: 'stable registration identity.' }, { name: 'enrich', description: 'asynchronous exact-route metadata lookup.' }],
         returns: 'disposer withdrawing this exact enricher.',
       },
@@ -1172,7 +1172,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: 'registerModelDiscoveryEnricher(enrich: LlmModelDiscoveryEnricher): () => void',
-        description: 'Register an ordered compatibility enricher for provider discovery results. Existing candidate fields remain authoritative and patches for unknown ids are ignored.',
+        description: 'Register an ordered compatibility enricher for provider discovery results. Existing candidate fields remain authoritative unless a patch marks itself authoritative; patches for unknown ids are ignored.',
         parameters: [{ name: 'enrich', description: 'candidate metadata lookup retained for previous-version plugins.' }],
         returns: 'disposer withdrawing this registration.',
       },
@@ -4153,7 +4153,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'FileRecognizer',
-    declaration: 'export interface FileRecognizer {\n    id: string;\n    supports(input: FileAttachmentRef | ImageAttachmentRef | FileRecognitionInput): boolean;\n    recognize(input: StoredFileAttachment | StoredImageAttachment | FileRecognitionInput, signal?: AbortSignal): Promise<FileRecognitionResult | undefined>;\n}',
+    declaration: 'export interface FileRecognizer {\n    id: string;\n    priority?: number;\n    supports(input: FileAttachmentRef | ImageAttachmentRef | FileRecognitionInput): boolean;\n    recognize(input: StoredFileAttachment | StoredImageAttachment | FileRecognitionInput, signal?: AbortSignal): Promise<FileRecognitionResult | undefined>;\n}',
   },
   {
     name: 'FileReferenceCandidate',
@@ -4469,7 +4469,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'LlmModelDiscoveryEnricher',
-    declaration: 'export type LlmModelDiscoveryEnricher = (request: LlmModelDiscoveryEnrichmentRequest) => Promise<readonly LlmDiscoveredModel[]>;',
+    declaration: 'export type LlmModelDiscoveryEnricher = (request: LlmModelDiscoveryEnrichmentRequest) => Promise<readonly LlmModelDiscoveryPatch[]>;',
   },
   {
     name: 'LlmModelDiscoveryEnrichmentRequest',
@@ -4478,6 +4478,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'LlmModelDiscoveryOperation',
     declaration: 'export interface LlmModelDiscoveryOperation extends LlmModelDiscoveryRequest {\n    signal?: AbortSignal;\n}',
+  },
+  {
+    name: 'LlmModelDiscoveryPatch',
+    declaration: 'export interface LlmModelDiscoveryPatch extends LlmDiscoveredModel {\n    authoritative?: boolean;\n}',
   },
   {
     name: 'LlmModelDiscoveryRequest',
@@ -4505,7 +4509,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'LlmModelMetadataPatch',
-    declaration: 'export interface LlmModelMetadataPatch {\n    inputModalities?: readonly ModelModality[];\n    contextWindow?: number;\n    maxTokens?: number;\n    reasoning?: LlmModelReasoningInfo;\n}',
+    declaration: 'export interface LlmModelMetadataPatch {\n    authoritative?: boolean;\n    inputModalities?: readonly ModelModality[];\n    contextWindow?: number;\n    maxTokens?: number;\n    reasoning?: LlmModelReasoningInfo;\n}',
   },
   {
     name: 'LlmModelReasoningInfo',

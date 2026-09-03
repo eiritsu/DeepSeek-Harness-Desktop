@@ -498,10 +498,12 @@ export interface Config {
   watch?: boolean
   /** Watcher write-settle window in milliseconds; defaults to 100. */
   debounceMs?: number
+  /** SQLite database used as the desktop canonical store. */
+  sqlitePath?: string
 }
 ```
 
-来源：[`packages/credentials/credentials-local/src/index.ts:64`](../packages/credentials/credentials-local/src/index.ts)
+来源：[`packages/credentials/credentials-local/src/index.ts:66`](../packages/credentials/credentials-local/src/index.ts)
 
 <a id="deepseek-aidsh-e2b"></a>
 
@@ -1807,6 +1809,28 @@ export type JsonlCompression = 'zstd' | 'none'
 
 来源：[`packages/session/session-persistence-jsonl/src/index.ts:62`](../packages/session/session-persistence-jsonl/src/index.ts)
 
+<a id="deepseek-aidsh-session-persistence-sqlite"></a>
+
+## `@deepseek-ai/dsh-session-persistence-sqlite`
+
+需要：`sessions`
+
+```ts config-catalog
+/** Plugin configuration. */
+export interface Config {
+  /** Absolute or process-relative SQLite database path. */
+  path: string
+  /** Maximum detached preparations retained by the shared coordinator. */
+  preparedSessionCacheSize?: number
+  /** Maximum intentional write batching delay. */
+  writeBatchMaxDelayMs?: number
+  /** Optional legacy JSONL root imported before SQLite serves reads. */
+  legacyRoot?: string
+}
+```
+
+来源：[`packages/session/session-persistence-sqlite/src/index.ts:26`](../packages/session/session-persistence-sqlite/src/index.ts)
+
 <a id="deepseek-aidsh-session-projection-cache"></a>
 
 ## `@deepseek-ai/dsh-session-projection-cache`
@@ -2008,10 +2032,12 @@ export interface Config {
   watch?: boolean
   /** Watcher write-settle window in milliseconds; defaults to 100. */
   debounceMs?: number
+  /** SQLite database used as the desktop canonical store. */
+  sqlitePath?: string
 }
 ```
 
-来源：[`packages/settings/settings-file/src/index.ts:22`](../packages/settings/settings-file/src/index.ts)
+来源：[`packages/settings/settings-file/src/index.ts:24`](../packages/settings/settings-file/src/index.ts)
 
 <a id="deepseek-aidsh-shell-env"></a>
 
