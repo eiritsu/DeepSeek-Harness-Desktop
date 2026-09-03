@@ -232,7 +232,7 @@ final class RuntimeController: @unchecked Sendable {
     guard let readinessURL = Self.readinessURL(for: authenticatedURL) else {
       throw DesktopError.message("Harness 返回的本地地址无效。")
     }
-    let deadline = Date().addingTimeInterval(20)
+    let deadline = Date().addingTimeInterval(120)
     var announced = false
     while Date() < deadline {
       if Self.fetchStatus(readinessURL) == 204 {
