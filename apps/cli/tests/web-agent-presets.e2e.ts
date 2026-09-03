@@ -15,6 +15,7 @@ import { SETTINGS_NAMESPACE, SHIPPED_PRESET_ROOT } from '@deepseek-ai/dsh-agent-
 import { applyChildComposition, childSessionMeta } from '@deepseek-ai/dsh-subagent'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-compaction-basic'
+import type {} from '@deepseek-ai/dsh-compaction-tool-result-pruner'
 import type {} from '@deepseek-ai/dsh-skill'
 import type {} from '@deepseek-ai/dsh-tools'
 // Type-only: resolves `ctx.get('sessionProjections')` and `ctx.get('tokenMeter')`.
@@ -212,6 +213,23 @@ describe('the shipped Web composition', () => {
     }
   })
 
+  it('enables host compaction with context-window-scaled policy', () => {
+    const compaction = ctx.get('compaction')
+    expect(compaction).toBeDefined()
+    if (compaction === undefined) throw new Error('Web profile must provide host compaction')
+    const config = (compaction as unknown as { readonly config: Record<string, unknown> }).config
+    expect(config).toMatchObject({
+      thresholdRatio: 0.8,
+      retainRatio: 0.16,
+      maxTokens: 8192,
+      compactionRetries: 1,
+      maxOverflowRetries: 1,
+      auto: true,
+    })
+    const pruner = ctx.get('toolResultPruner')
+    expect(pruner?.config).toEqual({ thresholdChars: 8192, headChars: 4096, tailChars: 1024 })
+  })
+
   it('supplies both shipped presets, and only those, from the system root', async () => {
     const listed = await ctx.agentPresets.list()
 
@@ -292,8 +310,8 @@ describe('the shipped Web composition', () => {
       expect(JSON.stringify(assembly.tools.find(tool => tool.name === 'str_replace_editor')?.parameters))
         .toContain('Absolute path')
       expect(ctx.commands.find(handle.agent, 'goal')).toBeUndefined()
-      expect(ctx.agentPresets.serviceFor(handle.agent, 'compaction')).toBeUndefined()
-      expect(handle.agent.ctx.get('compaction')).toBeUndefined()
+      expect(handle.agent.ctx.get('compaction')).toBeDefined()
+      expect(ctx.commands.find(handle.agent, 'compact')).toBeDefined()
     } finally {
       await handle.dispose()
     }

@@ -45,7 +45,7 @@ Three host-plane plugins register their own settings namespace, and one browser-
 
 A user edits the shell's command timeout and output cap, the agent loop's parallel tool-call cap, and the search provider's key, endpoint, and per-request budget from the settings page, with each field marking whether they set it and offering a reset.
 
-Two costs are real. Adding a fourth plugin still requires an entry in the apiproxy allowlist, so the page's reach is a Host decision rather than a plugin's. And the plugins the web deployment moved into the agent plane — the file tools, the skills, compaction, the todo tool — appear nowhere here, which is most of what a user might expect to find; their configuration remains the preset editor's.
+Two costs are real. Adding a fourth plugin still requires an entry in the apiproxy allowlist, so the page's reach is a Host decision rather than a plugin's. The file tools, skills, and todo tool remain preset-owned and appear nowhere here; Web compaction is a host capability with fixed profile defaults rather than a plugin-settings tab.
 
 The bash and pwsh executors now expose `config` as a getter over a source thunk rather than a readonly field. Every read site was already per-call, so nothing else changed, but a subclass that captured `this.config` at construction would silently pin the composition entry.
 

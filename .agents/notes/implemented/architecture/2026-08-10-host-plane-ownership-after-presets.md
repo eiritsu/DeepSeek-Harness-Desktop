@@ -16,7 +16,7 @@ Nothing named an agent that joined no preset. The join is a scope-parent link; w
 
 ## Decision
 
-**The meter is host-plane.** `dsh-token-meter` returns to the host composition and leaves the presets' `isolate` map, so `compaction-basic` and `tool-result-pruner` resolve the one host instance from inside their realm. The presets keep the realm and the backend — what a preset chooses is whether its agent compacts, not whether its tokens are counted. This is the criterion `tasks` and `goals` are already read by, applied to a Service whose *projection* reach is what made preset ownership wrong: a unit whose empty value is indistinguishable from a real one cannot be per-composition while the table it registers into is per-process.
+**The meter is host-plane.** `dsh-token-meter` returns to the host composition and leaves the presets' `isolate` map. Its process-wide projection units cannot be owned by an individual preset because a unit whose empty value is indistinguishable from a real one cannot be per-composition while the table it registers into is per-process. Web compaction follows the same host-plane ownership rule; standalone profiles may still omit it.
 
 **An unjoined agent is named twice, at two different points.** `AgentPresets` logs one warning per agent published with a scope chain of length one while a roster is configured. The invariant companion fails instead — and at `system-prompt/assemble`, not at publication, because an unjoined agent is legal until it addresses a model: `recompose` binds exactly such an agent as its first link, and prompt assembly is the only caller that supplies an agent scope, so a host assembly and a standing mount are both correctly out of range.
 
@@ -40,6 +40,6 @@ Three limits stay open and are recorded where they bite rather than fixed here: 
 
 ## Consequences
 
-The context meter becomes a per-session fact instead of a function of mount history. A preset can no longer opt out of token accounting; no shipped preset did, and `minimal` now says it drops auto-compaction rather than the accounting.
+The context meter becomes a per-session fact instead of a function of mount history. Web presets share the host compaction service and cannot opt out of its automatic policy; standalone profiles keep their independent composition choices.
 
 The warning is advisory, so a deployment that adds a roster to the ACP or SDK-server entry points still starts agents with no tools — it just says so once per agent instead of silently. The invariant reaches only compositions that load `dsh-invariants`, which fences package tests and development hosts, not a shipped one.

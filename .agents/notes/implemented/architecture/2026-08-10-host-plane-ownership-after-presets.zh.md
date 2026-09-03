@@ -16,7 +16,7 @@ Status: implemented
 
 ## 决策
 
-**meter 属于宿主平面。** `dsh-token-meter` 回到宿主组装，并离开各 preset 的 `isolate` 映射，于是 `compaction-basic` 与 `tool-result-pruner` 在自己的 realm 内部解析到那一份宿主实例。preset 保留 realm 与压缩后端——preset 选择的是它的 agent 是否压缩，而不是它的 token 是否被计。这正是 `tasks` 与 `goals` 已经采用的判据，只是这次适用于一个因**投影**触达面而不该归 preset 所有的 Service：当一个单元的空值与真实值无法区分时，只要它注册进的那张表是进程级的，它就不能是逐组装的。
+**meter 属于宿主平面。** `dsh-token-meter` 回到宿主组装，并离开各 preset 的 `isolate` 映射。它的进程级投影单元不能由单个 preset 所有：当一个单元的空值与真实值无法区分时，只要它注册进的表是进程级的，就不能按组合划分。Web 压缩遵循同一宿主平面所有权规则；独立 profile 仍可省略它。
 
 **未加入的 agent 在两个不同的点上被指出两次。** 在配置了名单的前提下，`AgentPresets` 对每个作用域链长度为一就发布的 agent 记录一条警告。invariant 配套则直接失败——并且发生在 `system-prompt/assemble` 而非发布时，因为一个未加入的 agent 在它对模型说话之前都是合法的：`recompose` 绑定的正是这样一个 agent 作为它的首次链接；而提示词组装是唯一会提供 agent 作用域的调用方，因此宿主组装与常驻挂载都正确地落在检查范围之外。
 
@@ -40,6 +40,6 @@ Status: implemented
 
 ## 后果
 
-context meter 成为逐会话的事实，而不再是挂载历史的函数。代价是 preset 不能再选择不做 token 记账；随附的 preset 没有一个这么做，`minimal` 现在也写明它放弃的是自动压缩而非记账。
+context meter 成为逐会话的事实，而不再是挂载历史的函数。Web preset 共享宿主压缩服务，不能退出其自动策略；独立 profile 仍保持各自的组合选择。
 
 那条警告是建议性的，因此给 ACP 或 SDK server 入口加上名单的部署依然会启动没有工具的 agent——只是每个 agent 会说一次，而不再静默。invariant 只触达装载了 `dsh-invariants` 的组装，因此它把关的是包测试与开发宿主，不是随附宿主。
