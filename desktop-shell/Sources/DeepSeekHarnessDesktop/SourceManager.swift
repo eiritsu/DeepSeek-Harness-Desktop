@@ -16,6 +16,7 @@ enum SourceUpdateTopology: Equatable {
 final class SourceManager: @unchecked Sendable {
   private static let bootstrapVersionFile = ".dsh-desktop-bootstrap-version"
   private static let legacyMigrationMarker = ".dsh-home-migration-v2"
+  private static let legacyDatabaseMigrationMarker = ".dsh-home-migration-v5"
   private static let managedExtensionPaths = [
     // These Harness-owned packages are shipped as part of the desktop build.
     // The public update branch may advance independently, so keep the local
@@ -108,7 +109,7 @@ final class SourceManager: @unchecked Sendable {
         let dataStore = try DesktopDataStore(supportRoot: self.supportRoot)
         try dataStore.initialize(legacyHome: self.legacyHome)
         defer { dataStore.close() }
-        try self.migrateLegacyHome(progress: progress)
+        try self.migrateLegacyHome(progress: progress, dataStore: dataStore)
         try dataStore.synchronizePayloads(from: self.dshHome)
         let source = try self.resolveSource(progress: progress)
         try self.prepare(source, progress: progress)
@@ -121,9 +122,9 @@ final class SourceManager: @unchecked Sendable {
   }
 
   /// Preserve the legacy Harness home while moving its durable data into Application Support.
-  private func migrateLegacyHome(progress: @escaping @Sendable (String) -> Void) throws {
+  private func migrateLegacyHome(progress: @escaping @Sendable (String) -> Void, dataStore: DesktopDataStore) throws {
     let marker = dshHome.appendingPathComponent(Self.legacyMigrationMarker)
-    guard !FileManager.default.fileExists(atPath: marker.path), let legacyHome else { return }
+    guard let legacyHome else { return }
     let fileManager = FileManager.default
     guard legacyHome.standardizedFileURL != dshHome.standardizedFileURL else {
       try Data("skipped: same home\n".utf8).write(to: marker, options: .atomic)
@@ -134,11 +135,20 @@ final class SourceManager: @unchecked Sendable {
       try Data("skipped: legacy home absent\n".utf8).write(to: marker, options: .atomic)
       return
     }
-    progress("正在迁移现有 Harness 数据到 Application Support…\n")
     try fileManager.createDirectory(at: dshHome, withIntermediateDirectories: true)
-    try mergeDirectory(from: legacyHome, into: dshHome, relativePath: "")
-    try Data("migrated from ~/.dsh\n".utf8).write(to: marker, options: .atomic)
-    LogStore.shared.append("migrated legacy Harness home from \(legacyHome.path)")
+    if !fileManager.fileExists(atPath: marker.path) {
+      progress("正在迁移现有 Harness 数据到 Application Support…\n")
+      try mergeDirectory(from: legacyHome, into: dshHome, relativePath: "")
+      try Data("migrated from ~/.dsh\n".utf8).write(to: marker, options: .atomic)
+      LogStore.shared.append("migrated legacy Harness home from \(legacyHome.path)")
+    }
+    let legacyDatabase = legacyHome.appendingPathComponent("dsh-desktop.sqlite")
+    let databaseMarker = dshHome.appendingPathComponent(Self.legacyDatabaseMigrationMarker)
+    if fileManager.fileExists(atPath: legacyDatabase.path), !fileManager.fileExists(atPath: databaseMarker.path) {
+      try dataStore.mergeLegacyDatabase(from: legacyDatabase)
+      try Data("merged legacy SQLite session data\n".utf8).write(to: databaseMarker, options: .atomic)
+      LogStore.shared.append("merged legacy Harness SQLite data from \(legacyDatabase.path)")
+    }
   }
 
   private func mergeDirectory(from source: URL, into destination: URL, relativePath: String) throws {

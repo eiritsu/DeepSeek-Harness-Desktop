@@ -375,6 +375,32 @@ private func createSourceArchive(from source: URL, at archive: URL) throws {
   #expect(plugins.isEmpty)
 }
 
+@Test func installedListIncludesAppEmbeddedFeaturePackages() async throws {
+  let temporaryRoot = FileManager.default.temporaryDirectory
+    .appendingPathComponent("dsh-installed-embedded-\(UUID().uuidString)", isDirectory: true)
+  defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+  let profileRoot = temporaryRoot.appendingPathComponent("home/profiles/web", isDirectory: true)
+  let packageRoot = temporaryRoot.appendingPathComponent("packages/extensions/external-tools", isDirectory: true)
+  try FileManager.default.createDirectory(at: profileRoot, withIntermediateDirectories: true)
+  try FileManager.default.createDirectory(at: packageRoot, withIntermediateDirectories: true)
+  try Data(#"{"name":"@deepseek-ai/dsh-external-tools","version":"0.1.2"}"#.utf8)
+    .write(to: packageRoot.appendingPathComponent("package.json"))
+  try Data(#"{"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base","@deepseek-ai/dsh-web-app"]}}}"#.utf8)
+    .write(to: profileRoot.appendingPathComponent("package.json"))
+  let manager = PluginManager(
+    supportRoot: temporaryRoot.appendingPathComponent("support", isDirectory: true),
+    dshHome: temporaryRoot.appendingPathComponent("home", isDirectory: true)
+  )
+
+  let plugins = try await withCheckedThrowingContinuation { continuation in
+    manager.list(sourceRoot: temporaryRoot) { continuation.resume(with: $0) }
+  }
+
+  let plugin = try #require(plugins.first { $0.name == "@deepseek-ai/dsh-external-tools" })
+  #expect(plugin.version == "0.1.2")
+  #expect(!plugin.removable)
+}
+
 @Test func recoveryProfileTemporarilySkipsOnlyTheFailingSideloadedBundle() async throws {
   let temporaryRoot = FileManager.default.temporaryDirectory
     .appendingPathComponent("dsh-plugin-recovery-\(UUID().uuidString)", isDirectory: true)

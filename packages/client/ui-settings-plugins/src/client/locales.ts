@@ -17,6 +17,10 @@ export type PluginsSettingsLocaleKey =
   | 'subagentModelSelectionPartial' | 'subagentModelSelectionUnavailable'
   | 'subagentModelSelectionUnavailableGroup' | 'subagentModelSelectionEmpty'
   | 'subagentModelSelectionRequired' | 'subagentModelSelectionConflict' | 'subagentModelSelectionOff'
+  | 'externalToolsTab' | 'externalToolsHint' | 'externalToolsLoading' | 'externalToolsEnable'
+  | 'externalToolsKeyConfigured' | 'externalToolsKeyUnset' | 'externalToolsKeyPlaceholder'
+  | 'externalToolsApiKey' | 'externalToolsEndpoint' | 'externalToolsEndpointPlaceholder'
+  | 'externalToolsSave' | 'externalToolsClear' | 'externalToolsRetry' | 'externalToolsUnsupported'
 
 /** English copy. */
 export const en: Record<PluginsSettingsLocaleKey, string> = {
@@ -72,6 +76,20 @@ export const en: Record<PluginsSettingsLocaleKey, string> = {
   subagentModelSelectionRequired: 'Select at least one model before saving.',
   subagentModelSelectionConflict: 'Settings changed elsewhere. Discard your draft and try again.',
   subagentModelSelectionOff: 'Subagents use configured defaults or inherit the parent agent\'s model. Saved model choices are retained.',
+  externalToolsTab: 'Tools & connections',
+  externalToolsHint: 'Configure an API key to enable a provider for the next tool call. Keys stay in the credential store and never enter settings or session logs.',
+  externalToolsLoading: 'Loading tool connections…',
+  externalToolsEnable: 'Enable',
+  externalToolsKeyConfigured: 'Configured',
+  externalToolsKeyUnset: 'Not configured',
+  externalToolsKeyPlaceholder: 'Paste API key',
+  externalToolsApiKey: 'API key',
+  externalToolsEndpoint: 'Endpoint',
+  externalToolsEndpointPlaceholder: 'Leave blank for the provider default',
+  externalToolsSave: 'Save',
+  externalToolsClear: 'Clear',
+  externalToolsRetry: 'Retry',
+  externalToolsUnsupported: 'Credential support is ready; tool registration is coming soon.',
 }
 
 /** Simplified Chinese copy. */
@@ -128,4 +146,18 @@ export const zh: Record<PluginsSettingsLocaleKey, string> = {
   subagentModelSelectionRequired: '保存前请至少选择一个模型。',
   subagentModelSelectionConflict: '设置已在其他位置更新。请放弃修改后重试。',
   subagentModelSelectionOff: '关闭后，Subagent 使用配置的默认模型或继承父 Agent 的模型；已选模型会保留。',
+  externalToolsTab: '工具与连接',
+  externalToolsHint: '配置 API Key 后，DSH 会在下一次工具调用前启用对应工具。密钥由凭据服务保存，不会写入设置或会话记录。',
+  externalToolsLoading: '正在读取工具连接…',
+  externalToolsEnable: '启用',
+  externalToolsKeyConfigured: '已配置',
+  externalToolsKeyUnset: '未配置',
+  externalToolsKeyPlaceholder: '粘贴 API Key',
+  externalToolsApiKey: 'API Key',
+  externalToolsEndpoint: '接口地址',
+  externalToolsEndpointPlaceholder: '留空使用提供方默认地址',
+  externalToolsSave: '保存',
+  externalToolsClear: '清除',
+  externalToolsRetry: '重试',
+  externalToolsUnsupported: '凭据配置已就绪，工具接入即将开放。',
 }

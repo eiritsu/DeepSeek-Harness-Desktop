@@ -58,6 +58,41 @@ final class DesktopDataStore: @unchecked Sendable {
     }
   }
 
+  /// Merge durable session and preference rows from the pre-Application-Support database.
+  ///
+  /// @param source - Legacy `dsh-desktop.sqlite` to merge without replacing the current schema.
+  func mergeLegacyDatabase(from source: URL) throws {
+    guard database != nil else { throw DesktopError.message("桌面 SQLite 数据库尚未初始化。") }
+    let escaped = source.path.replacingOccurrences(of: "'", with: "''")
+    try execute("ATTACH DATABASE '\(escaped)' AS legacy")
+    do {
+      try execute("INSERT OR IGNORE INTO dsh_session_metadata(id, header_json, updated_at) SELECT id, header_json, updated_at FROM legacy.dsh_session_metadata")
+      try execute("INSERT OR IGNORE INTO dsh_session_events(session_id, seq, event_json) SELECT session_id, seq, event_json FROM legacy.dsh_session_events")
+      try execute("INSERT OR REPLACE INTO dsh_session_store_metadata(key, value) SELECT key, value FROM legacy.dsh_session_store_metadata")
+      try execute("INSERT OR REPLACE INTO u_session_projcache_sessions(key, value) SELECT key, value FROM legacy.u_session_projcache_sessions")
+      try execute("INSERT OR REPLACE INTO u_workspace_workspaces(key, value) SELECT key, value FROM legacy.u_workspace_workspaces")
+      try execute("""
+        WITH merged(id, ordinal) AS (
+          SELECT value, CAST(key AS INTEGER)
+          FROM json_each((SELECT value FROM unit_globals WHERE unit = 'workspace'), '$.workspaceIds')
+          UNION ALL
+          SELECT value, 1000000 + CAST(key AS INTEGER)
+          FROM json_each((SELECT value FROM legacy.unit_globals WHERE unit = 'workspace'), '$.workspaceIds')
+        ), ordered(id, ordinal) AS (
+          SELECT id, MIN(ordinal) FROM merged GROUP BY id ORDER BY MIN(ordinal)
+        )
+        UPDATE unit_globals
+        SET value = json_set(value, '$.workspaceIds', json((SELECT json_group_array(id) FROM ordered)))
+        WHERE unit = 'workspace'
+        """)
+      try execute("INSERT OR REPLACE INTO settings(namespace, payload_json, updated_at) SELECT namespace, payload_json, updated_at FROM legacy.settings")
+      try execute("DETACH DATABASE legacy")
+    } catch {
+      try? execute("DETACH DATABASE legacy")
+      throw error
+    }
+  }
+
   /// Return all inventory rows for diagnostics and migration verification.
   func inventory() throws -> [(relativePath: String, kind: String, bytes: Int64)] {
     guard database != nil else { throw DesktopError.message("桌面 SQLite 数据库尚未初始化。") }

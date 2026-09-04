@@ -100,12 +100,17 @@ struct DesktopRecoveryProfile: Sendable {
 final class PluginManager: @unchecked Sendable {
   /// Bundles shipped by the desktop distribution and managed by the app.
   private static let managedBundleNames = [
-    "@deepseek-ai/dsh-client-ui-plugin-library",
-    "@deepseek-ai/dsh-client-ui-skill-library",
     "@deepseek-ai/dsh-file-recognizer-office",
     "@deepseek-ai/dsh-lark",
     "@deepseek-ai/dsh-model-catalog",
   ]
+  /// Client features are mounted by `dsh-web-app` rather than as profile
+  /// bundles. They remain App-owned and should still be visible in inventory.
+  private static let embeddedManagedBundleNames = Set([
+    "@deepseek-ai/dsh-client-ui-plugin-library",
+    "@deepseek-ai/dsh-client-ui-skill-library",
+    "@deepseek-ai/dsh-external-tools",
+  ])
   private struct CatalogCacheKey: Hashable {
     let page: Int
     let pageSize: Int
@@ -235,9 +240,18 @@ final class PluginManager: @unchecked Sendable {
         var dsh = (root["dsh"] as? [String: Any]) ?? [:]
         var profileConfig = (dsh["profile"] as? [String: Any]) ?? [:]
         var bundles = (profileConfig["bundles"] as? [String]) ?? ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app"]
+        // Client-only packages are roster rows in dsh-web-app, not profile
+        // bundles. Keeping them here makes the host loader reject the profile
+        // because they intentionally have no `dsh.bundle` declaration.
+        let clientOnly = ["@deepseek-ai/dsh-client-ui-plugin-library", "@deepseek-ai/dsh-client-ui-skill-library"]
+        let bundleCountBeforeCleanup = bundles.count
+        bundles.removeAll { clientOnly.contains($0) }
+        let removedClientOnly = bundleCountBeforeCleanup != bundles.count
+        // Only packages that declare real profile bundles may be written to
+        // `dsh.profile.bundles`; embedded client features are roster-only.
         let available = Self.managedBundleNames.filter { self.hasPackage(named: $0, in: sourceRoot) }
         let additions = available.filter { !bundles.contains($0) }
-        guard !additions.isEmpty || !FileManager.default.fileExists(atPath: manifestURL.path) else {
+        guard !additions.isEmpty || removedClientOnly || !FileManager.default.fileExists(atPath: manifestURL.path) else {
           completion(.success(()))
           return
         }
@@ -292,7 +306,16 @@ final class PluginManager: @unchecked Sendable {
         }
         let bundles = ((root["dsh"] as? [String: Any])?["profile"] as? [String: Any])?["bundles"] as? [String] ?? []
         let managed = Set(Self.managedBundleNames)
-        let builtIns = bundles.filter { managed.contains($0) && dependencies[$0] == nil }.map { name in
+        let embedded = Self.embeddedManagedBundleNames
+        let activeBase = bundles.contains("@deepseek-ai/dsh-base")
+        let activeWebApp = bundles.contains("@deepseek-ai/dsh-web-app")
+        let builtInNames = bundles.filter { (managed.contains($0) || embedded.contains($0)) && dependencies[$0] == nil }
+          + (activeBase && activeWebApp
+            ? Self.embeddedManagedBundleNames.filter { name in
+              !bundles.contains(name) && dependencies[name] == nil && self.hasPackage(named: name, in: sourceRoot)
+            }
+            : [])
+        let builtIns = builtInNames.map { name in
           DesktopInstalledPlugin(
             name: name,
             displayName: name,
@@ -421,20 +444,30 @@ final class PluginManager: @unchecked Sendable {
           throw DesktopError.message("Skill 已存在：\(slug)")
         }
         let payloadRoot = try Self.skillPayloadRoot(in: stage)
-        let stagedDestination = stage.appendingPathComponent("installed", isDirectory: true)
-        try FileManager.default.createDirectory(at: stagedDestination, withIntermediateDirectories: true)
         let entries = try FileManager.default.contentsOfDirectory(at: payloadRoot, includingPropertiesForKeys: nil)
           .filter { !Self.ignoredSkillArchiveEntries.contains($0.lastPathComponent) }
         guard entries.contains(where: { $0.lastPathComponent == "SKILL.md" }) else {
           throw DesktopError.message("Skill 压缩包缺少 SKILL.md。")
         }
-        for entry in entries {
-          try FileManager.default.copyItem(
-            at: entry,
-            to: stagedDestination.appendingPathComponent(entry.lastPathComponent),
-          )
+        if payloadRoot != stage {
+          // Move the wrapper directory as a unit. This preserves nested files
+          // whose archive names are not valid for recursive FileManager copy.
+          try FileManager.default.moveItem(at: payloadRoot, to: destination)
+        } else {
+          let stagedDestination = stage.appendingPathComponent("installed", isDirectory: true)
+          try FileManager.default.createDirectory(at: stagedDestination, withIntermediateDirectories: true)
+          for entry in entries {
+            // Move top-level entries instead of recursively copying them. Some
+            // SkillHub archives contain malformed UTF-8 names under references;
+            // copying revalidates those names while moving keeps the extracted
+            // archive payload intact.
+            try FileManager.default.moveItem(
+              at: entry,
+              to: stagedDestination.appendingPathComponent(entry.lastPathComponent),
+            )
+          }
+          try FileManager.default.moveItem(at: stagedDestination, to: destination)
         }
-        try FileManager.default.moveItem(at: stagedDestination, to: destination)
         self.appendAudit(action: "skill-install", subject: slug, status: "success", message: "Skill 已保存到 Application Support。")
         self.refreshSQLitePayloads()
         completion(.success(skillsRoot.path))

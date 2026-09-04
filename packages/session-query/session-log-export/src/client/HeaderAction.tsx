@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useState } from 'react'
 import { IconDownloadOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { SessionLogDownloadDialog, type SessionLogDownloadDialogProps } from './Dialog.tsx'
 import css from './HeaderAction.module.css'
@@ -12,9 +13,19 @@ export function SessionLogDownloadHeaderAction(props: SessionLogDownloadDialogPr
   const { sessionId, useSessionLogDownload, request, t } = props
   const entry = useSessionLogDownload(state => state.bySession[String(sessionId)])
   const busy = entry?.status === 'downloading'
+  const [copied, setCopied] = useState(false)
 
   return (
     <>
+      <button
+        type="button"
+        className={css.sessionLogButton}
+        onClick={() => {
+          void navigator.clipboard.writeText(String(sessionId)).then(() => { setCopied(true) })
+        }}
+      >
+        <span>{copied ? t('header.copied') : t('header.copyId')}</span>
+      </button>
       <button
         type="button"
         className={css.sessionLogButton}
