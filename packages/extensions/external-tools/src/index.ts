@@ -50,7 +50,9 @@ export class ExternalToolsRegistry extends Service {
     }, 'external-tools: tool registrations')
   }
 
-  /** Secret-free provider status for future diagnostics surfaces. */
+  /** Secret-free provider status for future diagnostics surfaces.
+   * @returns One status record for each catalog entry.
+   */
   status(): ExternalToolStatus[] {
     const current = this.current()
     return EXTERNAL_TOOL_CATALOG.map(entry => ({
@@ -85,4 +87,3 @@ export class ExternalToolsRegistry extends Service {
 export const name = 'external-tools'
 export const inject = ['tools', 'credentials']
 export function apply(ctx: Context, config: Config): void { new ExternalToolsRegistry(ctx, config) }
-export default ExternalToolsRegistry
