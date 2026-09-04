@@ -90,6 +90,25 @@ final class SourceManager: @unchecked Sendable {
     return "\(version)+\(build)"
   }
 
+  /// Whether the candidate application carries a newer managed source.
+  ///
+  /// Several installed copies can share Application Support. A user may open
+  /// an older copy after installing a newer one, so a stale app must never
+  /// replace the shared source with its older bootstrap archive.
+  static func bootstrapVersionIsNewer(candidate: String, installed: String) -> Bool {
+    let candidateParts = candidate.split(separator: "+", maxSplits: 1).map(String.init)
+    let installedParts = installed.split(separator: "+", maxSplits: 1).map(String.init)
+    guard candidateParts.count == 2, installedParts.count == 2 else { return true }
+    let candidateVersion = candidateParts[0].split(separator: ".").compactMap { Int($0) }
+    let installedVersion = installedParts[0].split(separator: ".").compactMap { Int($0) }
+    guard candidateVersion.count == 3, installedVersion.count == 3 else { return true }
+    if candidateVersion != installedVersion { return candidateVersion.lexicographicallyPrecedes(installedVersion) == false }
+    if let candidateBuild = Int(candidateParts[1]), let installedBuild = Int(installedParts[1]) {
+      return candidateBuild > installedBuild
+    }
+    return true
+  }
+
   static func updateTopology(
     sameCommit: Bool,
     remoteContainsLocal: Bool,
@@ -266,7 +285,8 @@ final class SourceManager: @unchecked Sendable {
     let marker = bootstrap.appendingPathComponent(Self.bootstrapVersionFile)
     let installedVersion = try? String(contentsOf: marker, encoding: .utf8)
       .trimmingCharacters(in: .whitespacesAndNewlines)
-    return installedVersion != bootstrapVersion
+    guard let installedVersion else { return true }
+    return Self.bootstrapVersionIsNewer(candidate: bootstrapVersion, installed: installedVersion)
   }
 
   private func installBootstrap(

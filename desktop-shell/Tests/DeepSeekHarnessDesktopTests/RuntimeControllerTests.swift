@@ -541,6 +541,10 @@ private func createSourceArchive(from source: URL, at archive: URL) throws {
   #expect(SourceManager.bootstrapIdentity(version: "0.1.3", build: "20260826070001") == "0.1.3+20260826070001")
   #expect(SourceManager.bootstrapIdentity(version: nil, build: "1") == nil)
   #expect(SourceManager.bootstrapIdentity(version: "0.1.3", build: nil) == nil)
+  #expect(SourceManager.bootstrapVersionIsNewer(candidate: "0.1.3+20260826070001", installed: "0.1.3+20260826070000"))
+  #expect(!SourceManager.bootstrapVersionIsNewer(candidate: "0.1.3+20260826070000", installed: "0.1.3+20260826070001"))
+  #expect(SourceManager.bootstrapVersionIsNewer(candidate: "0.1.4+1", installed: "0.1.3+99999999999999"))
+  #expect(!SourceManager.bootstrapVersionIsNewer(candidate: "0.1.2+99999999999999", installed: "0.1.3+1"))
 }
 
 @Test func legacyHomeIsMergedIntoApplicationSupportWithoutDeletingTheSource() async throws {

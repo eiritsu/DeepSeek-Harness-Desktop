@@ -10,7 +10,7 @@ The desktop distribution combined files from local Harness and plugin checkouts 
 
 ## Decision
 
-Distribution packaging requires clean Harness and plugin checkouts and requires each checkout HEAD to equal its published `main` ref before creating the archive. The snapshot is copied from committed Git trees rather than the mutable index/worktree file list. The archive contains a `runtime-manifest.json` with the Harness commit, plugin commit, package versions, and SHA-256 digests for the CLI, Web, lockfile, and bundled plugin artifacts. The desktop shell validates this manifest and every listed artifact before replacing its managed source snapshot.
+Distribution packaging requires clean Harness and plugin checkouts and requires each checkout HEAD to equal its published `main` ref before creating the archive. The snapshot is copied from committed Git trees rather than the mutable index/worktree file list. The archive contains a `runtime-manifest.json` with the Harness commit, plugin commit, package versions, and SHA-256 digests for the CLI, Web, lockfile, and bundled plugin artifacts. The desktop shell validates this manifest and every listed artifact before replacing its managed source snapshot. Shared Application Support source is replaced only by a newer application build, so an older installed copy cannot downgrade a newer runtime.
 
 ## Alternatives considered
 
@@ -22,4 +22,4 @@ Distribution packaging requires clean Harness and plugin checkouts and requires 
 
 ## Consequences
 
-An unpublished or dirty checkout cannot generate a distribution DMG, and a tampered or incomplete bootstrap archive fails before activation. Building still has a first-launch dependency install until the sealed runtime migration is complete, but that install now runs against a pinned, inspectable source snapshot. The manifest provides the provenance data needed for the later no-install runtime closure.
+An unpublished or dirty checkout cannot generate a distribution DMG, and a tampered or incomplete bootstrap archive fails before activation. Multiple installed copies can share the managed source without an older copy replacing a newer one. Building still has a first-launch dependency install until the sealed runtime migration is complete, but that install now runs against a pinned, inspectable source snapshot. The manifest provides the provenance data needed for the later no-install runtime closure.

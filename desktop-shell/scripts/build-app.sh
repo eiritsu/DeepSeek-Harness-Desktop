@@ -347,6 +347,7 @@ NODE
       --config.confirmModulesPurge=false
   )
   write_runtime_manifest "$SNAPSHOT_ROOT" "$HARNESS_COMMIT" "$PLUGIN_COMMIT"
+  cp "$SNAPSHOT_ROOT/runtime-manifest.json" "$APP_ROOT/Contents/Resources/RuntimeManifest.json"
   COPYFILE_DISABLE=1 /usr/bin/tar -czf \
     "$APP_ROOT/Contents/Resources/SourceBootstrap.tar.gz" \
     -C "$SNAPSHOT_ROOT" .

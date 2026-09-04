@@ -10,7 +10,7 @@
 
 ## Decision
 
-发行打包要求 Harness 和插件 checkout 都没有未提交文件，并且各自的 HEAD 必须等于已发布的 `main` 引用。快照从已提交的 Git tree 复制，而不是从可变的 index 或工作区文件列表复制。归档内写入 `runtime-manifest.json`，记录 Harness commit、插件 commit、包版本，以及 CLI、Web、lockfile 和内置插件产物的 SHA-256 摘要。桌面壳在替换受管源码快照前校验该 manifest 和其中列出的每个产物。
+发行打包要求 Harness 和插件 checkout 都没有未提交文件，并且各自的 HEAD 必须等于已发布的 `main` 引用。快照从已提交的 Git tree 复制，而不是从可变的 index 或工作区文件列表复制。归档内写入 `runtime-manifest.json`，记录 Harness commit、插件 commit、包版本，以及 CLI、Web、lockfile 和内置插件产物的 SHA-256 摘要。桌面壳在替换受管源码快照前校验该 manifest 和其中列出的每个产物。多个安装副本共用 Application Support 源码时，只允许更新版本较新的应用替换它，旧副本不能降级运行时。
 
 ## Alternatives considered
 
@@ -22,4 +22,4 @@
 
 ## Consequences
 
-未发布或有脏文件的 checkout 不能生成发行 DMG，被篡改或不完整的 bootstrap 归档会在激活前失败。封闭 runtime 迁移完成前，首次启动仍需安装依赖，但安装对象已经是固定且可审计的源码快照。manifest 为后续取消首次安装的完整 runtime closure 提供来源依据。
+未发布或有脏文件的 checkout 不能生成发行 DMG，被篡改或不完整的 bootstrap 归档会在激活前失败。多个安装副本可以安全共用受管源码，旧副本不会覆盖新副本。封闭 runtime 迁移完成前，首次启动仍需安装依赖，但安装对象已经是固定且可审计的源码快照。manifest 为后续取消首次安装的完整 runtime closure 提供来源依据。
