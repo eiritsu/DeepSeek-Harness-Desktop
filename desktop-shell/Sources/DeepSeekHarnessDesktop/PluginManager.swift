@@ -421,20 +421,30 @@ final class PluginManager: @unchecked Sendable {
           throw DesktopError.message("Skill 已存在：\(slug)")
         }
         let payloadRoot = try Self.skillPayloadRoot(in: stage)
-        let stagedDestination = stage.appendingPathComponent("installed", isDirectory: true)
-        try FileManager.default.createDirectory(at: stagedDestination, withIntermediateDirectories: true)
         let entries = try FileManager.default.contentsOfDirectory(at: payloadRoot, includingPropertiesForKeys: nil)
           .filter { !Self.ignoredSkillArchiveEntries.contains($0.lastPathComponent) }
         guard entries.contains(where: { $0.lastPathComponent == "SKILL.md" }) else {
           throw DesktopError.message("Skill 压缩包缺少 SKILL.md。")
         }
-        for entry in entries {
-          try FileManager.default.copyItem(
-            at: entry,
-            to: stagedDestination.appendingPathComponent(entry.lastPathComponent),
-          )
+        if payloadRoot != stage {
+          // Move the wrapper directory as a unit. This preserves nested files
+          // whose archive names are not valid for recursive FileManager copy.
+          try FileManager.default.moveItem(at: payloadRoot, to: destination)
+        } else {
+          let stagedDestination = stage.appendingPathComponent("installed", isDirectory: true)
+          try FileManager.default.createDirectory(at: stagedDestination, withIntermediateDirectories: true)
+          for entry in entries {
+            // Move top-level entries instead of recursively copying them. Some
+            // SkillHub archives contain malformed UTF-8 names under references;
+            // copying revalidates those names while moving keeps the extracted
+            // archive payload intact.
+            try FileManager.default.moveItem(
+              at: entry,
+              to: stagedDestination.appendingPathComponent(entry.lastPathComponent),
+            )
+          }
+          try FileManager.default.moveItem(at: stagedDestination, to: destination)
         }
-        try FileManager.default.moveItem(at: stagedDestination, to: destination)
         self.appendAudit(action: "skill-install", subject: slug, status: "success", message: "Skill 已保存到 Application Support。")
         self.refreshSQLitePayloads()
         completion(.success(skillsRoot.path))
