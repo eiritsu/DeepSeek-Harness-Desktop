@@ -1,4 +1,5 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { DatabaseSync } from 'node:sqlite'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -32,6 +33,35 @@ describe('SQLite session persistence', () => {
       expect((await ctx2.sessionPersistence.readRaw(id))?.content).toContain('session/end-seed')
       await fiber2.dispose()
       expect((await readFile(path)).byteLength).toBeGreaterThan(0)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('deletes a persisted session and its cascading events', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-session-sqlite-delete-'))
+    const path = join(root, 'dsh.sqlite')
+    try {
+      const ctx = new Context()
+      await ctx.plugin(SessionStore)
+      const fiber = await ctx.plugin(SqliteSessionPersistence, { path })
+      const id = SessionId('sqlite-delete-session')
+      const meta: SessionHeader = { version: 0, id, createdAt: 1, cwd: '/tmp' }
+      const event: SessionEvent = { type: 'session/end-seed', seq: 0, time: 2, data: {} }
+      await ctx.sessionPersistence.create(meta)
+      await ctx.sessionPersistence.append(id, [event])
+
+      await ctx.sessionPersistence.delete(id)
+
+      await expect(ctx.sessionPersistence.load(id)).rejects.toThrow()
+      expect(await ctx.sessionPersistence.list()).toEqual([])
+      await fiber.dispose()
+      const database = new DatabaseSync(path)
+      try {
+        expect(database.prepare('SELECT COUNT(*) AS count FROM dsh_session_events WHERE session_id = ?').get(id)).toEqual({ count: 0 })
+      } finally {
+        database.close()
+      }
     } finally {
       await rm(root, { recursive: true, force: true })
     }

@@ -99,6 +99,7 @@ export default class SqliteSessionPersistence extends SessionPersistence impleme
   override create(meta: SessionHeader): Promise<void> { return this.coordinator.create(meta) }
   override ensureMaterialized(session: Session): Promise<void> { return this.coordinator.ensureMaterialized(session) }
   override append(id: SessionId, events: readonly SessionEvent[]): Promise<void> { return this.coordinator.append(id, events) }
+  override delete(id: SessionId): Promise<void> { return this.coordinator.delete(id) }
   override prepare(id: SessionId, signal?: AbortSignal): Promise<SessionPreparation> { return this.coordinator.prepare(id, signal) }
   override load(id: SessionId): Promise<SessionInspection> { return this.coordinator.load(id) }
   override inspect(id: SessionId, signal?: AbortSignal): Promise<SessionInspection> { return this.coordinator.inspect(id, signal) }
