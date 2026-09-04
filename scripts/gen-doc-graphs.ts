@@ -178,6 +178,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Projects the credential-reference seam onto the generated Remote namespace: batch fan-out, view projection, and refusal mapping live here, not on the seam Definition.',
   },
   {
+    key: 'externalTools',
+    pkg: 'external-tools',
+    title: 'Credential-gated external provider registry',
+    mode: 'core',
+    consumers: ['tools', 'web'],
+    note: 'Resolves provider credentials at call time, registers dedicated tools, and selects the configured native web search adapter by saved priority.',
+  },
+  {
     key: 'settingsController',
     pkg: 'api-settings-controller',
     title: 'Host settings-surface Remote controller',

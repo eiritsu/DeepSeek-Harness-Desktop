@@ -20,7 +20,7 @@ export type PluginsSettingsLocaleKey =
   | 'externalToolsTab' | 'externalToolsHint' | 'externalToolsLoading' | 'externalToolsEnable'
   | 'externalToolsKeyConfigured' | 'externalToolsKeyUnset' | 'externalToolsKeyPlaceholder'
   | 'externalToolsApiKey' | 'externalToolsEndpoint' | 'externalToolsEndpointPlaceholder'
-  | 'externalToolsSave' | 'externalToolsClear' | 'externalToolsRetry' | 'externalToolsUnsupported'
+  | 'externalToolsSave' | 'externalToolsClear' | 'externalToolsRetry' | 'externalToolsUnsupported' | 'externalToolsSearchPriority'
 
 /** English copy. */
 export const en: Record<PluginsSettingsLocaleKey, string> = {
@@ -90,6 +90,7 @@ export const en: Record<PluginsSettingsLocaleKey, string> = {
   externalToolsClear: 'Clear',
   externalToolsRetry: 'Retry',
   externalToolsUnsupported: 'Credential support is ready; tool registration is coming soon.',
+  externalToolsSearchPriority: 'Native search priority',
 }
 
 /** Simplified Chinese copy. */
@@ -160,4 +161,5 @@ export const zh: Record<PluginsSettingsLocaleKey, string> = {
   externalToolsClear: '清除',
   externalToolsRetry: '重试',
   externalToolsUnsupported: '凭据配置已就绪，工具接入即将开放。',
+  externalToolsSearchPriority: '原生搜索优先级',
 }

@@ -90,6 +90,8 @@ export interface DeepSeekSearchProviderOptions {
   apiKey?: string
   /** Resolve the current DeepSeek API key for one search operation. */
   resolveApiKey?: () => Promise<string | undefined>
+  /** Synchronous credential-presence hint used by automatic provider selection. */
+  isConfigured?: () => boolean
   /** Credential reference named by missing-credential diagnostics. */
   apiKeyEnv?: CredentialRef
   /** Endpoint base; `/messages` is appended. */
@@ -191,7 +193,7 @@ export class DeepSeekSearchProvider implements WebSearchProvider {
 
   available(): boolean {
     const options = this.resolveOptions()
-    return ((options.apiKey?.length ?? 0) > 0 || options.resolveApiKey !== undefined)
+    return ((options.apiKey?.length ?? 0) > 0 || options.isConfigured?.() === true)
       && URL.canParse(options.baseURL)
       && isPositiveInteger(options.maxTokens)
       && isPositiveInteger(options.maxUses)

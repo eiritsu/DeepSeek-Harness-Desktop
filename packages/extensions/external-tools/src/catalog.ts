@@ -9,6 +9,19 @@ export interface ExternalToolCatalogEntry {
   readonly toolName?: string
 }
 
+/** Default order for the provider-neutral native web search adapter. */
+export const DEFAULT_SEARCH_PRIORITY = ['tavily', 'brave-search', 'exa'] as const
+
+/**
+ * Return whether an external provider implements the provider-neutral web seam.
+ * @param id - catalog provider id.
+ * @returns whether the provider participates in native web search selection.
+ */
+export function isNativeSearchProvider(id: string): boolean {
+  return (DEFAULT_SEARCH_PRIORITY as readonly string[]).includes(id)
+}
+
+/** Secret-free catalog entries shown by the settings surface. */
 export const EXTERNAL_TOOL_CATALOG: readonly ExternalToolCatalogEntry[] = [
   { id: 'brave-search', displayName: 'Brave Search', description: '隐私友好的网页搜索', capabilities: ['search'], credentialRef: 'BRAVE_SEARCH_API_KEY', baseURL: 'https://api.search.brave.com', toolName: 'brave_search' },
   { id: 'tavily', displayName: 'Tavily', description: '面向 Agent 的搜索与摘要', capabilities: ['search'], credentialRef: 'TAVILY_API_KEY', baseURL: 'https://api.tavily.com', toolName: 'tavily_search' },
@@ -20,6 +33,11 @@ export const EXTERNAL_TOOL_CATALOG: readonly ExternalToolCatalogEntry[] = [
   { id: 'browserbase', displayName: 'Browserbase', description: '托管浏览器会话', capabilities: ['browser'], credentialRef: 'BROWSERBASE_API_KEY', baseURL: 'https://www.browserbase.com' },
 ]
 
+/**
+ * Find one catalog entry by provider id.
+ * @param id - catalog provider id.
+ * @returns the matching entry, or `undefined` when the id is unknown.
+ */
 export function externalToolEntry(id: string): ExternalToolCatalogEntry | undefined {
   return EXTERNAL_TOOL_CATALOG.find(entry => entry.id === id)
 }

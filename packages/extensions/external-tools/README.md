@@ -26,19 +26,19 @@ English | [中文](README.zh.md)
 
 The base and web-app bundles mount this plugin. It requires `tools`, `credentials`, and `settings` on the host; the browser face contributes a Settings → Tools & connections tab through the existing settings slots.
 
-The initial providers are Brave Search, Tavily, Firecrawl, Exa, and GitHub. FAL, ElevenLabs, and Browserbase are catalogued for credential UX and can be implemented without changing the settings surface.
+The initial providers are Brave Search, Tavily, Firecrawl, Exa, and GitHub. Brave Search, Tavily, and Exa also back the native `web_search` capability. The configured search priority defaults to Tavily, Brave Search, then Exa and is editable in this tab; only the highest-priority configured and enabled provider serves native search, while each configured provider keeps its dedicated model tool. FAL, ElevenLabs, and Browserbase are catalogued for credential UX and can be implemented without changing the settings surface.
 
 <a id="provider-lifecycle"></a>
 ## Provider lifecycle
 
-Each catalog entry declares an id, display name, capabilities, credential reference, optional endpoint, and tool name. The registry listens for credential changes and settings changes, then registers or disposes the provider's tool. Disabled providers remain configured but do not register a tool. Endpoint overrides are stored as ordinary settings; credential values are stored only by the credential service.
+Each catalog entry declares an id, display name, capabilities, credential reference, optional endpoint, and tool name. The registry listens for credential changes and settings changes, then registers or disposes the provider's tool. Disabled providers remain configured but do not register a tool. Search providers are selected by the saved priority order, so a missing key never becomes a native search candidate. Endpoint overrides are stored as ordinary settings; credential values are stored only by the credential service.
 
 The HTTP providers validate status codes and JSON object responses. A missing credential fails at tool execution time with a secret-free diagnostic, while provider errors expose only the HTTP status.
 
 <a id="dev-note"></a>
 ## Dev Note
 
-Add a provider to `src/catalog.ts`, implement its tool in `src/providers.ts`, and keep credentials behind `credentialRef`. Do not read secrets from config files or emit them in diagnostics. Update both bundle compositions when the package becomes required by a profile.
+Add a provider to `src/catalog.ts`, implement its tool in `src/providers.ts`, and keep credentials behind `credentialRef`. Search-capable providers should also implement the normalized `ctx.web` adapter and add themselves to the priority list. Do not read secrets from config files or emit them in diagnostics. Update both bundle compositions when the package becomes required by a profile.
 
 <a id="model-experience"></a>
 ## Model Experience

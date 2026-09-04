@@ -26,19 +26,19 @@ kind: "package-reference"
 
 基础包和 web-app 包都会挂载本插件。Host 侧需要 `tools`、`credentials` 与 `settings`；浏览器侧通过现有设置槽位贡献“设置 → 工具与连接”页面。
 
-首批提供方包括 Brave Search、Tavily、Firecrawl、Exa 与 GitHub。FAL、ElevenLabs 与 Browserbase 已进入凭据目录，可以在不改变设置界面的情况下补充工具实现。
+首批提供方包括 Brave Search、Tavily、Firecrawl、Exa 与 GitHub。Brave Search、Tavily 与 Exa 也会接入原生 `web_search` 能力。搜索优先级默认是 Tavily、Brave Search、Exa，可在本页调整；原生搜索只使用已配置且已启用的最高优先级提供方，同时每个已配置提供方仍保留自己的模型工具。FAL、ElevenLabs 与 Browserbase 已进入凭据目录，可以在不改变设置界面的情况下补充工具实现。
 
 <a id="provider-lifecycle"></a>
 ## 提供方生命周期
 
-每个目录条目声明 id、显示名、能力、凭据引用、可选接口地址与工具名。注册表监听凭据和设置变化，然后注册或销毁提供方工具。禁用的提供方仍保留配置，但不会注册工具。接口地址覆盖保存在普通设置中；凭据值只由凭据服务保存。
+每个目录条目声明 id、显示名、能力、凭据引用、可选接口地址与工具名。注册表监听凭据和设置变化，然后注册或销毁提供方工具。禁用的提供方仍保留配置，但不会注册工具。搜索提供方按保存的优先级选择，因此没有 API Key 的提供方不会成为原生搜索候选。接口地址覆盖保存在普通设置中；凭据值只由凭据服务保存。
 
 HTTP 提供方检查状态码和 JSON 对象响应。缺少凭据时，工具执行会返回不含密钥的诊断；提供方错误只暴露 HTTP 状态。
 
 <a id="dev-note"></a>
 ## 开发备注
 
-在 `src/catalog.ts` 增加目录条目，在 `src/providers.ts` 实现工具，并始终通过 `credentialRef` 获取凭据。不要从配置文件读取密钥，也不要在诊断中输出密钥。若插件成为某个 profile 的必需项，请同步更新两个 bundle 的组合。
+在 `src/catalog.ts` 增加目录条目，在 `src/providers.ts` 实现工具，并始终通过 `credentialRef` 获取凭据。具备搜索能力的提供方还应实现标准化的 `ctx.web` 适配器并加入优先级列表。不要从配置文件读取密钥，也不要在诊断中输出密钥。若插件成为某个 profile 的必需项，请同步更新两个 bundle 的组合。
 
 <a id="model-experience"></a>
 ## 模型体验

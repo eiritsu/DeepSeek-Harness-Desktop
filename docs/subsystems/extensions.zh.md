@@ -256,6 +256,21 @@ Types: [Agent](core.zh.md)
 
 Source: [`packages/extensions/cordis-host-runner/src/index.ts`](../../packages/extensions/cordis-host-runner/src/index.ts)
 
+<a id="ctxexternaltools--externaltoolsregistry"></a>
+
+### `ctx.externalTools` — `ExternalToolsRegistry`
+
+Registry that turns configured provider credentials into model tools.
+
+```ts cordis-catalog
+/** Secret-free provider status for future diagnostics surfaces.
+ * @returns One status record for each catalog entry.
+ */
+status(): ExternalToolStatus[]
+```
+
+Source: [`packages/extensions/external-tools/src/index.ts`](../../packages/extensions/external-tools/src/index.ts)
+
 <a id="ctxinspector--inspectorservice"></a>
 
 ### `ctx.inspector` — `InspectorService`

@@ -873,6 +873,19 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'externalTools',
+    summary: 'Registry that turns configured provider credentials into model tools.',
+    description: 'Registry that turns configured provider credentials into model tools.',
+    methods: [
+      {
+        signature: 'status(): ExternalToolStatus[]',
+        description: 'Secret-free provider status for future diagnostics surfaces.',
+        parameters: [],
+        returns: 'One status record for each catalog entry.',
+      },
+    ],
+  },
+  {
     key: 'fileReferences',
     summary: 'Host capability for cancellable file-reference discovery.',
     description: 'Host capability for cancellable file-reference discovery.',
@@ -2785,6 +2798,11 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the disposer that unregisters the provider.',
       },
       {
+        signature: 'setSearchProviderOverride(providerId: string | undefined): void',
+        description: 'Override search-provider selection for a composed runtime.\n\nThe override is intentionally volatile: callers must restore it when their composition is disposed. Passing `undefined` returns selection to the configured provider or normal auto-selection.',
+        parameters: [{ name: 'providerId', description: 'provider id to select, or `undefined` to restore defaults.' }],
+      },
+      {
         signature: 'async search(request: WebSearchRequest, signal?: AbortSignal): Promise<WebSearchResult>',
         description: 'Run one search through the selected provider. Resolves the provider at call time with the selection rules above; throws WebError when the capability cannot run. The seam enforces `request.maxResults` on the result: if the provider over-returns, `sources[]` is truncated and `truncated` set.',
         parameters: [{ name: 'request', description: 'the query and optional result limit.' }, { name: 'signal', description: 'optional cancellation signal forwarded to the provider.' }],
@@ -4118,6 +4136,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'EpochHeader',
     declaration: 'export interface EpochHeader {\n    config: LlmCallConfig;\n    adapterDefaults?: LlmCallConfigAdapterDefaults;\n    system?: string;\n    tools?: ToolSchema[];\n}',
+  },
+  {
+    name: 'ExternalToolStatus',
+    declaration: 'export interface ExternalToolStatus {\n    readonly id: string;\n    readonly configured: boolean;\n    readonly enabled: boolean;\n    readonly toolRegistered: boolean;\n}',
   },
   {
     name: 'FiberState',

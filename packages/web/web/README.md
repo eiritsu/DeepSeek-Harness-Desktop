@@ -77,6 +77,8 @@ Each call resolves its provider at execution time, and registration or load orde
 
 A provider's availability is a cheap local check — for example whether its API key is present — and never makes network calls, so selection stays fast and deterministic.
 
+A composed plugin may call `setSearchProviderOverride(id)` to select one registered search backend at runtime, then pass `undefined` when its composition is disposed. This is the hook used by credential-gated provider bundles that maintain their own user-configured priority; it does not alter the persisted `searchProvider` setting.
+
 ### Failures and recovery
 
 Failures throw `WebError` with a stable, machine-routable code; the message adds detail such as the missing provider id or the ambiguous candidate set. Callers route on the code and decide how to degrade. To change which backend a call uses, reconfigure the pinned id, mount or unmount providers, or fix the provider's configuration so its availability check passes.

@@ -6,13 +6,13 @@ describe('external-tools loader export', () => {
   it('keeps the namespace metadata used to inject host services', () => {
     expect('default' in externalTools).toBe(false)
     expect(externalTools.name).toBe('external-tools')
-    expect(externalTools.inject).toEqual(['tools', 'credentials'])
+    expect(externalTools.inject).toEqual(['tools', 'credentials', 'web'])
 
     const loader = Object.create(Loader.prototype) as Loader
     const unwrapped = loader.unwrapExports(externalTools) as Record<string, unknown>
     expect(unwrapped).toBe(externalTools)
     expect(unwrapped.name).toBe('external-tools')
-    expect(unwrapped.inject).toEqual(['tools', 'credentials'])
+    expect(unwrapped.inject).toEqual(['tools', 'credentials', 'web'])
     expect(typeof unwrapped.apply).toBe('function')
   })
 })

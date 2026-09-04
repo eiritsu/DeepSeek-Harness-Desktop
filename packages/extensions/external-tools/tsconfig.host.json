@@ -1,11 +1,11 @@
 {
   "extends": "../../../tsconfig.base.json",
   "compilerOptions": { "rootDir": "src", "outDir": "lib/types", "tsBuildInfoFile": "lib/tsconfig.host.tsbuildinfo" },
-  "files": ["src/index.ts", "src/catalog.ts", "src/providers.ts"],
+  "files": ["src/index.ts", "src/catalog.ts", "src/providers.ts", "src/invariant.ts"],
   "references": [
     { "path": "../../../vendor/cordis" }, { "path": "../../../vendor/schemastery" },
     { "path": "../../credentials/credentials" }, { "path": "../../settings/settings" },
-    { "path": "../../core/tools" }, { "path": "../../util/values" },
+    { "path": "../../core/tools" }, { "path": "../../util/values" }, { "path": "../../web/web" },
     { "path": "../../runtime-diagnostics/invariants" }
   ]
 }

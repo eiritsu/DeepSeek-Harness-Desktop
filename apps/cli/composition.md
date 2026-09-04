@@ -46,6 +46,8 @@ flowchart LR
   cfg --> plugin_dsh_base_settings
   plugin_dsh_base_credentials["credentials<br/>@deepseek-ai/dsh-credentials-local"]
   cfg --> plugin_dsh_base_credentials
+  plugin_dsh_base_external_tools["external-tools<br/>@deepseek-ai/dsh-external-tools"]
+  cfg --> plugin_dsh_base_external_tools
   plugin_dsh_base_llm_dsh_ai["llm-dsh-ai<br/>@deepseek-ai/dsh-llm-dsh-ai"]
   cfg --> plugin_dsh_base_llm_dsh_ai
   plugin_dsh_base_session_persistence_sqlite["session-persistence-sqlite<br/>@deepseek-ai/dsh-session-persistence-sqlite"]
@@ -203,6 +205,7 @@ flowchart LR
 | `llm-retry` | `@deepseek-ai/dsh-llm-retry` |
 | `settings` | `@deepseek-ai/dsh-settings-file` |
 | `credentials` | `@deepseek-ai/dsh-credentials-local` |
+| `external-tools` | `@deepseek-ai/dsh-external-tools` |
 | `llm-dsh-ai` | `@deepseek-ai/dsh-llm-dsh-ai` |
 | `session-persistence-sqlite` | `@deepseek-ai/dsh-session-persistence-sqlite` |
 | `attachment-local` | `@deepseek-ai/dsh-attachment-local` |

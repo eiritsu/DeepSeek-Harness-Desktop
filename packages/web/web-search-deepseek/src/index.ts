@@ -92,7 +92,7 @@ export const WEB_SEARCH_DEEPSEEK_SETTINGS_NAMESPACE = 'web-search-deepseek'
  * @param config - the currently authoritative section.
  * @returns options for one search.
  */
-function resolveOptions(ctx: Context, config: Config): DeepSeekSearchProviderOptions {
+function resolveOptions(ctx: Context, config: Config, isConfigured: () => boolean): DeepSeekSearchProviderOptions {
   const apiKeyEnv = credentialRef(config.apiKeyEnv ?? DEFAULT_API_KEY_ENV)
   const literalApiKey = config.apiKey !== undefined && config.apiKey.length > 0
     ? config.apiKey
@@ -106,6 +106,7 @@ function resolveOptions(ctx: Context, config: Config): DeepSeekSearchProviderOpt
       const ambient = launchEnvironmentOf(ctx).get(apiKeyEnv)
       return ambient !== undefined && ambient.value.length > 0 ? ambient.value : undefined
     },
+    isConfigured,
     apiKeyEnv,
     baseURL: config.baseURL
       ?? launchEnvironmentOf(ctx).get(SEARCH_BASE_URL_ENV)?.value
@@ -126,15 +127,48 @@ function resolveOptions(ctx: Context, config: Config): DeepSeekSearchProviderOpt
 /** Register the DeepSeek search provider with `ctx.web`. */
 export function apply(ctx: Context, config: Config): void {
   let current: () => Config = () => config
+  // Desktop leaves web search unpinned so an API-key-backed external provider
+  // can serve the native tool. Do not advertise this route there until its key
+  // is actually present, or adding a second search backend becomes ambiguous.
+  const gateAvailabilityOnCredential = process.env.DSH_DESKTOP_SHELL === '1'
+  let credentialConfigured = config.apiKey !== undefined && config.apiKey.length > 0
+  const refreshCredentialState = async (): Promise<void> => {
+    const snapshot = current()
+    if (snapshot.apiKey !== undefined && snapshot.apiKey.length > 0) {
+      credentialConfigured = true
+      return
+    }
+    const ref = credentialRef(snapshot.apiKeyEnv ?? DEFAULT_API_KEY_ENV)
+    const credentials = ctx.get('credentials')
+    const resolved = credentials === undefined
+      ? launchEnvironmentOf(ctx).get(ref)?.value
+      : (await credentials.resolve(ref))?.value
+    if (current() !== snapshot) {
+      void refreshCredentialState()
+      return
+    }
+    credentialConfigured = resolved !== undefined && resolved.length > 0
+  }
   ctx.inject(['settings'], (settingsCtx) => {
     settingsCtx.settings.installSection(ctx, WEB_SEARCH_DEEPSEEK_SETTINGS_NAMESPACE, Config, config, {
       setSource: (source) => {
         current = source
+        void refreshCredentialState()
       },
       // The registration carries no resolved value: the provider projects the
       // section per search, so a committed change needs no re-registration.
       onChange: () => {},
     })
   })
-  ctx.web.registerSearchProvider(new DeepSeekSearchProvider(() => resolveOptions(ctx, current())))
+  ctx.effect(() => {
+    const off = ctx.on('credentials/reference-updated', (ref) => {
+      if (String(ref) === String(credentialRef(current().apiKeyEnv ?? DEFAULT_API_KEY_ENV))) void refreshCredentialState()
+    })
+    void refreshCredentialState()
+    return off
+  }, 'web-search-deepseek: credential availability')
+  ctx.web.registerSearchProvider(new DeepSeekSearchProvider(() => resolveOptions(ctx, current(), () => {
+    const snapshot = current()
+    return !gateAvailabilityOnCredential || (snapshot.apiKey?.length ?? 0) > 0 || credentialConfigured
+  })))
 }

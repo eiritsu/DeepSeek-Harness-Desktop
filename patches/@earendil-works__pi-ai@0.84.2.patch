@@ -1,0 +1,24 @@
+diff --git a/dist/api/openai-responses-shared.js b/dist/api/openai-responses-shared.js
+index c35771dcc9b2173d0b459d13c6d86e622de45e9a..800aa0e7eb92d78b2cf0e6da6a98a9f61f2a55e6 100644
+--- a/dist/api/openai-responses-shared.js
++++ b/dist/api/openai-responses-shared.js
+@@ -551,10 +551,16 @@ export async function processResponsesStream(openaiStream, output, stream, model
+             if (!slot || slot.block.partialJson === undefined)
+                 continue;
+             const previousPartialJson = slot.block.partialJson;
+-            slot.block.partialJson = event.arguments;
++            // Some OpenAI-compatible gateways omit `arguments` on the
++            // `*.done` event after sending the complete delta stream. Keep
++            // the already assembled JSON instead of dereferencing undefined.
++            const completedArguments = typeof event.arguments === "string"
++                ? event.arguments
++                : previousPartialJson;
++            slot.block.partialJson = completedArguments;
+             slot.block.arguments = parseStreamingJson(slot.block.partialJson);
+-            if (event.arguments.startsWith(previousPartialJson)) {
+-                const delta = event.arguments.slice(previousPartialJson.length);
++            if (completedArguments.startsWith(previousPartialJson)) {
++                const delta = completedArguments.slice(previousPartialJson.length);
+                 if (delta.length > 0)
+                     pushToolCallDelta(slot, delta);
+             }

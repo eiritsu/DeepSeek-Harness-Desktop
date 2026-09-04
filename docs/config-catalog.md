@@ -631,6 +631,26 @@ export interface Config {
 
 Source: [`packages/experimental/tool-agent-team/src/index.ts:17`](../packages/experimental/tool-agent-team/src/index.ts)
 
+<a id="deepseek-aidsh-external-tools"></a>
+
+## `@deepseek-ai/dsh-external-tools`
+
+Requires: `tools` · `credentials` · `web`
+
+```ts config-catalog
+/** Host configuration for credential-gated provider registration. */
+export interface Config {
+  /** Provider ids that remain configured but do not register model tools. */
+  disabled?: string[]
+  /** Provider-specific endpoint overrides, keyed by catalog id. */
+  endpoints?: Record<string, string>
+  /** Ordered search provider ids used by the native `web_search` adapter. */
+  searchPriority?: string[]
+}
+```
+
+Source: [`packages/extensions/external-tools/src/index.ts:18`](../packages/extensions/external-tools/src/index.ts)
+
 <a id="deepseek-aidsh-file-reference-local"></a>
 
 ## `@deepseek-ai/dsh-file-reference-local`

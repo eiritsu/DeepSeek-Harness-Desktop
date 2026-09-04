@@ -181,6 +181,16 @@ registerSearchProvider(provider: WebSearchProvider): () => void
 registerFetchProvider(provider: WebFetchProvider): () => void
 
 /**
+ * Override search-provider selection for a composed runtime.
+ *
+ * The override is intentionally volatile: callers must restore it when
+ * their composition is disposed. Passing `undefined` returns selection to
+ * the configured provider or normal auto-selection.
+ * @param providerId - provider id to select, or `undefined` to restore defaults.
+ */
+setSearchProviderOverride(providerId: string | undefined): void
+
+/**
  * Run one search through the selected provider. Resolves the provider at call
  * time with the selection rules above; throws {@link WebError} when the
  * capability cannot run. The seam enforces `request.maxResults` on the result:
