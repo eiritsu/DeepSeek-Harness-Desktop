@@ -14,16 +14,80 @@ APP_ROOT="$OUTPUT_ROOT/DeepSeek Harness.app"
 ICON_SOURCE="$SHELL_ROOT/Resources/AppIcon.svg"
 ICON_WORK=$(mktemp -d)
 SNAPSHOT_WORK=""
-copy_tracked_files() {
+require_clean_checkout() {
+  ROOT=$1
+  LABEL=$2
+  if [ -n "$(git -C "$ROOT" status --porcelain=v1)" ]; then
+    echo "build-app: $LABEL checkout has uncommitted files; commit or discard them before a distribution build" >&2
+    exit 1
+  fi
+}
+require_published_head() {
+  ROOT=$1
+  REMOTE=$2
+  BRANCH=$3
+  LABEL=$4
+  HEAD=$(git -C "$ROOT" rev-parse HEAD)
+  REMOTE_HEAD=$(git -C "$ROOT" ls-remote --exit-code "$REMOTE" "refs/heads/$BRANCH" | awk '{print $1}')
+  if [ "$HEAD" != "$REMOTE_HEAD" ]; then
+    echo "build-app: $LABEL HEAD $HEAD is not the published $REMOTE/$BRANCH commit $REMOTE_HEAD" >&2
+    exit 1
+  fi
+}
+copy_committed_files() {
   ROOT=$1
   DESTINATION=$2
   shift 2
-  (
-    cd "$ROOT"
-    git ls-files --cached -z -- "$@" \
-      | LC_ALL=C sort -z \
-      | COPYFILE_DISABLE=1 /usr/bin/tar --null -cf - -T -
-  ) | COPYFILE_DISABLE=1 /usr/bin/tar -xf - -C "$DESTINATION"
+  git -C "$ROOT" archive --format=tar HEAD -- "$@" | COPYFILE_DISABLE=1 /usr/bin/tar -xf - -C "$DESTINATION"
+}
+write_runtime_manifest() {
+  SNAPSHOT=$1
+  HARNESS_COMMIT=$2
+  PLUGIN_COMMIT=$3
+  node - "$SNAPSHOT" "$HARNESS_COMMIT" "$PLUGIN_COMMIT" <<'NODE'
+const crypto = require('node:crypto')
+const fs = require('node:fs')
+const path = require('node:path')
+
+const [root, harnessCommit, pluginCommit] = process.argv.slice(2)
+const packagePaths = [
+  'packages/client/ui-plugin-library',
+  'packages/client/ui-skill-library',
+  'packages/client/ui-deepseek-files',
+  'packages/attachment/file-recognizer-office',
+  'packages/lark/lark',
+  'packages/llm/model-catalog',
+]
+const artifactRoots = [
+  'apps/cli/lib',
+  'apps/web/dist',
+  'pnpm-lock.yaml',
+  ...packagePaths.map(packagePath => `${packagePath}/lib`),
+]
+const artifacts = {}
+function add(relative) {
+  const absolute = path.join(root, relative)
+  const stat = fs.lstatSync(absolute)
+  if (stat.isSymbolicLink()) throw new Error(`build-app: runtime artifact must not be a symbolic link: ${relative}`)
+  if (stat.isDirectory()) {
+    for (const entry of fs.readdirSync(absolute).sort()) add(path.posix.join(relative, entry))
+    return
+  }
+  if (!stat.isFile()) return
+  artifacts[relative] = crypto.createHash('sha256').update(fs.readFileSync(absolute)).digest('hex')
+}
+for (const artifact of artifactRoots) add(artifact)
+const packages = packagePaths.map(packagePath => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, packagePath, 'package.json'), 'utf8'))
+  return { path: packagePath, name: manifest.name, version: manifest.version }
+})
+fs.writeFileSync(path.join(root, 'runtime-manifest.json'), `${JSON.stringify({
+  format: 1,
+  harness: { commit: harnessCommit },
+  plugins: { commit: pluginCommit, packages },
+  artifacts,
+}, null, 2)}\n`)
+NODE
 }
 cleanup() {
   rm -rf "$ICON_WORK"
@@ -53,6 +117,17 @@ if ! command -v rsvg-convert >/dev/null 2>&1; then
   exit 1
 fi
 
+HARNESS_COMMIT=""
+PLUGIN_COMMIT=""
+if [ "$DISTRIBUTION" = true ]; then
+  require_clean_checkout "$SOURCE_ROOT" "Harness"
+  require_clean_checkout "$PLUGIN_ROOT" "DeepSeek Plugin"
+  require_published_head "$SOURCE_ROOT" desktop-publish main "Harness"
+  require_published_head "$PLUGIN_ROOT" origin main "DeepSeek Plugin"
+  HARNESS_COMMIT=$(git -C "$SOURCE_ROOT" rev-parse HEAD)
+  PLUGIN_COMMIT=$(git -C "$PLUGIN_ROOT" rev-parse HEAD)
+fi
+
 swift build --package-path "$SHELL_ROOT" -c release
 
 rm -rf "$APP_ROOT"
@@ -68,7 +143,7 @@ if [ "$DISTRIBUTION" = true ]; then
   SNAPSHOT_WORK=$(mktemp -d)
   SNAPSHOT_ROOT="$SNAPSHOT_WORK/source"
   mkdir -p "$SNAPSHOT_ROOT"
-  copy_tracked_files "$SOURCE_ROOT" "$SNAPSHOT_ROOT" .
+  copy_committed_files "$SOURCE_ROOT" "$SNAPSHOT_ROOT" .
   rm -rf \
     "$SNAPSHOT_ROOT/packages/client/ui-plugin-library" \
     "$SNAPSHOT_ROOT/packages/client/ui-skill-library" \
@@ -77,7 +152,7 @@ if [ "$DISTRIBUTION" = true ]; then
     "$SNAPSHOT_ROOT/packages/lark/lark" \
     "$SNAPSHOT_ROOT/packages/llm/model-catalog" \
     "$SNAPSHOT_ROOT/desktop-shell"
-  copy_tracked_files "$PLUGIN_ROOT" "$SNAPSHOT_ROOT" \
+  copy_committed_files "$PLUGIN_ROOT" "$SNAPSHOT_ROOT" \
     packages/client/ui-plugin-library \
     packages/client/ui-skill-library \
     packages/client/ui-deepseek-files \
@@ -144,7 +219,7 @@ if [ "$DISTRIBUTION" = true ]; then
   find "$SNAPSHOT_ROOT/scripts" -type f -name '*.spec.ts' -delete
   # These small helpers are imported by the checked-in stress harness and the
   # documentation projection during the ordinary TypeScript build.
-  copy_tracked_files "$SOURCE_ROOT" "$SNAPSHOT_ROOT" \
+  copy_committed_files "$SOURCE_ROOT" "$SNAPSHOT_ROOT" \
     apps/web/tests/scaffold.ts \
     apps/web/tests/support.ts \
     website/docs.ts
@@ -271,6 +346,7 @@ NODE
     npx --yes pnpm@11.7.0 install --lockfile-only --ignore-scripts --no-frozen-lockfile \
       --config.confirmModulesPurge=false
   )
+  write_runtime_manifest "$SNAPSHOT_ROOT" "$HARNESS_COMMIT" "$PLUGIN_COMMIT"
   COPYFILE_DISABLE=1 /usr/bin/tar -czf \
     "$APP_ROOT/Contents/Resources/SourceBootstrap.tar.gz" \
     -C "$SNAPSHOT_ROOT" .

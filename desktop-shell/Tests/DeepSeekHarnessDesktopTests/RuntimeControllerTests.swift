@@ -272,6 +272,19 @@ private func writePreparedSource(at root: URL, revision: String) throws {
   try Data("export {}\n".utf8).write(to: root.appendingPathComponent("apps/cli/lib/bin.js"))
   try Data("<!doctype html>\n".utf8).write(to: root.appendingPathComponent("apps/web/dist/index.html"))
   try Data("\(revision)\n".utf8).write(to: root.appendingPathComponent("revision.txt"))
+  let artifacts = ["apps/cli/lib/bin.js", "apps/web/dist/index.html"].reduce(into: [String: String]()) { result, relative in
+    let digest = SHA256.hash(data: try! Data(contentsOf: root.appendingPathComponent(relative)))
+      .map { String(format: "%02x", $0) }.joined()
+    result[relative] = digest
+  }
+  let manifest: [String: Any] = [
+    "format": 1,
+    "harness": ["commit": "fixture-harness"],
+    "plugins": ["commit": "fixture-plugins"],
+    "artifacts": artifacts,
+  ]
+  let manifestData = try JSONSerialization.data(withJSONObject: manifest, options: [.sortedKeys])
+  try manifestData.write(to: root.appendingPathComponent("runtime-manifest.json"))
 }
 
 private func createSourceArchive(from source: URL, at archive: URL) throws {
@@ -452,15 +465,7 @@ private func createSourceArchive(from source: URL, at archive: URL) throws {
     .appendingPathComponent("dsh-source-bootstrap-\(UUID().uuidString)", isDirectory: true)
   defer { try? FileManager.default.removeItem(at: temporaryRoot) }
   let fixture = temporaryRoot.appendingPathComponent("fixture", isDirectory: true)
-  for path in ["apps/cli/lib", "apps/web/dist"] {
-    try FileManager.default.createDirectory(
-      at: fixture.appendingPathComponent(path, isDirectory: true),
-      withIntermediateDirectories: true
-    )
-  }
-  try Data("{}\n".utf8).write(to: fixture.appendingPathComponent("apps/cli/package.json"))
-  try Data("export {}\n".utf8).write(to: fixture.appendingPathComponent("apps/cli/lib/bin.js"))
-  try Data("<!doctype html>\n".utf8).write(to: fixture.appendingPathComponent("apps/web/dist/index.html"))
+  try writePreparedSource(at: fixture, revision: "bundled")
   let archive = temporaryRoot.appendingPathComponent("SourceBootstrap.tar.gz")
   let tar = Process()
   tar.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
@@ -486,6 +491,18 @@ private func createSourceArchive(from source: URL, at archive: URL) throws {
   #expect(source == support.appendingPathComponent("source", isDirectory: true))
   #expect(FileManager.default.fileExists(atPath: source.appendingPathComponent("apps/cli/lib/bin.js").path))
   #expect(try String(contentsOf: source.appendingPathComponent(".dsh-desktop-bootstrap-version"), encoding: .utf8) == "0.1.2\n")
+}
+
+@Test func runtimeManifestRejectsChangedBuiltArtifacts() throws {
+  let root = FileManager.default.temporaryDirectory
+    .appendingPathComponent("dsh-runtime-manifest-\(UUID().uuidString)", isDirectory: true)
+  defer { try? FileManager.default.removeItem(at: root) }
+  try writePreparedSource(at: root, revision: "manifest")
+  try Data("changed\n".utf8).write(to: root.appendingPathComponent("apps/cli/lib/bin.js"))
+
+  #expect(throws: (any Error).self) {
+    try SourceManager.validateRuntimeManifest(at: root)
+  }
 }
 
 @Test func distributionIgnoresAnExternalActiveSourcePath() async throws {

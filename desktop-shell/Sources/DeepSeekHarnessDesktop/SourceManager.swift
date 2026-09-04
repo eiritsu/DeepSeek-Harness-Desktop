@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 struct SourceUpdate: Sendable {
@@ -15,6 +16,7 @@ enum SourceUpdateTopology: Equatable {
 
 final class SourceManager: @unchecked Sendable {
   private static let bootstrapVersionFile = ".dsh-desktop-bootstrap-version"
+  private static let runtimeManifestFile = "runtime-manifest.json"
   private static let legacyMigrationMarker = ".dsh-home-migration-v2"
   private static let legacyDatabaseMigrationMarker = ".dsh-home-migration-v5"
   private static let managedExtensionPaths = [
@@ -283,6 +285,7 @@ final class SourceManager: @unchecked Sendable {
     guard unpack.status == 0, isSourceRoot(stage) else {
       throw DesktopError.message("随应用提供的源码解压失败：\n\(unpack.output)")
     }
+    try Self.validateRuntimeManifest(at: stage)
     if let bootstrapVersion {
       try "\(bootstrapVersion)\n".write(
         to: stage.appendingPathComponent(Self.bootstrapVersionFile),
@@ -294,6 +297,49 @@ final class SourceManager: @unchecked Sendable {
       try FileManager.default.removeItem(at: bootstrap)
     }
     try FileManager.default.moveItem(at: stage, to: bootstrap)
+  }
+
+  /// Validate the immutable source and built-artifact identities shipped in a distribution archive.
+  static func validateRuntimeManifest(at root: URL) throws {
+    let manifestURL = root.appendingPathComponent(runtimeManifestFile)
+    guard let data = try? Data(contentsOf: manifestURL) else {
+      throw DesktopError.message("随应用提供的源码缺少 runtime manifest。")
+    }
+    struct Manifest: Decodable {
+      struct Revision: Decodable { let commit: String }
+      let format: Int
+      let harness: Revision
+      let plugins: Plugins
+      let artifacts: [String: String]
+      struct Plugins: Decodable { let commit: String }
+    }
+    let manifest: Manifest
+    do {
+      manifest = try JSONDecoder().decode(Manifest.self, from: data)
+    } catch {
+      throw DesktopError.message("随应用提供的 runtime manifest 无效：\(error.localizedDescription)")
+    }
+    guard manifest.format == 1,
+          manifest.harness.commit.isEmpty == false,
+          manifest.plugins.commit.isEmpty == false,
+          manifest.artifacts.isEmpty == false
+    else {
+      throw DesktopError.message("随应用提供的 runtime manifest 缺少必要的提交或产物信息。")
+    }
+    for (relativePath, expectedDigest) in manifest.artifacts {
+      guard relativePath.isEmpty == false,
+            relativePath.hasPrefix("/") == false,
+            relativePath.split(separator: "/").contains(where: { $0 == ".." }) == false
+      else { throw DesktopError.message("runtime manifest 包含非法产物路径：\(relativePath)") }
+      let file = root.appendingPathComponent(relativePath)
+      guard FileManager.default.fileExists(atPath: file.path) else {
+        throw DesktopError.message("runtime manifest 指向的产物不存在：\(relativePath)")
+      }
+      let digest = SHA256.hash(data: try Data(contentsOf: file)).map { String(format: "%02x", $0) }.joined()
+      guard digest == expectedDigest else {
+        throw DesktopError.message("runtime 产物校验失败：\(relativePath)")
+      }
+    }
   }
 
   private func isSourceRoot(_ url: URL) -> Bool {
