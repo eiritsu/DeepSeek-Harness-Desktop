@@ -708,6 +708,7 @@ describe('Web session model selection', () => {
         }
         return Promise.resolve([savedRef])
       },
+      recognizeFile: () => Promise.resolve({ text: 'recognized image text' }),
     } as never)
     const followup = vi.fn()
     Object.assign(agent, { followup })
@@ -720,12 +721,12 @@ describe('Web session model selection', () => {
     expectValue(await remote.selectModel(request({
       sessionId, provider: 'text-only', model: 'plain',
     })))
-    expect(await remote.prompt(promptRequest({
+    expectValue(await remote.prompt(promptRequest({
       sessionId, mode: 'queue', content: [image],
-    }))).toMatchObject({
-      ok: false,
-      error: { code: 'session/attachment-invalid', details: { reason: 'MODEL_DOES_NOT_SUPPORT_IMAGES' } },
-    })
+    })))
+    expect((followup.mock.calls[0]?.[0] as UserMessage).content).toEqual([{
+      type: 'text', text: 'Attached image "saved-image" content:\nrecognized image text',
+    }])
 
     expectValue(await remote.selectModel(request({
       sessionId, provider: 'image-capable', model: 'vision',
@@ -747,7 +748,7 @@ describe('Web session model selection', () => {
     }))).toMatchObject({ ok: false, error: { code: 'gateway/internal', message: 'fixture rejected' } })
     saveMode = 'success'
     expectValue(await remote.prompt(promptRequest({ sessionId, mode: 'queue', content: [image] })))
-    expect(followup).toHaveBeenCalledOnce()
+    expect(followup).toHaveBeenCalledTimes(2)
 
     ;(agent.inbox.nextTurn as UserMessage[]).push({
       id: 'pending-image', role: 'user', source: { kind: 'user' },

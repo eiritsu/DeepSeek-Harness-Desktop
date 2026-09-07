@@ -29,7 +29,7 @@ func makeDesktopWindow() -> NSWindow {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate,
-  WKUIDelegate, WKScriptMessageHandler, WKScriptMessageHandlerWithReply
+  WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandler, WKScriptMessageHandlerWithReply
 {
   private let sources = SourceManager()
   private lazy var runtime = RuntimeController(supportRoot: sources.supportRoot)
@@ -502,6 +502,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
     NSWorkspace.shared.open(url)
     decisionHandler(.cancel)
+  }
+
+  /// Keep WebKit downloads inside the desktop app instead of handing them to a browser.
+  func webView(
+    _ webView: WKWebView,
+    navigationAction: WKNavigationAction,
+    didBecome download: WKDownload
+  ) {
+    download.delegate = self
+  }
+
+  func download(
+    _ download: WKDownload,
+    decideDestinationUsing response: URLResponse,
+    suggestedFilename: String,
+    completionHandler: @escaping @MainActor @Sendable (URL?) -> Void
+  ) {
+    let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+      ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads", isDirectory: true)
+    try? FileManager.default.createDirectory(at: downloads, withIntermediateDirectories: true)
+    let filename = URL(fileURLWithPath: suggestedFilename).lastPathComponent
+    let safeName = filename.isEmpty ? "session-log.json" : filename
+    completionHandler(Self.uniqueDownloadURL(directory: downloads, filename: safeName))
+    LogStore.shared.append("session download started: \(safeName)")
+    _ = response
+  }
+
+  func downloadDidFinish(_ download: WKDownload) {
+    LogStore.shared.append("session download finished")
+    _ = download
+  }
+
+  func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
+    LogStore.shared.append("session download failed: \(error.localizedDescription)")
+    _ = download
+    _ = resumeData
+  }
+
+  static func uniqueDownloadURL(directory: URL, filename: String) -> URL {
+    let fileManager = FileManager.default
+    let candidate = directory.appendingPathComponent(filename)
+    if !fileManager.fileExists(atPath: candidate.path) { return candidate }
+    let original = candidate.deletingPathExtension()
+    let ext = candidate.pathExtension
+    var index = 1
+    while true {
+      let suffix = " (\(index))"
+      let name = original.lastPathComponent + suffix + (ext.isEmpty ? "" : ".\(ext)")
+      let next = directory.appendingPathComponent(name)
+      if !fileManager.fileExists(atPath: next.path) { return next }
+      index += 1
+    }
   }
 
   func webView(

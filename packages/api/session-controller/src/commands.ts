@@ -64,8 +64,23 @@ interface SessionReadState {
 async function recognizePromptFiles(
   ctx: Context,
   content: Awaited<ReturnType<typeof admitPromptContent>>,
+  recognizeImages = false,
 ): Promise<ContentBlock[]> {
   return Promise.all(content.map(async (part): Promise<ContentBlock> => {
+    if (part.type === 'image' && recognizeImages) {
+      const recognized = await ctx.attachments.recognizeFile(part.attachment)
+      if (recognized === undefined || recognized.text.trim().length === 0) {
+        throw new RemoteError(
+          'session/attachment-invalid',
+          `Image "${part.attachment.name ?? part.attachment.attachmentId}" could not be recognized for this model.`,
+          { reason: 'MODEL_DOES_NOT_SUPPORT_IMAGES' },
+        )
+      }
+      return {
+        type: 'text',
+        text: `Attached image "${part.attachment.name ?? part.attachment.attachmentId}" content:\n${recognized.text}`,
+      }
+    }
     if (part.type !== 'file') return part
     const recognized = await ctx.attachments.recognizeFile(part.attachment)
     return recognized === undefined ? part : { ...part, recognizedText: recognized.text }
@@ -400,19 +415,16 @@ export class SessionCommandController {
     const hasImage = request.content.some(part => part.type === 'image')
     const admit = async (): Promise<SessionPromptValue> => {
       try {
+        let recognizeImages = false
         if (hasImage) {
           const current = this.agents.selectionFor(agent).current
           const model = await this.ctx.llm.resolveModelInfo(current.provider, current.model)
           if (model.inputModalities !== undefined && !model.inputModalities.includes('image')) {
-            throw new RemoteError(
-              'session/attachment-invalid',
-              `Model "${current.model}" does not support image input.`,
-              { reason: 'MODEL_DOES_NOT_SUPPORT_IMAGES' },
-            )
+            recognizeImages = true
           }
         }
         const admitted = await admitPromptContent(this.ctx.attachments, request.content)
-        const content = await recognizePromptFiles(this.ctx, admitted)
+        const content = await recognizePromptFiles(this.ctx, admitted, recognizeImages)
         const message: UserMessage = createUserMessage({ content, source })
         if (request.mode === 'steer') agent.steer(message)
         else agent.followup(message)

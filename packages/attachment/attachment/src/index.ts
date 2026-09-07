@@ -103,6 +103,11 @@ export abstract class AttachmentStore extends Service {
     const recognizer = this.fileRecognizers.find(candidate => candidate.supports(input))
     if (recognizer === undefined) return undefined
     if ('data' in input) return recognizer.recognize(input, signal)
+    // Image references are stored through the image provider and must be read
+    // through its verification path before an OCR recognizer sees them.
+    if (isImageAttachmentRef(input)) {
+      return recognizer.recognize(await this.readImage(input, signal), signal)
+    }
     return recognizer.recognize(await this.readFile(input, signal), signal)
   }
 
@@ -243,6 +248,12 @@ export abstract class AttachmentStore extends Service {
     ))
   }
 
+}
+
+function isImageAttachmentRef(
+  input: FileAttachmentRef | ImageAttachmentRef,
+): input is ImageAttachmentRef {
+  return 'width' in input && 'height' in input
 }
 
 export default AttachmentStore

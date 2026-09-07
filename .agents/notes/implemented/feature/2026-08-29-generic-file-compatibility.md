@@ -16,9 +16,15 @@ Models without provider reasoning metadata expose the fixed provider-neutral `of
 
 The filesystem `read` tool retries binary files through the mounted attachment recognizer, using the filename extension to provide a safe media type and preserving the same line-window presentation as text reads.
 
+Image recognizers receive stored image bytes through `readImage`. When a selected model advertises text-only input, prompt admission uses the image recognizer and records its bounded OCR text instead of sending an unsupported image block; an unavailable recognizer still returns the model capability error.
+
+The macOS WebView owns session-log downloads through `WKDownloadDelegate`, writing collision-safe files to the user's Downloads directory rather than opening the download URL in an external browser.
+
 ## Consequences
 
 Generic files are available to document recognizers, JSON and source files are persisted byte-for-byte, and the same session replay can reconstruct their model-visible text. The composer offers file and directory selection plus drag and drop; command claims remain image-only, while ordinary prompt submission carries both image and generic-file parts.
+
+Text-only model routes can process image attachments when a configured OCR recognizer succeeds. Native session-log downloads remain inside the desktop application and preserve existing files by selecting a numbered filename.
 
 ## Alternatives considered
 

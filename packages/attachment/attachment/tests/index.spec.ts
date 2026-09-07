@@ -1,5 +1,5 @@
 import { Context } from '@deepseek-ai/cordis'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import AttachmentStore, {
   AttachmentError,
   AttachmentId,
@@ -49,7 +49,12 @@ class RecordingStore extends AttachmentStore {
   }
 
   readImage(_ref: ImageAttachmentRef): Promise<StoredImageAttachment> {
-    throw new Error('not used')
+    return Promise.resolve({
+      ref: _ref,
+      data: Uint8Array.of(9),
+      mediaType: _ref.mediaType,
+      ..._ref.name === undefined ? {} : { name: _ref.name },
+    })
   }
 
   override readImageRequest(
@@ -192,6 +197,25 @@ describe('AttachmentStore file recognition', () => {
       data: new Uint8Array(),
       mediaType: 'application/pdf',
     })).resolves.toEqual({ text: 'ocr' })
+  })
+
+  it('reads durable images through readImage before recognition', async () => {
+    const store = new RecordingStore(new Context())
+    const recognize = vi.fn((input: StoredImageAttachment) => Promise.resolve({
+      text: String(input.data[0]),
+    }))
+    store.registerFileRecognizer({
+      id: 'image-ocr',
+      supports: input => 'width' in input,
+      recognize,
+    })
+
+    const ref: ImageAttachmentRef = {
+      attachmentId: AttachmentId('sha256:image'),
+      mediaType: 'image/png', bytes: 1, width: 1, height: 1,
+    }
+    await expect(store.recognizeFile(ref)).resolves.toEqual({ text: '9' })
+    expect(recognize).toHaveBeenCalledWith(expect.objectContaining({ ref }), undefined)
   })
 })
 
