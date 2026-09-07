@@ -8,7 +8,7 @@ const runtimeRoot = path.join(packageRoot, '.runtime')
 fs.rmSync(runtimeRoot, { recursive: true, force: true })
 
 const pnpm = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
-const result = spawnSync(pnpm, ['deploy', '--legacy', '--filter', '@deepseek-ai/dsh', runtimeRoot], {
+const result = spawnSync(pnpm, ['deploy', '--legacy', '--config.node-linker=hoisted', '--filter', '@deepseek-ai/dsh', runtimeRoot], {
   cwd: repoRoot,
   stdio: 'inherit',
   shell: process.platform === 'win32',
