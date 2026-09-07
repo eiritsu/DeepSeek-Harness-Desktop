@@ -20,8 +20,7 @@
     "asar": true,
     "files": ["src/**/*", "package.json"],
     "extraResources": [
-      { "from": ".runtime", "to": "dsh-runtime", "filter": ["**/*"] },
-      { "from": ".runtime/node_modules", "to": "dsh-runtime/node_modules", "filter": ["**/*"] },
+      { "from": ".runtime-flat", "to": "dsh-runtime", "filter": ["**/*"] },
       { "from": "node-runtime/node.exe", "to": "node.exe" }
     ],
     "win": {

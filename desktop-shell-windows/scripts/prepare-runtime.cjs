@@ -6,7 +6,9 @@ const packageRoot = path.resolve(__dirname, '..')
 const repoRoot = path.resolve(packageRoot, '..')
 const runtimeRoot = path.join(packageRoot, '.runtime')
 const nodeRuntimeRoot = path.join(packageRoot, 'node-runtime')
+const flatRuntimeRoot = path.join(packageRoot, '.runtime-flat')
 fs.rmSync(runtimeRoot, { recursive: true, force: true })
+fs.rmSync(flatRuntimeRoot, { recursive: true, force: true })
 
 const pnpm = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
 const result = spawnSync(pnpm, ['deploy', '--legacy', '--filter', '@deepseek-ai/dsh', runtimeRoot], {
@@ -46,6 +48,7 @@ function copyWorkspacePackage(groupRoot, packageName) {
 }
 
 for (const packageName of [
+  '@deepseek-ai/dsh-app-boot',
   '@deepseek-ai/cordis-plugin-group', '@deepseek-ai/cordis-plugin-include',
   '@deepseek-ai/cordis-plugin-loader', '@deepseek-ai/dsh-launch-environment',
   '@deepseek-ai/dsh-invariants', '@deepseek-ai/dsh-home-paths',
@@ -61,3 +64,36 @@ if (process.platform === 'win32') {
   fs.mkdirSync(nodeRuntimeRoot, { recursive: true })
   fs.copyFileSync(nodeSource, path.join(nodeRuntimeRoot, 'node.exe'))
 }
+
+function copyResolved(source, destination, active = new Set()) {
+  const stat = fs.lstatSync(source)
+  if (stat.isSymbolicLink()) {
+    const resolved = fs.realpathSync(source)
+    if (active.has(resolved)) return
+    copyResolved(resolved, destination, new Set([...active, resolved]))
+    return
+  }
+  if (stat.isDirectory()) {
+    fs.mkdirSync(destination, { recursive: true })
+    for (const entry of fs.readdirSync(source)) {
+      copyResolved(path.join(source, entry), path.join(destination, entry), active)
+    }
+    return
+  }
+  fs.mkdirSync(path.dirname(destination), { recursive: true })
+  fs.copyFileSync(source, destination)
+}
+
+fs.mkdirSync(flatRuntimeRoot, { recursive: true })
+for (const entry of fs.readdirSync(runtimeRoot)) {
+  if (entry === 'node_modules') continue
+  copyResolved(path.join(runtimeRoot, entry), path.join(flatRuntimeRoot, entry))
+}
+const sourceModules = path.join(runtimeRoot, 'node_modules')
+const flatModules = path.join(flatRuntimeRoot, 'node_modules')
+console.log(`Flattening runtime dependencies from ${sourceModules}`)
+for (const entry of fs.readdirSync(sourceModules)) {
+  if (entry === '.pnpm' || entry === '.bin') continue
+  copyResolved(path.join(sourceModules, entry), path.join(flatModules, entry))
+}
+console.log(`Flattened ${fs.readdirSync(flatModules).length} dependency entries`)
