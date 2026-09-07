@@ -8,6 +8,10 @@ DeepSeek Harness Desktop embeds the official `dsh web` application in WKWebView.
 
 This is a local developer-preview build. It is ad-hoc signed, is not distributed through the Mac App Store, and may require rebuilding when the upstream Web application changes.
 
+## Release 0.1.12
+
+This release includes the workspace file-read fix: binary Office files are routed through the configured attachment recognizer instead of failing the text reader, while missing paths remain explicit errors. It also refreshes the verified official runtime and self-developed plugin artifacts used by the distribution build.
+
 ## Release 0.1.11
 
 This release differs from 0.1.10 in four desktop-data guarantees: SQLite WAL state is checkpointed before export, import stages and rolls back the database and file artifacts as one operation, maintenance closes the catalog before replacing files, and canceled backup actions no longer report success. The release also adds a native backup round-trip test, updates distribution builds to fetch the `main` branch of the desktop source repository, and aligns the Skill library's Installed tab with the Plugin library with search, detailed or compact cards, and uninstall support.
