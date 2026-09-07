@@ -1,0 +1,29 @@
+{
+  "name": "deepseek-harness-desktop-windows",
+  "version": "0.1.11",
+  "private": true,
+  "description": "Windows desktop host for DeepSeek Harness",
+  "main": "src/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis portable"
+  },
+  "devDependencies": {
+    "electron": "^37.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "ai.deepseek.harness.desktop",
+    "productName": "DeepSeek Harness",
+    "asar": true,
+    "files": ["src/**/*", "package.json"],
+    "extraResources": [
+      { "from": "../apps", "to": "dsh-source/apps", "filter": ["cli/lib/**/*", "cli/package.json", "web/dist/**/*", "web/package.json"] },
+      { "from": "../packages", "to": "dsh-source/packages", "filter": ["**/lib/**/*", "**/package.json"] },
+      { "from": "../vendor", "to": "dsh-source/vendor", "filter": ["**/lib/**/*", "**/package.json"] },
+      { "from": "../pnpm-lock.yaml", "to": "dsh-source/pnpm-lock.yaml" }
+    ],
+    "win": { "target": ["nsis", "portable"], "artifactName": "DeepSeek-Harness-Windows-${version}.${ext}" },
+    "nsis": { "oneClick": false, "perMachine": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true, "createStartMenuShortcut": true }
+  }
+}
