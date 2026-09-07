@@ -5,10 +5,12 @@ const path = require('node:path')
 const packageRoot = path.resolve(__dirname, '..')
 const repoRoot = path.resolve(packageRoot, '..')
 const runtimeRoot = path.join(packageRoot, '.runtime')
+const flatRuntimeRoot = path.join(packageRoot, '.runtime-flat')
 fs.rmSync(runtimeRoot, { recursive: true, force: true })
+fs.rmSync(flatRuntimeRoot, { recursive: true, force: true })
 
 const pnpm = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
-const result = spawnSync(pnpm, ['deploy', '--legacy', '--config.node-linker=hoisted', '--filter', '@deepseek-ai/dsh', runtimeRoot], {
+const result = spawnSync(pnpm, ['deploy', '--legacy', '--filter', '@deepseek-ai/dsh', runtimeRoot], {
   cwd: repoRoot,
   stdio: 'inherit',
   shell: process.platform === 'win32',
@@ -45,3 +47,10 @@ function copyWorkspaceArtifacts(groupRoot) {
 
 copyWorkspaceArtifacts(path.join(repoRoot, 'packages'))
 copyWorkspaceArtifacts(path.join(repoRoot, 'vendor'))
+
+if (process.platform === 'win32') {
+  const copy = spawnSync('robocopy', [runtimeRoot, flatRuntimeRoot, '/E', '/COPY:DAT', '/R:1', '/W:1', '/NFL', '/NDL', '/NJH', '/NJS'], { stdio: 'inherit' })
+  if (copy.error || (copy.status ?? 8) > 7) process.exit(copy.status ?? 1)
+} else {
+  fs.cpSync(runtimeRoot, flatRuntimeRoot, { recursive: true })
+}
