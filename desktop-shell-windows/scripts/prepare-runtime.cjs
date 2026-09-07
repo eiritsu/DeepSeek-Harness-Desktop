@@ -5,9 +5,8 @@ const path = require('node:path')
 const packageRoot = path.resolve(__dirname, '..')
 const repoRoot = path.resolve(packageRoot, '..')
 const runtimeRoot = path.join(packageRoot, '.runtime')
-const flatRuntimeRoot = path.join(packageRoot, '.runtime-flat')
+const nodeRuntimeRoot = path.join(packageRoot, 'node-runtime')
 fs.rmSync(runtimeRoot, { recursive: true, force: true })
-fs.rmSync(flatRuntimeRoot, { recursive: true, force: true })
 
 const pnpm = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
 const result = spawnSync(pnpm, ['deploy', '--legacy', '--filter', '@deepseek-ai/dsh', runtimeRoot], {
@@ -25,7 +24,7 @@ const frontendDist = path.join(repoRoot, 'apps', 'web', 'dist')
 const deployedFrontendDist = path.join(runtimeRoot, 'node_modules', '@deepseek-ai', 'dsh-web-frontend', 'dist')
 fs.cpSync(frontendDist, deployedFrontendDist, { recursive: true })
 
-function copyWorkspaceArtifacts(groupRoot) {
+function copyWorkspacePackage(groupRoot, packageName) {
   for (const group of fs.readdirSync(groupRoot, { withFileTypes: true })) {
     if (!group.isDirectory()) continue
     const groupPath = path.join(groupRoot, group.name)
@@ -34,23 +33,31 @@ function copyWorkspaceArtifacts(groupRoot) {
       const manifestPath = path.join(packagePath, 'package.json')
       if (!fs.existsSync(manifestPath)) continue
       const name = JSON.parse(fs.readFileSync(manifestPath, 'utf8')).name
-      if (typeof name !== 'string') continue
+      if (name !== packageName) continue
       const target = path.join(runtimeRoot, 'node_modules', ...name.split('/'))
-      if (fs.existsSync(path.join(target, 'package.json'))) continue
+      if (fs.existsSync(path.join(target, 'package.json'))) return
       fs.mkdirSync(target, { recursive: true })
       fs.copyFileSync(manifestPath, path.join(target, 'package.json'))
       const libPath = path.join(packagePath, 'lib')
       if (fs.existsSync(libPath)) fs.cpSync(libPath, path.join(target, 'lib'), { recursive: true })
+      return
     }
   }
 }
 
-copyWorkspaceArtifacts(path.join(repoRoot, 'packages'))
-copyWorkspaceArtifacts(path.join(repoRoot, 'vendor'))
+for (const packageName of [
+  '@deepseek-ai/cordis-plugin-group', '@deepseek-ai/cordis-plugin-include',
+  '@deepseek-ai/cordis-plugin-loader', '@deepseek-ai/dsh-launch-environment',
+  '@deepseek-ai/dsh-invariants', '@deepseek-ai/dsh-home-paths',
+  '@deepseek-ai/dsh-system-prompt', '@deepseek-ai/cordis',
+]) {
+  copyWorkspacePackage(path.join(repoRoot, 'packages'), packageName)
+  copyWorkspacePackage(path.join(repoRoot, 'vendor'), packageName)
+}
 
 if (process.platform === 'win32') {
-  const copy = spawnSync('robocopy', [runtimeRoot, flatRuntimeRoot, '/E', '/COPY:DAT', '/R:1', '/W:1', '/NFL', '/NDL', '/NJH', '/NJS'], { stdio: 'inherit' })
-  if (copy.error || (copy.status ?? 8) > 7) process.exit(copy.status ?? 1)
-} else {
-  fs.cpSync(runtimeRoot, flatRuntimeRoot, { recursive: true })
+  const nodeSource = process.env.DSH_NODE_PATH || 'C:\\Program Files\\nodejs\\node.exe'
+  if (!fs.existsSync(nodeSource)) throw new Error(`Node runtime not found: ${nodeSource}`)
+  fs.mkdirSync(nodeRuntimeRoot, { recursive: true })
+  fs.copyFileSync(nodeSource, path.join(nodeRuntimeRoot, 'node.exe'))
 }

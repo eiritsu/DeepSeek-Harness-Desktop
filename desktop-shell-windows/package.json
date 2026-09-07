@@ -20,12 +20,14 @@
     "asar": true,
     "files": ["src/**/*", "package.json"],
     "extraResources": [
-      { "from": ".runtime-flat", "to": "dsh-runtime", "filter": ["**/*"] }
+      { "from": ".runtime", "to": "dsh-runtime", "filter": ["**/*"] },
+      { "from": ".runtime/node_modules", "to": "dsh-runtime/node_modules", "filter": ["**/*"] },
+      { "from": "node-runtime/node.exe", "to": "node.exe" }
     ],
     "win": {
       "target": ["nsis", "portable"],
-      "artifactName": "DeepSeek-Harness-Windows-${version}.${ext}",
-      "signAndEditExecutable": false
+      "artifactName": "DeepSeek-Harness-Windows-${version}-${arch}.${ext}",
+      "signExecutable": false
     },
     "nsis": { "oneClick": false, "perMachine": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true, "createStartMenuShortcut": true }
   }
