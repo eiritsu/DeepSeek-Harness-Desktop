@@ -16,6 +16,7 @@
   "build": {
     "appId": "ai.deepseek.harness.desktop",
     "productName": "DeepSeek Harness",
+    "icon": "resources/icon.ico",
     "asar": true,
     "files": ["src/**/*", "package.json"],
     "extraResources": [
