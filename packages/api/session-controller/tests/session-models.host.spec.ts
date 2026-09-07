@@ -725,7 +725,7 @@ describe('Web session model selection', () => {
       sessionId, mode: 'queue', content: [image],
     })))
     expect((followup.mock.calls[0]?.[0] as UserMessage).content).toEqual([{
-      type: 'text', text: 'Attached image "saved-image" content:\nrecognized image text',
+      type: 'image', attachment: savedRef, recognizedText: 'recognized image text',
     }])
 
     expectValue(await remote.selectModel(request({

@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-29-generic-file-compatibility.md
-2026-08-29-generic-file-compatibility.md: 476246d3736aeca8d505150f642b825505d505a6
-2026-08-29-generic-file-compatibility.zh.md: 99115aace03fd5c8b6a3564926d9f7e7c535ce02
+2026-08-29-generic-file-compatibility.md: e1b2fe1a6eb1e4be24e3e7dc0eb7083f3ab9c221
+2026-08-29-generic-file-compatibility.zh.md: 9e46ea24a05eabe659acf82ccdbe46cf7999cd2f

@@ -72,6 +72,8 @@ export interface ImageBlock {
   type: 'image'
   /** Immutable bytes and intrinsic display metadata owned by the attachment service. */
   attachment: ImageAttachmentRef
+  /** Optional bounded text extracted by an attachment recognizer for text-only routes. */
+  recognizedText?: string
 }
 
 /** A durable generic file reference with optional recognizer output. */

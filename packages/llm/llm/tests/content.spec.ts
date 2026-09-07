@@ -359,4 +359,15 @@ describe('projectImagesForTextModel', () => {
       },
     ])
   })
+
+  it('includes recognizer text in the text-only image projection', () => {
+    const visual = createUserMessage({
+      content: [{ type: 'image', attachment: image(3).attachment, recognizedText: 'visible words' }],
+      source,
+    })
+    expect(projectImagesForTextModel([visual])[0]?.content).toEqual([{
+      type: 'text',
+      text: '[image omitted because this model accepts text only; attachment sha256:aaaaaaaa]\nvisible words',
+    }])
+  })
 })

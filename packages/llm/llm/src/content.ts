@@ -70,9 +70,12 @@ function normalizedAccessText(ref: ImageAttachmentRef, access: ImageAttachmentAc
  * @param ref - durable normalized attachment omitted from the request.
  * @returns deterministic text-only placeholder.
  */
-export function textOnlyImageText(ref: ImageAttachmentRef): string {
+export function textOnlyImageText(ref: ImageAttachmentRef, recognizedText?: string): string {
   const digest = String(ref.attachmentId).slice('sha256:'.length, 'sha256:'.length + 8)
-  return `[image omitted because this model accepts text only; attachment sha256:${digest}]`
+  const prefix = `[image omitted because this model accepts text only; attachment sha256:${digest}]`
+  return recognizedText === undefined || recognizedText.length === 0
+    ? prefix
+    : `${prefix}\n${recognizedText}`
 }
 
 /**
@@ -251,7 +254,7 @@ function replaceImagesForTextModel(blocks: readonly ContentBlock[]): ContentBloc
   for (const [index, block] of blocks.entries()) {
     if (block.type === 'image') {
       next ??= blocks.slice(0, index)
-      next.push({ type: 'text', text: textOnlyImageText(block.attachment) })
+      next.push({ type: 'text', text: textOnlyImageText(block.attachment, block.recognizedText) })
       continue
     }
     if (block.type === 'tool-result') {

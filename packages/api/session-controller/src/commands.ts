@@ -76,10 +76,7 @@ async function recognizePromptFiles(
           { reason: 'MODEL_DOES_NOT_SUPPORT_IMAGES' },
         )
       }
-      return {
-        type: 'text',
-        text: `Attached image "${part.attachment.name ?? part.attachment.attachmentId}" content:\n${recognized.text}`,
-      }
+      return { ...part, recognizedText: recognized.text }
     }
     if (part.type !== 'file') return part
     const recognized = await ctx.attachments.recognizeFile(part.attachment)
