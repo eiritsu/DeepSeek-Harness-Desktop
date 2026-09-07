@@ -8,6 +8,10 @@ DeepSeek Harness Desktop 在 WKWebView 中嵌入官方 `dsh web` 应用。用户
 
 这是本地 developer preview 构建。应用使用 ad-hoc 签名，不通过 Mac App Store 分发；上游 Web 应用变更后可能需要重新构建。
 
+## 0.1.15 版本说明
+
+仅支持文本的模型读取图片时会先调用已配置的 Deepseek-Files OCR 服务；媒体服务失败会明确返回给调用方。
+
 ## 0.1.14 版本说明
 
 本版本保留会话中的原始图片，仅在仅支持文本的模型请求中投影 Deepseek-Files OCR 文本；多模态路由仍然接收原图。

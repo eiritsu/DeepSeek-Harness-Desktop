@@ -8,6 +8,10 @@ DeepSeek Harness Desktop embeds the official `dsh web` application in WKWebView.
 
 This is a local developer-preview build. It is ad-hoc signed, is not distributed through the Mac App Store, and may require rebuilding when the upstream Web application changes.
 
+## Release 0.1.15
+
+Text-only image reads use the configured Deepseek-Files OCR service before reporting a model capability error. Media service failures now remain visible to the caller.
+
 ## Release 0.1.14
 
 This release keeps the recognized image attached to the conversation while projecting Deepseek-Files OCR text only for text-only model requests. Multimodal routes continue to receive the original image.
