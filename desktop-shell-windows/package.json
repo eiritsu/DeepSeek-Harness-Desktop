@@ -23,7 +23,11 @@
       { "from": "../vendor", "to": "dsh-source/vendor", "filter": ["**/lib/**/*", "**/package.json"] },
       { "from": "../pnpm-lock.yaml", "to": "dsh-source/pnpm-lock.yaml" }
     ],
-    "win": { "target": ["nsis", "portable"], "artifactName": "DeepSeek-Harness-Windows-${version}.${ext}" },
+    "win": {
+      "target": ["nsis", "portable"],
+      "artifactName": "DeepSeek-Harness-Windows-${version}.${ext}",
+      "signAndEditExecutable": false
+    },
     "nsis": { "oneClick": false, "perMachine": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true, "createStartMenuShortcut": true }
   }
 }
