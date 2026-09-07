@@ -83,6 +83,8 @@ const IMAGE_VALUE_SCHEMA = {
 
 /** The structured outcome declared by the `read_image` output schema. */
 export interface ImageReadValue {
+  /** OCR text retained with the image for text-only model requests. */
+  recognizedText?: string
   path: string
   image: {
     attachmentId: string
@@ -192,7 +194,7 @@ ${image.mediaType} image, ${image.width}x${image.height} px, ${image.bytes} byte
 function imageReadContent(value: ImageReadValue): ContentBlock[] {
   return [
     { type: 'text', text: formatImageReadOutput(value.path, value.image) },
-    { type: 'image', attachment: imageRefFromValue(value.image) },
+    { type: 'image', attachment: imageRefFromValue(value.image), ...(value.recognizedText === undefined ? {} : { recognizedText: value.recognizedText }) },
   ]
 }
 
@@ -220,6 +222,7 @@ export function applyReadImageTool(ctx: Context): void {
         type: 'object',
         additionalProperties: false,
         properties: {
+          recognizedText: { type: 'string' },
           path: { type: 'string', required: true },
           image: IMAGE_VALUE_SCHEMA,
         },
@@ -246,7 +249,18 @@ export function applyReadImageTool(ctx: Context): void {
         throw new Error(`cannot read "${args.file_path}" as an image: no attachment service is mounted`)
       }
       if (declared !== undefined) assertDeploymentAccepts(attachments, declared, args.file_path)
-      await assertImageCapableRoute(ctx, exec, args.file_path)
+      const routed = exec.agent?.session.requestHeader()?.config
+      const provider = routed?.provider ?? exec.agent?.options.provider
+      const model = routed?.model ?? exec.agent?.options.model
+      const llm = ctx.get('llm')
+      if (provider === undefined || model === undefined || llm === undefined) {
+        throw new Error(`cannot read "${args.file_path}" as an image: the current model route could not be resolved`)
+      }
+      const modelInfo = await llm.resolveModelInfo(provider, model, exec.signal)
+      if (modelInfo.inputModalities === undefined) {
+        throw new Error(`cannot read "${args.file_path}" as an image: model "${model}" does not declare image input; switch to an image-capable model to read images`)
+      }
+      const acceptsImage = modelInfo.inputModalities.includes('image')
 
       const { target, info } = await resolveRegularReadTarget(ctx, exec, args.file_path)
 
@@ -312,7 +326,12 @@ export function applyReadImageTool(ctx: Context): void {
         )
       }
       ctx.emit('fs/observed', target, { kind: 'present', version: info.version }, exec)
+      const recognized = acceptsImage ? undefined : await attachments.recognizeFile(ref, exec.signal)
+      if (!acceptsImage && !recognized?.text.trim()) {
+        throw new Error(`cannot read "${args.file_path}" as an image: model "${model}" does not declare image input and Deepseek-Files OCR did not return text; configure an OCR service or switch to an image-capable model`)
+      }
       const value: ImageReadValue = {
+        ...(recognized === undefined ? {} : { recognizedText: recognized.text }),
         path: target.displayPath,
         image: {
           attachmentId: ref.attachmentId,
