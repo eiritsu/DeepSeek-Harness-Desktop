@@ -34,6 +34,7 @@ function copyWorkspaceArtifacts(groupRoot) {
       const name = JSON.parse(fs.readFileSync(manifestPath, 'utf8')).name
       if (typeof name !== 'string') continue
       const target = path.join(runtimeRoot, 'node_modules', ...name.split('/'))
+      if (fs.existsSync(path.join(target, 'package.json'))) continue
       fs.mkdirSync(target, { recursive: true })
       fs.copyFileSync(manifestPath, path.join(target, 'package.json'))
       const libPath = path.join(packagePath, 'lib')
