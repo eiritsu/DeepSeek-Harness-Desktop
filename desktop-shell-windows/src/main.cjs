@@ -4,7 +4,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 
 const isPackaged = app.isPackaged
-const sourceRoot = isPackaged ? path.join(process.resourcesPath, 'dsh-source') : path.resolve(__dirname, '../..')
+const sourceRoot = isPackaged ? path.join(process.resourcesPath, 'dsh-runtime') : path.resolve(__dirname, '../..')
 const dataRoot = path.join(app.getPath('userData'), 'data')
 let runtime
 let mainWindow
@@ -12,7 +12,7 @@ let mainWindow
 function findNode() { return process.env.DSH_NODE_PATH || process.execPath }
 
 function startRuntime() {
-  const cli = path.join(sourceRoot, 'apps', 'cli', 'lib', 'bin.js')
+  const cli = isPackaged ? path.join(sourceRoot, 'lib', 'bin.js') : path.join(sourceRoot, 'apps', 'cli', 'lib', 'bin.js')
   if (!fs.existsSync(cli)) throw new Error(`DSH CLI artifact not found: ${cli}`)
   fs.mkdirSync(dataRoot, { recursive: true })
   runtime = spawn(findNode(), [cli, '--profile', 'web', '--no-open', '--port', '0'], {

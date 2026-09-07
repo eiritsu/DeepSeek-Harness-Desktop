@@ -6,7 +6,8 @@
   "main": "src/main.cjs",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win nsis portable"
+    "prepare-runtime": "node scripts/prepare-runtime.cjs",
+    "dist": "npm run prepare-runtime && electron-builder --win nsis portable"
   },
   "devDependencies": {
     "electron": "^37.0.0",
@@ -18,10 +19,7 @@
     "asar": true,
     "files": ["src/**/*", "package.json"],
     "extraResources": [
-      { "from": "../apps", "to": "dsh-source/apps", "filter": ["cli/lib/**/*", "cli/package.json", "web/dist/**/*", "web/package.json"] },
-      { "from": "../packages", "to": "dsh-source/packages", "filter": ["**/lib/**/*", "**/package.json"] },
-      { "from": "../vendor", "to": "dsh-source/vendor", "filter": ["**/lib/**/*", "**/package.json"] },
-      { "from": "../pnpm-lock.yaml", "to": "dsh-source/pnpm-lock.yaml" }
+      { "from": ".runtime", "to": "dsh-runtime", "filter": ["**/*"] }
     ],
     "win": {
       "target": ["nsis", "portable"],
