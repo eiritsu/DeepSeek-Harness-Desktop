@@ -84,6 +84,29 @@ function copyResolved(source, destination, active = new Set()) {
   fs.copyFileSync(source, destination)
 }
 
+function collectPnpmPackages(directory) {
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const source = path.join(directory, entry.name)
+    if (!entry.isDirectory() || entry.isSymbolicLink()) continue
+    if (entry.name === 'node_modules') {
+      for (const dependency of fs.readdirSync(source)) {
+        const dependencySource = path.join(source, dependency)
+        if (dependency.startsWith('@')) {
+          for (const scopedName of fs.readdirSync(dependencySource)) {
+            const destination = path.join(flatModules, dependency, scopedName)
+            if (!fs.existsSync(path.join(destination, 'package.json'))) copyResolved(path.join(dependencySource, scopedName), destination)
+          }
+        } else {
+          const destination = path.join(flatModules, dependency)
+          if (!fs.existsSync(path.join(destination, 'package.json'))) copyResolved(dependencySource, destination)
+        }
+      }
+      continue
+    }
+    collectPnpmPackages(source)
+  }
+}
+
 fs.mkdirSync(flatRuntimeRoot, { recursive: true })
 for (const entry of fs.readdirSync(runtimeRoot)) {
   if (entry === 'node_modules') continue
@@ -96,4 +119,5 @@ for (const entry of fs.readdirSync(sourceModules)) {
   if (entry === '.pnpm' || entry === '.bin') continue
   copyResolved(path.join(sourceModules, entry), path.join(flatModules, entry))
 }
+collectPnpmPackages(path.join(sourceModules, '.pnpm'))
 console.log(`Flattened ${fs.readdirSync(flatModules).length} dependency entries`)
