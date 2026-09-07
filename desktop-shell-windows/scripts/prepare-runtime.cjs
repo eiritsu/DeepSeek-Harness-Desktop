@@ -22,3 +22,25 @@ if (result.status !== 0) process.exit(result.status ?? 1)
 const frontendDist = path.join(repoRoot, 'apps', 'web', 'dist')
 const deployedFrontendDist = path.join(runtimeRoot, 'node_modules', '@deepseek-ai', 'dsh-web-frontend', 'dist')
 fs.cpSync(frontendDist, deployedFrontendDist, { recursive: true })
+
+function copyWorkspaceArtifacts(groupRoot) {
+  for (const group of fs.readdirSync(groupRoot, { withFileTypes: true })) {
+    if (!group.isDirectory()) continue
+    const groupPath = path.join(groupRoot, group.name)
+    const candidates = fs.existsSync(path.join(groupPath, 'package.json')) ? [groupPath] : fs.readdirSync(groupPath, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => path.join(groupPath, entry.name))
+    for (const packagePath of candidates) {
+      const manifestPath = path.join(packagePath, 'package.json')
+      if (!fs.existsSync(manifestPath)) continue
+      const name = JSON.parse(fs.readFileSync(manifestPath, 'utf8')).name
+      if (typeof name !== 'string') continue
+      const target = path.join(runtimeRoot, 'node_modules', ...name.split('/'))
+      fs.mkdirSync(target, { recursive: true })
+      fs.copyFileSync(manifestPath, path.join(target, 'package.json'))
+      const libPath = path.join(packagePath, 'lib')
+      if (fs.existsSync(libPath)) fs.cpSync(libPath, path.join(target, 'lib'), { recursive: true })
+    }
+  }
+}
+
+copyWorkspaceArtifacts(path.join(repoRoot, 'packages'))
+copyWorkspaceArtifacts(path.join(repoRoot, 'vendor'))
