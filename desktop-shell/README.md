@@ -8,6 +8,10 @@ DeepSeek Harness Desktop embeds the official `dsh web` application in WKWebView.
 
 This is a local developer-preview build. It is ad-hoc signed, is not distributed through the Mac App Store, and may require rebuilding when the upstream Web application changes.
 
+## Release 0.1.13
+
+This release lets text-only model routes use configured image OCR before rejecting an image attachment. It also routes durable image recognition through the image store and keeps Session log downloads inside the macOS app by saving them to Downloads.
+
 ## Release 0.1.12
 
 This release includes the workspace file-read fix: binary Office files are routed through the configured attachment recognizer instead of failing the text reader, while missing paths remain explicit errors. It also refreshes the verified official runtime and self-developed plugin artifacts used by the distribution build.
