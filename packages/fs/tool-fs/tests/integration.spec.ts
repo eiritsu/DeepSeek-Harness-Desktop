@@ -121,6 +121,25 @@ describe('default deployment (with dsh-fs-observation-policy)', () => {
       expect(text(result)).toContain('(End of file - total 2 lines)')
     })
 
+    it('recognizes binary workspace documents through the attachment recognizer', async () => {
+      await writeFile(join(dir, 'report.xlsx'), Buffer.from('PK\x03\x04\x00\x00'))
+      const recognizeFile = vi.fn(async (input: { name?: string; mediaType: string; data: Uint8Array }) => {
+        expect(input.name).toBe('report.xlsx')
+        expect(input.mediaType).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        return { text: 'Quarterly report' }
+      })
+      ctx.provide('attachments', {
+        fileLimits: { maxFileBytes: 1024, maxFilesPerMessage: 1, maxMessageFileBytes: 1024 },
+        recognizeFile,
+      } as never)
+
+      const result = await call('read', { file_path: 'report.xlsx' })
+
+      expect(result.isError).toBe(false)
+      expect(text(result)).toContain('1: Quarterly report')
+      expect(recognizeFile).toHaveBeenCalledOnce()
+    })
+
     it('reports a binary file as an error', async () => {
       await writeFile(join(dir, 'bin'), Buffer.from([0x00, 0x01, 0x02]))
       const result = await call('read', { file_path: 'bin' })

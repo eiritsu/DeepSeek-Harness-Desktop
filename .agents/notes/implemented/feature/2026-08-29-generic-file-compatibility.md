@@ -14,6 +14,8 @@ The attachment refactor retained image-only admission and transient recognition,
 
 Models without provider reasoning metadata expose the fixed provider-neutral `off`, `low`, `high`, and `max` efforts. Explicit levels remain validated when a provider declares a capability map.
 
+The filesystem `read` tool retries binary files through the mounted attachment recognizer, using the filename extension to provide a safe media type and preserving the same line-window presentation as text reads.
+
 ## Consequences
 
 Generic files are available to document recognizers, JSON and source files are persisted byte-for-byte, and the same session replay can reconstruct their model-visible text. The composer offers file and directory selection plus drag and drop; command claims remain image-only, while ordinary prompt submission carries both image and generic-file parts.

@@ -5,8 +5,12 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import { basename, extname } from 'node:path'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { GenericCallView, ReadResultView, ToolResult } from '@deepseek-ai/dsh-tools'
+import { UNKNOWN_FILE_MEDIA_TYPE } from '@deepseek-ai/dsh-attachment'
+import type { AttachmentStore } from '@deepseek-ai/dsh-attachment'
+import type { FsTarget } from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-fs'
 import { buildWindow, formatReadOutput, langFromPath, readMetaFromMeta } from './read-render.ts'
 import { resolveRegularReadTarget } from './read-target.ts'
@@ -37,6 +41,49 @@ interface ReadInput {
   filePath: string
   offset: number
   limit: number
+}
+
+const RECOGNITION_MEDIA_TYPES: Readonly<Record<string, string>> = {
+  md: 'text/markdown',
+  txt: 'text/plain',
+  csv: 'text/csv',
+  json: 'application/json',
+  pdf: 'application/pdf',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  odt: 'application/vnd.oasis.opendocument.text',
+  odp: 'application/vnd.oasis.opendocument.presentation',
+  ods: 'application/vnd.oasis.opendocument.spreadsheet',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+  gif: 'image/gif',
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+  mp4: 'video/mp4',
+  mov: 'video/quicktime',
+}
+
+function recognitionMediaType(path: string): string {
+  return RECOGNITION_MEDIA_TYPES[extname(path).slice(1).toLowerCase()] ?? UNKNOWN_FILE_MEDIA_TYPE
+}
+
+async function recognizeBinaryFile(
+  ctx: Context,
+  target: FsTarget,
+  signal: AbortSignal,
+): Promise<string | undefined> {
+  const attachments = ctx.get('attachments') as AttachmentStore | undefined
+  if (attachments === undefined) return undefined
+  const data = await ctx.fs.readBytes(target, signal, attachments.fileLimits.maxFileBytes)
+  const recognized = await attachments.recognizeFile({
+    data,
+    mediaType: recognitionMediaType(target.displayPath),
+    name: basename(target.displayPath),
+  }, signal)
+  return recognized?.text
 }
 
 function parsePositiveInteger(value: number, name: string): number {
@@ -140,14 +187,26 @@ export function applyReadTool(ctx: Context, caps: ReadToolCaps): void {
 
       // Stream when the file is large OR size is unknown, so a size-less backend
       // never buffers an arbitrarily large file.
-      const chunks = info.size === undefined || info.size >= caps.streamMinSize
-        ? await ctx.fs.streamText(target, exec.signal)
-        : [await ctx.fs.readText(target, exec.signal)]
-      const window = await buildWindow(
-        chunks,
-        { offset: input.offset, limit: input.limit, maxLineLength: caps.maxLineLength, maxBytes: caps.maxBytes },
-        target.displayPath,
-      )
+      let window: Awaited<ReturnType<typeof buildWindow>>
+      try {
+        const chunks = info.size === undefined || info.size >= caps.streamMinSize
+          ? await ctx.fs.streamText(target, exec.signal)
+          : [await ctx.fs.readText(target, exec.signal)]
+        window = await buildWindow(
+          chunks,
+          { offset: input.offset, limit: input.limit, maxLineLength: caps.maxLineLength, maxBytes: caps.maxBytes },
+          target.displayPath,
+        )
+      } catch (error: unknown) {
+        if (!(error instanceof Error && 'code' in error && error.code === 'FS_NOT_TEXT')) throw error
+        const recognized = await recognizeBinaryFile(ctx, target, exec.signal)
+        if (recognized === undefined) throw error
+        window = await buildWindow(
+          [recognized],
+          { offset: input.offset, limit: input.limit, maxLineLength: caps.maxLineLength, maxBytes: caps.maxBytes },
+          target.displayPath,
+        )
+      }
 
       const outcome = {
         path: target.displayPath,
