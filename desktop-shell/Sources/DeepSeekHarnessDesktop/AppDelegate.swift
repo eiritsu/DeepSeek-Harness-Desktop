@@ -50,7 +50,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
       UserDefaults.standard.string(forKey: SessionSelectionBridge.nativeStorageKey)
     )
     webContent.add(self, name: SessionSelectionBridge.messageName)
-    webContent.addScriptMessageHandler(self, contentWorld: .page, name: DesktopPluginBridge.messageName)
+    // SkillHub and the other desktop plugin calls are asynchronous. Register
+    // the reply-capable WebKit bridge so postMessage() returns their Promise.
+    webContent.addScriptMessageHandler(self as WKScriptMessageHandlerWithReply, contentWorld: .page, name: DesktopPluginBridge.messageName)
     let configuration = Self.makeWebViewConfiguration(userContentController: webContent)
     return WKWebView(frame: .zero, configuration: configuration)
   }()
