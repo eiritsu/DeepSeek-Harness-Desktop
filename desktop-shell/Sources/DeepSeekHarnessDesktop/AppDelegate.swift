@@ -27,6 +27,82 @@ func makeDesktopWindow() -> NSWindow {
   return window
 }
 
+final class DesktopWebView: WKWebView {
+  override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+    let pboard = sender.draggingPasteboard
+    if pboard.canReadObject(forClasses: [NSURL.self], options: nil) {
+      return .copy
+    }
+    return super.draggingEntered(sender)
+  }
+
+  override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
+    let pboard = sender.draggingPasteboard
+    if pboard.canReadObject(forClasses: [NSURL.self], options: nil) {
+      return .copy
+    }
+    return super.draggingUpdated(sender)
+  }
+
+  override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+    let pboard = sender.draggingPasteboard
+    guard pboard.canReadObject(forClasses: [NSURL.self], options: nil),
+          let urls = pboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL],
+          !urls.isEmpty,
+          urls.allSatisfy({ $0.isFileURL })
+    else {
+      return super.performDragOperation(sender)
+    }
+
+    var results: [[String: Any]] = []
+    for url in urls {
+      let path = url.standardizedFileURL.resolvingSymlinksInPath().path
+      var isDir: ObjCBool = false
+      guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir) else { continue }
+      if isDir.boolValue {
+        results.append([
+          "kind": "directory",
+          "path": path,
+          "name": url.lastPathComponent
+        ])
+      } else {
+        let ext = url.pathExtension.lowercased()
+        let isImage = ["png", "jpg", "jpeg", "webp", "gif"].contains(ext)
+        if isImage, let data = try? Data(contentsOf: url), data.count <= 25 * 1024 * 1024 {
+          let mime = ext == "jpg" ? "image/jpeg" : "image/\(ext)"
+          results.append([
+            "kind": "image",
+            "path": path,
+            "name": url.lastPathComponent,
+            "mime": mime,
+            "dataBase64": data.base64EncodedString()
+          ])
+        } else {
+          results.append([
+            "kind": "file",
+            "path": path,
+            "name": url.lastPathComponent
+          ])
+        }
+      }
+    }
+
+    if !results.isEmpty,
+       let jsonData = try? JSONSerialization.data(withJSONObject: ["items": results]),
+       let jsonString = String(data: jsonData, encoding: .utf8) {
+      let js = """
+      (() => {
+        window.dispatchEvent(new CustomEvent('dsh:native-drop', { detail: \(jsonString) }));
+      })();
+      """
+      self.evaluateJavaScript(js, completionHandler: nil)
+      return true
+    }
+
+    return super.performDragOperation(sender)
+  }
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate,
   WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandler, WKScriptMessageHandlerWithReply
@@ -54,7 +130,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     // the reply-capable WebKit bridge so postMessage() returns their Promise.
     webContent.addScriptMessageHandler(self as WKScriptMessageHandlerWithReply, contentWorld: .page, name: DesktopPluginBridge.messageName)
     let configuration = Self.makeWebViewConfiguration(userContentController: webContent)
-    return WKWebView(frame: .zero, configuration: configuration)
+    return DesktopWebView(frame: .zero, configuration: configuration)
   }()
   private let statusLabel = NSTextField(wrappingLabelWithString: "正在启动…")
   private let spinner = NSProgressIndicator()

@@ -104,6 +104,32 @@ export function ComposerAttachments({
   }, [canAcceptDrop, onAddImages])
 
   useEffect(() => {
+    const handleNativeItems = (items: { kind: string; path: string; name: string; mime?: string; dataBase64?: string }[]) => {
+      if (!items || items.length === 0) return
+      const imageFiles: File[] = []
+      const textMentions: string[] = []
+      for (const item of items) {
+        if (item.kind === 'image' && item.dataBase64 && item.mime) {
+          const binary = atob(item.dataBase64)
+          const array = new Uint8Array(binary.length)
+          for (let i = 0; i < binary.length; i += 1) array[i] = binary.charCodeAt(i)
+          imageFiles.push(new File([array], item.name, { type: item.mime }))
+        } else if (item.kind === 'directory') {
+          const mention = item.path.includes(' ') ? `@\"${item.path}/\"` : `@${item.path}/`
+          textMentions.push(mention)
+        } else {
+          const mention = item.path.includes(' ') ? `@\"${item.path}\"` : `@${item.path}`
+          textMentions.push(mention)
+        }
+      }
+      if (imageFiles.length > 0 && canAcceptDrop) {
+        onAddImages(imageFiles)
+      }
+      if (textMentions.length > 0 && onInsertText) {
+        onInsertText(textMentions.join(' ') + ' ')
+      }
+    }
+
     const onPickerRequest = (event: Event): void => {
       if (!(event instanceof CustomEvent)) return
       const kind = (event.detail as { kind?: unknown } | null)?.kind
@@ -118,29 +144,7 @@ export function ComposerAttachments({
           const payload = res as {
             items?: { kind: string; path: string; name: string; mime?: string; dataBase64?: string }[]
           } | null
-          if (!payload?.items || payload.items.length === 0) return
-          const imageFiles: File[] = []
-          const textMentions: string[] = []
-          for (const item of payload.items) {
-            if (item.kind === 'image' && item.dataBase64 && item.mime) {
-              const binary = atob(item.dataBase64)
-              const array = new Uint8Array(binary.length)
-              for (let i = 0; i < binary.length; i += 1) array[i] = binary.charCodeAt(i)
-              imageFiles.push(new File([array], item.name, { type: item.mime }))
-            } else if (item.kind === 'directory') {
-              const mention = item.path.includes(' ') ? `@\"${item.path}/\"` : `@${item.path}/`
-              textMentions.push(mention)
-            } else {
-              const mention = item.path.includes(' ') ? `@\"${item.path}\"` : `@${item.path}`
-              textMentions.push(mention)
-            }
-          }
-          if (imageFiles.length > 0 && canAcceptDrop) {
-            onAddImages(imageFiles)
-          }
-          if (textMentions.length > 0 && onInsertText) {
-            onInsertText(textMentions.join(' ') + ' ')
-          }
+          if (payload?.items) handleNativeItems(payload.items)
         }).catch(() => {
           pickerRef.current?.click()
         })
@@ -148,8 +152,23 @@ export function ComposerAttachments({
         pickerRef.current?.click()
       }
     }
+
+    const onNativeDrop = (event: Event): void => {
+      if (!(event instanceof CustomEvent)) return
+      dragDepth.current = 0
+      setDragActive(false)
+      const payload = event.detail as {
+        items?: { kind: string; path: string; name: string; mime?: string; dataBase64?: string }[]
+      } | null
+      if (payload?.items) handleNativeItems(payload.items)
+    }
+
     window.addEventListener(ATTACHMENT_PICKER_EVENT, onPickerRequest)
-    return () => { window.removeEventListener(ATTACHMENT_PICKER_EVENT, onPickerRequest) }
+    window.addEventListener('dsh:native-drop', onNativeDrop)
+    return () => {
+      window.removeEventListener(ATTACHMENT_PICKER_EVENT, onPickerRequest)
+      window.removeEventListener('dsh:native-drop', onNativeDrop)
+    }
   }, [canAcceptDrop, onAddImages, onInsertText])
 
   const railItems = useMemo<ComposerRailItem[]>(() => attachments.map((attachment) => {
