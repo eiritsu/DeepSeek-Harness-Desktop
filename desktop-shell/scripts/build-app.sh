@@ -183,7 +183,7 @@ if [ "$DISTRIBUTION" = true ]; then
   # governance files, test fixtures, snapshots, or development-only docs.
   # Keeping those out prevents local paths and fixture credentials from
   # crossing into the installed source tree.
-  for DIRECTORY in .agents .github docs snapshots website python
+  for DIRECTORY in .agents .github docs snapshots website python desktop-shell
   do
     /bin/rm -rf "$SNAPSHOT_ROOT/$DIRECTORY"
   done
