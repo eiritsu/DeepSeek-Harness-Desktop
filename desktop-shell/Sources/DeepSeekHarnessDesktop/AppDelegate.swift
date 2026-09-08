@@ -582,8 +582,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
     let panel = NSOpenPanel()
     panel.canChooseFiles = true
-    panel.canChooseDirectories = true
-    panel.allowsMultipleSelection = true
+    panel.canChooseDirectories = parameters.allowsDirectories
+    panel.allowsMultipleSelection = parameters.allowsMultipleSelection
     panel.canCreateDirectories = false
     panel.beginSheetModal(for: window) { response in
       completionHandler(response == .OK ? panel.urls : nil)

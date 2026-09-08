@@ -6,7 +6,7 @@
  * regression that `read` keeps its text-only contract.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -418,6 +418,20 @@ describe('extension-less paths', () => {
 })
 
 describe('strict image-modality gate', () => {
+  it('retains recognizer text when a text-only model reads an image', async () => {
+    await writeFile(join(dir, 'red.png'), PNG_1X1)
+    const ctx = await setup()
+    const recognize = vi.fn(async () => ({ text: 'OCR route verified' }))
+    const dispose = ctx.attachments.registerFileRecognizer({ id: 'ocr-test', supports: () => true, recognize })
+    try {
+      const result = await readImage(ctx, { file_path: 'red.png' }, agentOn('text-model'))
+      expect(result.isError).toBe(false)
+      expect(recognize).toHaveBeenCalledOnce()
+      expect(JSON.stringify(result)).toContain('OCR route verified')
+    } finally {
+      dispose()
+    }
+  })
   it('accepts an exact visual route even when the advisory model catalog omits it', async () => {
     await writeFile(join(dir, 'red.png'), PNG_1X1)
     const ctx = await setup({

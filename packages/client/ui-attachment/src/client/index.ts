@@ -25,8 +25,10 @@ export function apply(ctx: ClientContext): void {
       order: -100,
       candidates: async (_session, { signal }): Promise<readonly InputTriggerCandidate[]> => signal.aborted ? [] : [
         { name: t('attachment.filesAndFolders'), icon: 'paperclip', value: 'files' },
+        { name: t('attachment.folder'), icon: 'folder', value: 'folder' },
       ],
       onPick: ({ candidate }) => {
+        if (candidate.value === 'folder') return { text: '@', continue: true }
         if (candidate.value !== 'files') return undefined
         window.dispatchEvent(new CustomEvent(ATTACHMENT_PICKER_EVENT, { detail: { kind: candidate.value } }))
         return 'handled'
