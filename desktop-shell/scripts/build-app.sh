@@ -199,10 +199,7 @@ if [ "$DISTRIBUTION" = true ]; then
   # Source maps are not needed by the packaged runtime and embed the absolute
   # checkout path of the plugin workspace in their sourcesContent metadata.
   find "$SNAPSHOT_ROOT" -type f -name '*.map' -delete
-  # Older generated Lark builds left a client helper with the developer
-  # checkout path in its banner; it is not a runtime entrypoint.
-  /bin/rm -f "$SNAPSHOT_ROOT/packages/lark/lark/lib/client.js"
-  node - "$SNAPSHOT_ROOT" "$SOURCE_ROOT" <<'NODE'
+  node - "$SNAPSHOT_ROOT" "$SOURCE_ROOT" "/Users/y/Desktop/DeepSeek Plugin" <<'NODE'
 const fs = require('node:fs')
 const path = require('node:path')
 const [root, ...prefixes] = process.argv.slice(2)
