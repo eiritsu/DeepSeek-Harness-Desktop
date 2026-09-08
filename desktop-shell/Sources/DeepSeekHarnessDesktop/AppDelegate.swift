@@ -853,6 +853,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         }
         replyHandler(["path": directory.standardizedFileURL.resolvingSymlinksInPath().path], nil)
       }
+    case "chooseContext":
+      let panel = NSOpenPanel()
+      panel.canChooseFiles = true
+      panel.canChooseDirectories = true
+      panel.allowsMultipleSelection = true
+      panel.canCreateDirectories = false
+      panel.prompt = "选择"
+      panel.message = "选择要添加到会话的文件或文件夹"
+      panel.beginSheetModal(for: window) { response in
+        guard response == .OK else {
+          replyHandler(["cancelled": true, "items": []], nil)
+          return
+        }
+        var results: [[String: Any]] = []
+        for url in panel.urls {
+          let path = url.standardizedFileURL.resolvingSymlinksInPath().path
+          var isDir: ObjCBool = false
+          guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir) else { continue }
+          if isDir.boolValue {
+            results.append([
+              "kind": "directory",
+              "path": path,
+              "name": url.lastPathComponent
+            ])
+          } else {
+            let ext = url.pathExtension.lowercased()
+            let isImage = ["png", "jpg", "jpeg", "webp", "gif"].contains(ext)
+            if isImage, let data = try? Data(contentsOf: url), data.count <= 25 * 1024 * 1024 {
+              let mime = ext == "jpg" ? "image/jpeg" : "image/\(ext)"
+              results.append([
+                "kind": "image",
+                "path": path,
+                "name": url.lastPathComponent,
+                "mime": mime,
+                "dataBase64": data.base64EncodedString()
+              ])
+            } else {
+              results.append([
+                "kind": "file",
+                "path": path,
+                "name": url.lastPathComponent
+              ])
+            }
+          }
+        }
+        replyHandler(["items": results], nil)
+      }
     case "reviewRepository":
       guard let repository = request["repository"] as? String else {
         replyHandler(nil, "社区插件审查请求缺少 repository。")

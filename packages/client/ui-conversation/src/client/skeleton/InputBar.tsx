@@ -397,6 +397,10 @@ export function InputBar({
           canAcceptDrop,
           onAddImages: intakeImages,
           onRemoveImage: (id) => { removeImage?.(id) },
+          onInsertText: (text: string) => {
+            editor?.getRootElement()?.focus({ preventScroll: true })
+            keyboard?.paste(text)
+          },
           dropLimits: imageLimits === undefined ? undefined : {
             count: imageLimits.maxImagesPerMessage,
             size: imageSizeText(imageLimits.maxImageBytes),

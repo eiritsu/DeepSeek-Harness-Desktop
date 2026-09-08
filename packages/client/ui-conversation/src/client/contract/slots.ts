@@ -44,6 +44,8 @@ export interface ComposerAttachmentsOwnerProps {
   onAddImages: (files: readonly File[]) => void
   /** Remove one draft image through the Conversation service. */
   onRemoveImage: (id: DraftAttachmentId) => void
+  /** Insert text or path context into the composer draft. */
+  onInsertText?: (text: string) => void
   /** Display-ready limits for the drop invitation. */
   dropLimits?: { readonly count: number; readonly size: string } | undefined
 }

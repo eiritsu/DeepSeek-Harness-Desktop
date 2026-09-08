@@ -25,7 +25,7 @@ function fileTypeLabel(file: File): string | undefined {
 
 /** Draft-image rail, document drop target, and original-image preview slot entry. */
 export function ComposerAttachments({
-  attachments, canAcceptDrop, onAddImages, onRemoveImage, dropLimits, t,
+  attachments, canAcceptDrop, onAddImages, onRemoveImage, onInsertText, dropLimits, t,
 }: ComposerAttachmentsProps) {
   const [preview, setPreview] = useState<ComposerAttachment | null>(null)
   const [dragActive, setDragActive] = useState(false)
@@ -72,7 +72,22 @@ export function ComposerAttachments({
       if (dataTransfer === null) return
       event.preventDefault()
       reset()
-      if (canAcceptDrop) onAddImages([...dataTransfer.files])
+      if (!canAcceptDrop) return
+      const items = dataTransfer.items
+      const validFiles: File[] = []
+      if (items && items.length > 0) {
+        for (let i = 0; i < items.length; i += 1) {
+          const item = items[i]
+          if (item === undefined || item.kind !== 'file') continue
+          const entry = typeof item.webkitGetAsEntry === 'function' ? item.webkitGetAsEntry() : null
+          if (entry?.isDirectory) continue
+          const file = item.getAsFile()
+          if (file !== null) validFiles.push(file)
+        }
+      } else {
+        validFiles.push(...dataTransfer.files)
+      }
+      if (validFiles.length > 0) onAddImages(validFiles)
     }
     document.addEventListener('dragenter', onDragEnter)
     document.addEventListener('dragover', onDragOver)
@@ -92,11 +107,50 @@ export function ComposerAttachments({
     const onPickerRequest = (event: Event): void => {
       if (!(event instanceof CustomEvent)) return
       const kind = (event.detail as { kind?: unknown } | null)?.kind
-      if (kind === 'files') pickerRef.current?.click()
+      if (kind !== 'files') return
+
+      const bridge = (window as unknown as {
+        dshDesktopPluginBridge?: { request: (req: unknown) => Promise<unknown> }
+      }).dshDesktopPluginBridge
+
+      if (bridge) {
+        bridge.request({ action: 'chooseContext' }).then((res: unknown) => {
+          const payload = res as {
+            items?: { kind: string; path: string; name: string; mime?: string; dataBase64?: string }[]
+          } | null
+          if (!payload?.items || payload.items.length === 0) return
+          const imageFiles: File[] = []
+          const textMentions: string[] = []
+          for (const item of payload.items) {
+            if (item.kind === 'image' && item.dataBase64 && item.mime) {
+              const binary = atob(item.dataBase64)
+              const array = new Uint8Array(binary.length)
+              for (let i = 0; i < binary.length; i += 1) array[i] = binary.charCodeAt(i)
+              imageFiles.push(new File([array], item.name, { type: item.mime }))
+            } else if (item.kind === 'directory') {
+              const mention = item.path.includes(' ') ? `@\"${item.path}/\"` : `@${item.path}/`
+              textMentions.push(mention)
+            } else {
+              const mention = item.path.includes(' ') ? `@\"${item.path}\"` : `@${item.path}`
+              textMentions.push(mention)
+            }
+          }
+          if (imageFiles.length > 0 && canAcceptDrop) {
+            onAddImages(imageFiles)
+          }
+          if (textMentions.length > 0 && onInsertText) {
+            onInsertText(textMentions.join(' ') + ' ')
+          }
+        }).catch(() => {
+          pickerRef.current?.click()
+        })
+      } else {
+        pickerRef.current?.click()
+      }
     }
     window.addEventListener(ATTACHMENT_PICKER_EVENT, onPickerRequest)
     return () => { window.removeEventListener(ATTACHMENT_PICKER_EVENT, onPickerRequest) }
-  }, [])
+  }, [canAcceptDrop, onAddImages, onInsertText])
 
   const railItems = useMemo<ComposerRailItem[]>(() => attachments.map((attachment) => {
     const common = {
