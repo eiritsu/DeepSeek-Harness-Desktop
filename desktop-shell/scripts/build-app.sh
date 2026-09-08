@@ -4,9 +4,6 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 SHELL_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 HARNESS_ROOT=$(CDPATH= cd -- "$SHELL_ROOT/.." && pwd)
-DEFAULT_PLUGIN_ROOT="$HARNESS_ROOT/../DeepSeek Plugin"
-PLUGIN_ROOT=${DSH_PLUGIN_DIR:-$DEFAULT_PLUGIN_ROOT}
-PLUGIN_ROOT=$(CDPATH= cd -- "$PLUGIN_ROOT" && pwd)
 SOURCE_ROOT=${DSH_SOURCE_DIR:-$HARNESS_ROOT}
 SOURCE_ROOT=$(CDPATH= cd -- "$SOURCE_ROOT" && pwd)
 OUTPUT_ROOT="$SHELL_ROOT/dist"
@@ -99,11 +96,6 @@ if [ ! -f "$SOURCE_ROOT/apps/cli/package.json" ]; then
   echo "build-app: DSH source not found at $SOURCE_ROOT; set DSH_SOURCE_DIR" >&2
   exit 1
 fi
-if [ ! -f "$PLUGIN_ROOT/packages/client/ui-plugin-library/package.json" ]; then
-  echo "build-app: self-developed plugin source not found at $PLUGIN_ROOT; set DSH_PLUGIN_DIR" >&2
-  exit 1
-fi
-
 DISTRIBUTION=false
 if [ "${1:-}" = "--distribution" ]; then
   DISTRIBUTION=true
@@ -121,11 +113,9 @@ HARNESS_COMMIT=""
 PLUGIN_COMMIT=""
 if [ "$DISTRIBUTION" = true ]; then
   require_clean_checkout "$SOURCE_ROOT" "Harness"
-  require_clean_checkout "$PLUGIN_ROOT" "DeepSeek Plugin"
   require_published_head "$SOURCE_ROOT" desktop-publish main "Harness"
-  require_published_head "$PLUGIN_ROOT" origin main "DeepSeek Plugin"
   HARNESS_COMMIT=$(git -C "$SOURCE_ROOT" rev-parse HEAD)
-  PLUGIN_COMMIT=$(git -C "$PLUGIN_ROOT" rev-parse HEAD)
+  PLUGIN_COMMIT="$HARNESS_COMMIT"
 fi
 
 swift build --package-path "$SHELL_ROOT" -c release
@@ -144,21 +134,6 @@ if [ "$DISTRIBUTION" = true ]; then
   SNAPSHOT_ROOT="$SNAPSHOT_WORK/source"
   mkdir -p "$SNAPSHOT_ROOT"
   copy_committed_files "$SOURCE_ROOT" "$SNAPSHOT_ROOT" .
-  rm -rf \
-    "$SNAPSHOT_ROOT/packages/client/ui-plugin-library" \
-    "$SNAPSHOT_ROOT/packages/client/ui-skill-library" \
-    "$SNAPSHOT_ROOT/packages/client/ui-deepseek-files" \
-    "$SNAPSHOT_ROOT/packages/attachment/file-recognizer-office" \
-    "$SNAPSHOT_ROOT/packages/lark/lark" \
-    "$SNAPSHOT_ROOT/packages/llm/model-catalog" \
-    "$SNAPSHOT_ROOT/desktop-shell"
-  copy_committed_files "$PLUGIN_ROOT" "$SNAPSHOT_ROOT" \
-    packages/client/ui-plugin-library \
-    packages/client/ui-skill-library \
-    packages/client/ui-deepseek-files \
-    packages/attachment/file-recognizer-office \
-    packages/lark/lark \
-    packages/llm/model-catalog
   for PACKAGE in \
     packages/client/ui-plugin-library \
     packages/client/ui-skill-library \
@@ -167,12 +142,10 @@ if [ "$DISTRIBUTION" = true ]; then
     packages/lark/lark \
     packages/llm/model-catalog
   do
-    if [ ! -d "$PLUGIN_ROOT/$PACKAGE/lib" ]; then
-      echo "build-app: built plugin artifacts are missing at $PLUGIN_ROOT/$PACKAGE/lib; run the plugin build first" >&2
+    if [ ! -d "$SOURCE_ROOT/$PACKAGE/lib" ]; then
+      echo "build-app: built plugin artifacts are missing at $SOURCE_ROOT/$PACKAGE/lib; run pnpm run build first" >&2
       exit 1
     fi
-    mkdir -p "$SNAPSHOT_ROOT/$PACKAGE"
-    COPYFILE_DISABLE=1 /bin/cp -R "$PLUGIN_ROOT/$PACKAGE/lib" "$SNAPSHOT_ROOT/$PACKAGE/"
   done
   if [ ! -f "$SOURCE_ROOT/apps/cli/lib/bin.js" ] || [ ! -f "$SOURCE_ROOT/apps/web/dist/index.html" ]; then
     echo "build-app: built Harness artifacts are missing; run pnpm run build before packaging" >&2
@@ -226,7 +199,7 @@ if [ "$DISTRIBUTION" = true ]; then
   # Source maps are not needed by the packaged runtime and embed the absolute
   # checkout path of the plugin workspace in their sourcesContent metadata.
   find "$SNAPSHOT_ROOT" -type f -name '*.map' -delete
-  node - "$SNAPSHOT_ROOT" "$PLUGIN_ROOT" "$SOURCE_ROOT" <<'NODE'
+  node - "$SNAPSHOT_ROOT" "$SOURCE_ROOT" <<'NODE'
 const fs = require('node:fs')
 const path = require('node:path')
 const [root, ...prefixes] = process.argv.slice(2)
@@ -246,7 +219,7 @@ function visit(directory) {
 }
 visit(root)
 NODE
-  PLUGIN_LIBRARY_VERSION=$(node -p "require('$PLUGIN_ROOT/packages/client/ui-plugin-library/package.json').version")
+  PLUGIN_LIBRARY_VERSION=$(node -p "require('$SOURCE_ROOT/packages/client/ui-plugin-library/package.json').version")
   node - "$SNAPSHOT_ROOT/packages/client/ui-plugin-library/package.json" "$PLUGIN_LIBRARY_VERSION" <<'NODE'
 const fs = require('node:fs')
 const [manifestPath, version] = process.argv.slice(2)
