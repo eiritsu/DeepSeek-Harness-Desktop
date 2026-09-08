@@ -35,7 +35,9 @@
   // belongs to the host aggregate, which excludes this program's `*.client.*`
   // in turn. `exclude` wins over `include`, so the test glob above stays broad.
   "exclude": [
-    "packages/client/*/tests/**/*.host.spec.ts"
+    "packages/client/*/tests/**/*.host.spec.ts",
+    "packages/client/ui-deepseek-files/**",
+    "packages/client/ui-lark/**"
   ],
   "references": [
     // Shared leaf: web e2e boots the real host webserver (fixture + real-host
