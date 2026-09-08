@@ -107,6 +107,10 @@
   // suffixes are mutually exclusive, so each aggregate excludes the other's
   // and the package test glob above needs no per-file entry.
   "exclude": [
+    "packages/lark/lark/tests/**",
+    "packages/attachment/file-recognizer-office/tests/**",
+    "packages/client/ui-lark/tests/**",
+    "packages/llm/model-catalog/tests/**",
     "packages/client/*/src/**",
     "packages/*/*/tests/**/*.client.ts",
     "packages/*/*/tests/**/*.client.tsx",
