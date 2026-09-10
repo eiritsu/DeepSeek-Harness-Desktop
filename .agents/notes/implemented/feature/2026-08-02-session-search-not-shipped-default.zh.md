@@ -10,7 +10,7 @@ Status: implemented
 
 ## 决策
 
-交付的 TUI、Web 与无头 surface 均不挂载 `@deepseek-ai/dsh-tool-session-query`，交付的 agent preset 也都不包含它。该消费方仍保持 opt-in，与面向模型的会话查询工具决策所述完全一致：[session-query 快照组合](../../../../snapshots/session/session-query-spill/cordis.yml)仍是挂载参考，自定义组合也可以连同超时与 spill 策略一起挂载该包。
+交付的 TUI、普通浏览器 Web 与无头 surface 均不挂载 `@deepseek-ai/dsh-tool-session-query`，交付的 agent preset 也都不包含它。该消费方仍保持 opt-in，与面向模型的会话查询工具决策所述完全一致：[session-query 快照组合](../../../../snapshots/session/session-query-spill/cordis.yml)仍是挂载参考，自定义组合也可以连同超时与 spill 策略一起挂载该包。macOS 桌面 Web profile 是唯一的交付例外：`DSH_DESKTOP_SHELL=1` 会挂载五个只读工具，让桌面会话可以查询 App 拥有的持久化服务，无需使用 Bash 扫描 Application Support。
 
 `ctx.sessionQuery` 服务本身保持挂载。`session-query-sqlite` 仍是 base 的一行，TUI 的 `session-reference` 消费它来实现 `/resume`；其全文索引默认关闭（`openAt: never`，见[内容搜索 opt-in 决策](../architecture/2026-08-13-session-content-search-opt-in.zh.md)），Web overlay 保留内存索引取值，供启用内容搜索的部署使用。被移除的只有面向模型的消费方。
 
@@ -22,4 +22,4 @@ Status: implemented
 
 ## 后果
 
-两个 surface 都回到同样的二十个无条件工具（ripgrep 可用时再加上 `glob`/`grep`），五个会话搜索 schema 及其提示词段也一并退出默认请求。两个 surface 上的交付组合测试都固定这份更小的目录，因此把会话搜索重新作为默认加回会触及同样的测试。想要会话搜索的用户从个人 overlay 或 ACP 示例挂载该消费方，并在挂载处添加依赖。
+普通交付 surface 仍保留同样的二十个无条件工具（ripgrep 可用时再加上 `glob`/`grep`），五个会话搜索 schema 及其提示词段仍不会进入它们的默认请求。桌面请求包含这五个 schema，并使用经工作区授权的派生索引。组合测试会固定两种结果。其他 surface 上想要会话搜索的用户从个人 overlay 或 ACP 示例挂载该消费方，并在挂载处添加依赖。

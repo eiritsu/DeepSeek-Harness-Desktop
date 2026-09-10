@@ -17,6 +17,7 @@ import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import yaml from 'js-yaml'
 import { describe, expect, it } from 'vitest'
+import { evaluate } from '@deepseek-ai/cordis-plugin-loader'
 
 const repoRoot = fileURLToPath(new URL('../../../', import.meta.url))
 const builtBin = join(repoRoot, 'apps/cli/lib/bin.js')
@@ -30,7 +31,7 @@ const requireBuiltArtifacts = process.env.DSH_REQUIRE_BUILT_CLI_SMOKE === '1'
 interface ConfigRow {
   id?: string
   disabled?: unknown
-  config?: { openAt?: unknown }
+  config?: { openAt?: unknown; path?: unknown }
 }
 
 interface PatchEntry extends ConfigRow {
@@ -111,9 +112,21 @@ describe.skipIf(!requireBuiltArtifacts)('built CLI lazy-search startup', () => {
     const webRow = webRows.find(row => row.id === 'session-query-sqlite')
     expect(baseRow?.config?.openAt).toBe('never')
     expect(baseRow?.disabled).toBeUndefined()
-    // The web restatement keeps the shipped default; opting in is a later layer's override.
-    expect(webRow?.config?.openAt).toBe('never')
+    const webOpenAt = webRow?.config?.openAt as string
+    const webPath = webRow?.config?.path as string
+    expect(evaluate({ process: { env: {} }, dshHomePath: (path: string) => `/home/${path}` }, webOpenAt))
+      .toBe('never')
+    expect(evaluate({ process: { env: {} }, dshHomePath: (path: string) => `/home/${path}` }, webPath))
+      .toBe(':memory:')
+    expect(evaluate({ process: { env: { DSH_DESKTOP_SHELL: '1' } }, dshHomePath: (path: string) => `/home/${path}` }, webOpenAt))
+      .toBe('first-search')
+    expect(evaluate({ process: { env: { DSH_DESKTOP_SHELL: '1' } }, dshHomePath: (path: string) => `/home/${path}` }, webPath))
+      .toBe('/home/dsh-session-query.sqlite')
     expect(webRow?.disabled).toBeUndefined()
+    const desktopTools = webRows.find(row => row.id === 'desktop-session-query-tools')
+    const disabled = desktopTools?.disabled as string
+    expect(evaluate({ process: { env: {} } }, disabled)).toBe(true)
+    expect(evaluate({ process: { env: { DSH_DESKTOP_SHELL: '1' } } }, disabled)).toBe(false)
 
     const cwd = await mkdtemp(join(tmpdir(), 'dsh-cli-lazy-search-'))
     try {

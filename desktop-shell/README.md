@@ -8,6 +8,10 @@ DeepSeek Harness Desktop embeds the official `dsh web` application in WKWebView.
 
 This is a local developer-preview build. It is ad-hoc signed, is not distributed through the Mac App Store, and may require rebuilding when the upstream Web application changes.
 
+## Release 0.1.16
+
+Desktop sessions can now use the workspace-authorized session-history tools over the App-owned SQLite data, instead of searching Application Support with Bash. Session log downloads are handed from WKWebView to the native download manager and saved in Downloads.
+
 ## Release 0.1.15
 
 Text-only image reads use the configured Deepseek-Files OCR service before reporting a model capability error. Media service failures now remain visible to the caller.
@@ -34,6 +38,8 @@ This release differs from 0.1.10 in four desktop-data guarantees: SQLite WAL sta
 - **Startup readiness.** Before navigation, the shell waits for the client-module registry's token-free `/plugins/__dsh_ready` route. This preserves the one-time authentication token for WKWebView and prevents a transient bundle 404 from becoming a permanent plugin-load failure.
 - **One-time Web authentication.** The CLI readiness line includes a one-time token. WKWebView performs the first request so it can exchange that token for its origin cookie; reloads use the same URL without query or fragment and therefore never reuse the token.
 - **Session continuity.** A document-start bridge restores the opaque current-session selection from native preferences and mirrors later selection changes. Session logs, drafts, settings, and plugin state remain owned by Harness.
+- **Session history access.** Desktop sessions mount the read-only session query tools and lazily maintain a derived full-text index beside the authoritative SQLite database. Cross-session reads require exact Workspace equality; ordinary browser, TUI, and headless deployments remain opt-in.
+- **Session log download.** The Session Header action and `/export` command stream the ZIP through the authenticated loopback route. WKWebView hands the response to the native download manager, which saves a uniquely named file in Downloads without opening an external browser.
 - **Native presentation.** The standard Edit menu follows the AppKit responder chain, external links open in the default browser, and a transparent title bar preserves a drag region outside sidebar controls.
 - **Plugin management.** The desktop-only Plugin library shows app-bundled plugins, Skills, and external dependencies. External sources are pinned and inspected before approved mutations are delegated to `dsh plugin --profile web`; all operations are recorded in a JSONL audit log. Plugin dependencies, Skill data, and profiles live below Application Support. A normal browser mounts the same client package but exposes no native bridge, so no Plugin library UI is registered.
 - **Startup recovery.** If one sideloaded Bundle prevents readiness, the shell may retry once with a temporary profile that omits only that out-of-tree dependency. It does not edit the Web profile or uninstall the package.
@@ -67,7 +73,7 @@ open "desktop-shell/dist/DeepSeek Harness.app"
 
 The build script recreates `desktop-shell/dist/DeepSeek Harness.app`, generates `AppIcon.icns`, applies an ad-hoc signature after all resources are present, and records the current checkout as the initial source root for development builds. Distribution builds remove that local source pointer; installed apps bootstrap from the embedded snapshot and update from GitHub. The resulting application has the development bundle identifier `ai.deepseek.harness.desktop.local`.
 
-Run `desktop-shell/scripts/package-dmg.sh` to create a shareable disk image. The distribution build removes the developer source path, Git metadata, tests, snapshots, source maps, and development-only documentation; it embeds the verified Harness runtime/Web artifacts and six self-developed plugin packages from the sibling `DeepSeek Plugin` checkout (the path can be overridden with `DSH_PLUGIN_DIR`). The Web profile enables the Plugin library, Skill library, Deepseek-Files Office recognition, Lark, and model-catalog bundles on first launch. It uses the `ai.deepseek.harness.desktop` identifier, remains ad-hoc signed, and is not notarized.
+Run `desktop-shell/scripts/package-dmg.sh` to create a shareable disk image. The distribution build removes the developer source path, Git metadata, tests, snapshots, source maps, and development-only documentation; it embeds the verified Harness runtime, Web artifacts, and self-developed plugin packages from this repository. The Web profile enables the Plugin library, Skill library, Deepseek-Files Office recognition, Lark, and model-catalog bundles on first launch. It uses the `ai.deepseek.harness.desktop` identifier, remains ad-hoc signed, and is not notarized.
 
 If no existing `node` and same-directory `npx` satisfy the required version, startup downloads the official Node.js 24.16.0 ARM64 archive, verifies its pinned SHA-256 digest, and installs it below Application Support without administrator access or changes to the system Node.js installation.
 
@@ -79,9 +85,9 @@ Sessions, settings, credentials, profiles, plugin dependencies, Skill data, mana
 ~/Library/Application Support/DeepSeek Harness Desktop/
 ```
 
-Harness data is stored in the `data` subdirectory and stays separate from source worktrees and the application bundle. Desktop runtime output and native errors are appended to `logs/desktop.log`; plugin review and mutation records are appended to `logs/plugin-audit.jsonl`. On first launch, missing data from the legacy `~/.dsh` home is merged into this directory and the legacy home is retained. Later plugin installs and removals through the desktop library write only to `data/profiles/web`.
+Harness data is stored in the `data` subdirectory and stays separate from source worktrees and the application bundle. Desktop runtime output and native errors are appended to `logs/desktop.log` after credential-bearing fields and authentication query parameters are redacted; startup also scrubs those values from the existing log. Plugin review and mutation records are appended to `logs/plugin-audit.jsonl`. On first launch, missing data from the legacy `~/.dsh` home is merged into this directory and the legacy home is retained. Later plugin installs and removals through the desktop library write only to `data/profiles/web`.
 
-The desktop initializes `data/dsh-desktop.sqlite` with the canonical data inventory and migration tables before starting Harness. SQLite uses a monotonic `user_version` and refuses to let an older App overwrite a newer database. Sessions, settings, credentials, storage units, profile/Skill metadata, plugin audit records, and source-release records are persisted in SQLite. Profile manifests and Skill source remain file artifacts because Loader and the Skill provider execute them; the legacy audit JSONL is retained as a compatibility export, while SQLite is the queryable owner. A protected `runtime.pid` file lets the desktop reap the same Harness runtime left behind by a forced quit, preventing orphan processes from turning the next update into status 1.
+The desktop initializes `data/dsh-desktop.sqlite` with the canonical data inventory and migration tables before starting Harness. SQLite uses a monotonic `user_version` and refuses to let an older App overwrite a newer database. Sessions, settings, credentials, storage units, profile/Skill metadata, plugin audit records, and source-release records are persisted in SQLite. `data/dsh-session-query.sqlite` is a disposable full-text index derived lazily from the session persistence service; it is not a second owner of session data. Profile manifests and Skill source remain file artifacts because Loader and the Skill provider execute them; the legacy audit JSONL is retained as a compatibility export, while SQLite is the queryable owner. A protected `runtime.pid` file lets the desktop reap the same Harness runtime left behind by a forced quit, preventing orphan processes from turning the next update into status 1.
 
 ## Security limits
 

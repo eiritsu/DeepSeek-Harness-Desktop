@@ -25,8 +25,8 @@
 # to the first search so Node 22 startup stays quiet.
 - id: session-query-sqlite
   config:
-    path: ':memory:'
-    openAt: never
+    path: !!js "process.env.DSH_DESKTOP_SHELL === '1' ? dshHomePath('dsh-session-query.sqlite') : ':memory:'"
+    openAt: !!js "process.env.DSH_DESKTOP_SHELL === '1' ? 'first-search' : 'never'"
 
 - id: tools
   config:
@@ -57,6 +57,12 @@
     # Browser Session export: `/export` command plus the shared download dialog.
     - id: session-log-download
       name: '@deepseek-ai/dsh-session-log-export'
+
+    # Desktop sessions can query prior sessions in the same Workspace through
+    # the persistence service. Browser deployments retain the opt-in default.
+    - id: desktop-session-query-tools
+      name: '@deepseek-ai/dsh-tool-session-query'
+      disabled: !!js process.env.DSH_DESKTOP_SHELL !== '1'
 
     - id: workspace
       name: '@deepseek-ai/dsh-workspace'

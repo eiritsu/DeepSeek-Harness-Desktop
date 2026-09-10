@@ -8,6 +8,10 @@ DeepSeek Harness Desktop 在 WKWebView 中嵌入官方 `dsh web` 应用。用户
 
 这是本地 developer preview 构建。应用使用 ad-hoc 签名，不通过 Mac App Store 分发；上游 Web 应用变更后可能需要重新构建。
 
+## 0.1.16 版本说明
+
+桌面会话现在可以通过工作区授权的会话历史工具访问 App 拥有的 SQLite 数据，不再用 Bash 搜索 Application Support。Session 日志下载会从 WKWebView 交给原生下载管理器，并保存到 Downloads。
+
 ## 0.1.15 版本说明
 
 仅支持文本的模型读取图片时会先调用已配置的 Deepseek-Files OCR 服务；媒体服务失败会明确返回给调用方。
@@ -34,6 +38,8 @@ DeepSeek Harness Desktop 在 WKWebView 中嵌入官方 `dsh web` 应用。用户
 - **启动就绪。** 导航前，桌面壳会等待客户端模块 registry 的免 token `/plugins/__dsh_ready` 路由。这会把一次性认证 token 保留给 WKWebView，并防止短暂的 bundle 404 变成永久插件加载失败。
 - **一次性 Web 认证。** CLI 就绪行包含一次性 token。首次请求由 WKWebView 发起，以便把 token 换成当前 origin 的 cookie；后续重新载入使用移除 query 与 fragment 的同一 URL，不会重复消费 token。
 - **会话延续。** document-start bridge 从原生偏好恢复不透明的当前会话选择记录，并同步后续选择变化。会话日志、草稿、设置与插件状态仍由 Harness 管理。
+- **会话历史访问。** 桌面会话会挂载只读的会话查询工具，并在权威 SQLite 数据库旁延迟维护一份派生全文索引。跨会话读取要求 Workspace 完全一致；普通浏览器、TUI 和 headless 部署仍需显式启用。
+- **Session 日志下载。** Session Header 操作与 `/export` 命令会通过已认证的 loopback 路由流式输出 ZIP。WKWebView 把响应交给原生下载管理器，后者会用不重名文件名保存到 Downloads，不会打开外部浏览器。
 - **原生呈现。** 标准“编辑”菜单沿 AppKit responder chain 分发，外部链接在默认浏览器打开，透明标题栏则在侧边栏控件之外保留拖拽区域。
 - **插件管理。** 仅桌面版可见的“插件库”会显示 App 内置 Bundle、Skill 与外部依赖；外部来源先固定网络来源并检查 Bundle 结构，再把通过审查的变更委托给 `dsh plugin --profile web`，并写入 JSONL 审计日志。插件依赖、Skill 数据和 profile 都位于 Application Support 下。普通浏览器虽然挂载相同 client package，但没有原生 bridge，因此不会注册“插件库”界面。
 - **启动恢复。** 如果一个侧载 Bundle 阻止运行时就绪，桌面壳可以用只省略该树外依赖的临时 profile 重试一次；它不会修改 Web profile 或卸载 package。
@@ -67,7 +73,7 @@ open "desktop-shell/dist/DeepSeek Harness.app"
 
 构建脚本会重新创建 `desktop-shell/dist/DeepSeek Harness.app`、生成 `AppIcon.icns`、在所有资源写入后应用 ad-hoc 签名，并在开发构建中把当前 checkout 记录为初始源码根目录。发行版会移除本地源码指针；安装后的应用从内置快照启动，并从 GitHub 更新。开发应用使用 bundle identifier `ai.deepseek.harness.desktop.local`。
 
-运行 `desktop-shell/scripts/package-dmg.sh` 可以创建可分享的磁盘映像。分发构建会移除开发者源码路径、Git 元数据、测试、快照、source map 和仅开发使用的文档；它会嵌入已验证的 Harness 运行时/Web 产物，以及旁置 `DeepSeek Plugin` checkout 中六个自研插件包（可用 `DSH_PLUGIN_DIR` 覆盖路径）。Web profile 首次启动时默认启用插件库、技能库、Deepseek-Files Office 识别、Lark 和 model-catalog Bundle。产物使用 `ai.deepseek.harness.desktop` identifier，仍是 ad-hoc 签名且未经 notarization。
+运行 `desktop-shell/scripts/package-dmg.sh` 可以创建可分享的磁盘映像。分发构建会移除开发者源码路径、Git 元数据、测试、快照、source map 和仅开发使用的文档；它会嵌入已验证的 Harness 运行时、Web 产物和本仓库内的自研插件包。Web profile 首次启动时默认启用插件库、技能库、Deepseek-Files Office 识别、Lark 和 model-catalog Bundle。产物使用 `ai.deepseek.harness.desktop` identifier，仍是 ad-hoc 签名且未经 notarization。
 
 如果既有 `node` 与同目录 `npx` 不满足版本要求，启动流程会下载官方 Node.js 24.16.0 ARM64 归档，校验固定 SHA-256 摘要，再把它安装到 Application Support 下；该过程不需要管理员权限，也不会修改系统 Node.js 安装。
 
@@ -79,9 +85,9 @@ open "desktop-shell/dist/DeepSeek Harness.app"
 ~/Library/Application Support/DeepSeek Harness Desktop/
 ```
 
-Harness 数据位于 `data` 子目录，与源码 worktree 和应用 bundle 分离。桌面运行时输出及原生错误追加写入 `logs/desktop.log`；插件审查与变更记录追加写入 `logs/plugin-audit.jsonl`。
+Harness 数据位于 `data` 子目录，与源码 worktree 和应用 bundle 分离。桌面运行时输出及原生错误会先脱敏包含凭据的字段和认证查询参数，再追加写入 `logs/desktop.log`；启动时也会清理现有日志中的这些值。插件审查与变更记录追加写入 `logs/plugin-audit.jsonl`。
 
-桌面启动时会先在 `data/dsh-desktop.sqlite` 建立统一的数据清单与迁移表，再启动 Harness；SQLite 使用单调递增的 `user_version`，高版本数据库会拒绝被旧 App 覆盖。会话、设置、凭据、storage unit、profile／Skill 元数据、插件审计记录和 source-release 记录都持久化到 SQLite。由于 Loader 和 Skill provider 需要直接执行，profile manifest 与 Skill 源文件仍是文件制品；旧版审计 JSONL 作为兼容导出保留，SQLite 是可查询的 owner。桌面壳还会用受保护的 `runtime.pid` 回收强制退出后遗留的同一 Harness 运行时，避免下一次更新因孤儿进程而报状态码 1。
+桌面启动时会先在 `data/dsh-desktop.sqlite` 建立统一的数据清单与迁移表，再启动 Harness；SQLite 使用单调递增的 `user_version`，高版本数据库会拒绝被旧 App 覆盖。会话、设置、凭据、storage unit、profile／Skill 元数据、插件审计记录和 source-release 记录都持久化到 SQLite。`data/dsh-session-query.sqlite` 是通过会话持久化服务延迟派生的可丢弃全文索引，不是会话数据的第二个 owner。由于 Loader 和 Skill provider 需要直接执行，profile manifest 与 Skill 源文件仍是文件制品；旧版审计 JSONL 作为兼容导出保留，SQLite 是可查询的 owner。桌面壳还会用受保护的 `runtime.pid` 回收强制退出后遗留的同一 Harness 运行时，避免下一次更新因孤儿进程而报状态码 1。
 
 首次启动会把旧版 `~/.dsh` 中缺失的数据合并到该目录；旧目录保留不删除。之后通过桌面插件库安装或移除的外部插件继续写入 `data/profiles/web`，不会回写 `~/.dsh`。
 

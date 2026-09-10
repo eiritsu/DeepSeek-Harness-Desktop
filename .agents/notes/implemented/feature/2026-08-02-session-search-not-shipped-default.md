@@ -10,7 +10,7 @@ The [shipped-roster decision](2026-07-31-even-out-shipped-tool-rosters.md) made 
 
 ## Decision
 
-The shipped TUI, Web, and headless surfaces do not mount `@deepseek-ai/dsh-tool-session-query`, and no shipped agent preset carries it. The consumer stays opt-in exactly as the model-facing-session-query-tools note describes: the [`session-query` snapshot composition](../../../../snapshots/session/session-query-spill/cordis.yml) remains the mounted reference, and a custom composition can mount the package with the timeout and spill policies.
+The shipped TUI, ordinary browser Web, and headless surfaces do not mount `@deepseek-ai/dsh-tool-session-query`, and no shipped agent preset carries it. The consumer stays opt-in exactly as the model-facing-session-query-tools note describes: the [`session-query` snapshot composition](../../../../snapshots/session/session-query-spill/cordis.yml) remains the mounted reference, and a custom composition can mount the package with the timeout and spill policies. The macOS desktop Web profile is the one shipped exception: `DSH_DESKTOP_SHELL=1` mounts the five read-only tools so a desktop session can query the App-owned persistence service without scanning Application Support with Bash.
 
 The `ctx.sessionQuery` service itself stays mounted. `session-query-sqlite` remains a base row — the TUI's `session-reference` consumes it for `/resume` — with its full-text index off by default (`openAt: never`; the [content-search opt-in decision](../architecture/2026-08-13-session-content-search-opt-in.md)), and the Web overlay keeps its in-memory values for deployments that enable content search. Only the model-facing consumer is removed.
 
@@ -22,4 +22,4 @@ The `ctx.sessionQuery` service itself stays mounted. `session-query-sqlite` rema
 
 ## Consequences
 
-Both surfaces return to the same twenty unconditional tools (plus `glob`/`grep` under ripgrep), and the five session-search schemas and their prompt section leave the default request. The shipped-composition tests on both surfaces pin the smaller catalog, so re-adding session search as a default touches the same tests. Users who want session search mount the consumer from a personal overlay or the ACP example, adding the dependency where they do.
+Ordinary shipped surfaces retain the same twenty unconditional tools (plus `glob`/`grep` under ripgrep), and the five session-search schemas and their prompt section stay out of their default requests. Desktop requests include those five schemas and use a workspace-authorized derived index. Composition tests pin both outcomes. Users on other surfaces who want session search mount the consumer from a personal overlay or the ACP example, adding the dependency where they do.

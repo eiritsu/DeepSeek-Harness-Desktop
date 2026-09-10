@@ -572,6 +572,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     decidePolicyFor navigationAction: WKNavigationAction,
     decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void
   ) {
+    if navigationAction.shouldPerformDownload {
+      decisionHandler(.download)
+      return
+    }
     guard let url = navigationAction.request.url,
           ExternalNavigation.shouldOpen(url, navigationType: navigationAction.navigationType)
     else {
@@ -586,6 +590,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
   func webView(
     _ webView: WKWebView,
     navigationAction: WKNavigationAction,
+    didBecome download: WKDownload
+  ) {
+    download.delegate = self
+  }
+
+  func webView(
+    _ webView: WKWebView,
+    navigationResponse: WKNavigationResponse,
     didBecome download: WKDownload
   ) {
     download.delegate = self

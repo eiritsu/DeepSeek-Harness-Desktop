@@ -71,6 +71,34 @@ import Testing
   #expect(logged.get() == ["runtime stderr: ExperimentalWarning"])
 }
 
+@Test func desktopLogRedactsRuntimeCredentials() {
+  let message = #"Authorization: Bearer auth-value, "access_token": "access-value", appSecret='secret-value', https://example.test/?token=query-value&ok=1"#
+  let redacted = LogStore.redact(message)
+
+  #expect(!redacted.contains("auth-value"))
+  #expect(!redacted.contains("access-value"))
+  #expect(!redacted.contains("secret-value"))
+  #expect(!redacted.contains("query-value"))
+  #expect(redacted.contains("Authorization: <redacted>"))
+  #expect(redacted.contains(#""access_token": "<redacted>""#))
+  #expect(redacted.contains("appSecret='<redacted>'"))
+  #expect(redacted.contains("?token=<redacted>&ok=1"))
+}
+
+@Test func desktopLogRedactsExistingFileOnStartup() throws {
+  let root = FileManager.default.temporaryDirectory
+    .appendingPathComponent("dsh-log-redaction-\(UUID().uuidString)", isDirectory: true)
+  defer { try? FileManager.default.removeItem(at: root) }
+  try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+  let log = root.appendingPathComponent("desktop.log")
+  try Data("access_token: old-secret\nordinary line\n".utf8).write(to: log)
+
+  LogStore.redactFile(at: log)
+
+  let result = try String(contentsOf: log, encoding: .utf8)
+  #expect(result == "access_token: <redacted>\nordinary line\n")
+}
+
 @Test func readinessLineEndsStartupProgress() {
   let progress = LockedBox<[String]>([])
   let state = StartupState(

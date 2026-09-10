@@ -14,6 +14,25 @@ enum DesktopError: LocalizedError {
 final class LogStore: @unchecked Sendable {
   static let shared = LogStore()
 
+  private static let sensitiveValuePatterns: [(pattern: String, replacement: String)] = [
+    (
+      #"(?i)(\"(?:authorization|access[_-]?token|refresh[_-]?token|api[_-]?key|app[_-]?secret|client[_-]?secret)\"\s*:\s*\")[^\"]*(\")"#,
+      "$1<redacted>$2"
+    ),
+    (
+      #"(?i)(['\"]?(?:authorization|access[_-]?token|refresh[_-]?token|api[_-]?key|app[_-]?secret|client[_-]?secret)['\"]?\s*[:=]\s*')[^']*(')"#,
+      "$1<redacted>$2"
+    ),
+    (
+      #"(?i)((?:authorization|access[_-]?token|refresh[_-]?token|api[_-]?key|app[_-]?secret|client[_-]?secret)\s*[:=]\s*)(?:Bearer\s+)?[^\s,\"'}\]]+"#,
+      "$1<redacted>"
+    ),
+    (
+      #"(?i)([?&](?:token|access_token|refresh_token|api_key)=)[^&#\s]+"#,
+      "$1<redacted>"
+    ),
+  ]
+
   private let lock = NSLock()
   let fileURL: URL
 
@@ -23,13 +42,14 @@ final class LogStore: @unchecked Sendable {
       .appendingPathComponent("logs", isDirectory: true)
     try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     fileURL = root.appendingPathComponent("desktop.log")
+    Self.redactFile(at: fileURL)
   }
 
   func append(_ message: String) {
     lock.lock()
     defer { lock.unlock() }
     let timestamp = ISO8601DateFormatter().string(from: Date())
-    let data = Data("[\(timestamp)] \(message)\n".utf8)
+    let data = Data("[\(timestamp)] \(Self.redact(message))\n".utf8)
     if !FileManager.default.fileExists(atPath: fileURL.path) {
       FileManager.default.createFile(atPath: fileURL.path, contents: data)
       return
@@ -40,6 +60,27 @@ final class LogStore: @unchecked Sendable {
       try handle.seekToEnd()
       try handle.write(contentsOf: data)
     } catch {}
+  }
+
+  static func redact(_ message: String) -> String {
+    sensitiveValuePatterns.reduce(message) { value, rule in
+      guard let expression = try? NSRegularExpression(pattern: rule.pattern) else { return value }
+      let range = NSRange(value.startIndex..<value.endIndex, in: value)
+      return expression.stringByReplacingMatches(
+        in: value,
+        range: range,
+        withTemplate: rule.replacement
+      )
+    }
+  }
+
+  static func redactFile(at url: URL) {
+    guard let data = try? Data(contentsOf: url),
+          let text = String(data: data, encoding: .utf8)
+    else { return }
+    let redacted = redact(text)
+    guard redacted != text else { return }
+    try? Data(redacted.utf8).write(to: url, options: .atomic)
   }
 }
 
