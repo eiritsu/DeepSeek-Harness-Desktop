@@ -4,73 +4,6 @@ import type { AttachmentId, ImageVariantId } from './brand.ts'
 
 export type { AttachmentId } from './brand.ts'
 
-/** Fallback media type when a transport cannot identify a generic file format. */
-export const UNKNOWN_FILE_MEDIA_TYPE = 'application/octet-stream'
-
-/** Durable, serializable reference to one immutable file kept byte-for-byte. */
-export interface FileAttachmentRef {
-  attachmentId: AttachmentId
-  mediaType: string
-  bytes: number
-  name?: string
-}
-
-/** Legacy transient file input retained while callers migrate to durable refs. */
-export interface FileRecognitionInput {
-  data: Uint8Array
-  mediaType: string
-  name?: string
-}
-
-/** Deployment-resolved limits for generic file uploads. */
-export interface FileAttachmentLimits {
-  maxFileBytes: number
-  maxFilesPerMessage: number
-  maxMessageFileBytes: number
-}
-
-/** Base64-encoded generic file upload accompanying one wire request. */
-export interface EncodedFileAttachment {
-  mediaType: string
-  data: string
-  name?: string
-}
-
-/** Request to durably commit one generic file without transforming its bytes. */
-export interface SaveFileAttachment {
-  data: Uint8Array
-  mediaType: string
-  name?: string
-}
-
-/** Stored generic file bytes returned after reference and digest verification. */
-export interface StoredFileAttachment {
-  ref: FileAttachmentRef
-  data: Uint8Array
-  mediaType?: string
-  name?: string
-}
-
-/** Bounded semantic text extracted from one durable file. */
-export interface FileRecognitionResult {
-  text: string
-}
-
-/** Effect-scoped recognizer contributed by a trusted attachment plugin. */
-export interface FileRecognizer {
-  /** Stable registration identity. */
-  id: string
-  /** Higher values run first; equal priorities are ordered by `id`. Default: `0`. */
-  priority?: number
-  /** Whether this recognizer owns the file or normalized image format. */
-  supports(input: FileAttachmentRef | ImageAttachmentRef | FileRecognitionInput): boolean
-  /** Extract bounded semantic text without changing the stored attachment. */
-  recognize(
-    input: StoredFileAttachment | StoredImageAttachment | FileRecognitionInput,
-    signal?: AbortSignal,
-  ): Promise<FileRecognitionResult | undefined>
-}
-
 /** Raster image formats accepted by the version-one attachment path. */
 export type ImageMediaType = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'
 
@@ -98,6 +31,45 @@ export interface ImageAttachmentRef {
   }
 }
 
+/**
+ * Durable, serializable reference to one verbatim stored file. Files are
+ * stored byte-for-byte with no normalization; `attachmentId` is the sha256
+ * digest of exactly those bytes.
+ */
+export interface FileAttachmentRef {
+  /** Opaque content-addressed storage identifier; never a filesystem path or bearer URL. */
+  attachmentId: AttachmentId
+  /** Sanitized display filename, also the stored object's leaf name. */
+  name: string
+  /** Exact byte length. */
+  bytes: number
+}
+
+/** Base64-encoded file upload accompanying one wire request. */
+export interface EncodedFileAttachment {
+  /** Canonical base64 encoding of the file bytes. */
+  data: string
+  /** Optional display name; it is never interpreted as a path. */
+  name?: string
+}
+
+/** Request to durably commit one file verbatim. */
+export interface SaveFileAttachment {
+  data: Uint8Array
+  /** Optional browser/provider display name; it is never interpreted as a path. */
+  name?: string
+}
+
+/** Request to durably commit one file from bounded byte chunks. */
+export interface SaveFileStreamAttachment {
+  /** Exact file bytes in order; providers must not retain the complete sequence in memory. */
+  data: AsyncIterable<Uint8Array>
+  /** Optional cancellation for source reads and storage writes. */
+  signal?: AbortSignal
+  /** Optional browser/provider display name; it is never interpreted as a path. */
+  name?: string
+}
+
 /** Deployment-resolved limits used by upload admission and request buffering. */
 export interface ImageAttachmentLimits {
   maxImageBytes: number
@@ -122,7 +94,7 @@ export interface EncodedImageAttachment {
 /**
  * Browser-submitted prompt content accepted by Host prompt endpoints; the
  * accepting Host promotes image parts to durable references through
- * `admitPromptContent` before any message is created, so a wire caller can
+ * `ctx.attachments.admitPromptContent()` before any message is created, so a wire caller can
  * never cite an attachment it did not upload.
  */
 export type PromptContentPart =
@@ -133,14 +105,13 @@ export type PromptContentPart =
     readonly data: string
     readonly name?: string
   }
-  | {
-    readonly type: 'file'
-    readonly mediaType: string
-    readonly data: string
-    readonly name?: string
-  }
 
-/** Host-admitted prompt content with each uploaded image replaced by its durable reference. */
+/** Host prompt content whose file receipts are resolved and whose image bytes await admission. */
+export type AttachmentAdmissionPart =
+  | PromptContentPart
+  | { readonly type: 'file'; readonly attachment: FileAttachmentRef }
+
+/** Host-admitted prompt content with every attachment represented by its durable reference. */
 export type AdmittedPromptContentPart =
   | { readonly type: 'text'; readonly text: string }
   | { readonly type: 'image'; readonly attachment: ImageAttachmentRef }
@@ -159,12 +130,7 @@ export interface SaveImageAttachment {
 export interface StoredImageAttachment {
   ref: ImageAttachmentRef
   data: Uint8Array
-  mediaType?: string
-  name?: string
 }
-
-/** Any durable attachment reference understood by the storage seam. */
-export type AttachmentRef = FileAttachmentRef | ImageAttachmentRef
 
 /** Deterministic request-image policy selected by one exact model route. */
 export interface ImageRequestPolicy {

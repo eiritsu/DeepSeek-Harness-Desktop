@@ -1,7 +1,8 @@
-import { isBuiltin } from 'node:module'
+import { clientBundle } from '../../client/tsdown.client.ts'
 
-const library = {
-  entry: [
+export default clientBundle(
+  '@deepseek-ai/dsh-lark',
+  [
     'lib/types/index.js',
     'lib/types/auth-status.js',
     'lib/types/conversation.js',
@@ -10,18 +11,5 @@ const library = {
     'lib/types/command-risk.js',
     'lib/types/pending-user-auth.js',
   ],
-  outDir: 'lib',
-  format: ['esm'],
-  platform: 'node',
-  target: 'es2024',
-  fixedExtension: false,
-  dts: false,
-  clean: false,
-  deps: {
-    neverBundle: (specifier: string) => isBuiltin(specifier) || !specifier.startsWith('.'),
-  },
-}
-
-export default ({ env }: { env?: Record<string, unknown> }) => env?.DSH_BUILD_FACE === 'client'
-  ? { entry: '' }
-  : library
+  { hostPhase: true },
+)

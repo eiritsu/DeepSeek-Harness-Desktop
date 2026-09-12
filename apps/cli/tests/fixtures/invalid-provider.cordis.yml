@@ -1,6 +1,6 @@
 # Invalid `--patch` overlay used to prove boot failures settle and exit.
 
-- id: llm-dsh-ai
+- id: llm-pi-ai
   config:
     providers:
       - provider: openai

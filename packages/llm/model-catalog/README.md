@@ -26,7 +26,7 @@ The package declares `dsh.bundle.patch`, so custom-profile installation adds it 
 This Bundle is independently packaged but requires model-metadata extension points that are not present in an unmodified DSH runtime:
 
 - `@deepseek-ai/dsh-llm` provides ordered model-discovery enrichment plus exact input and capacity resolver APIs. Their owning implementation lives in `packages/llm/llm/src/index.ts` and their public types live in `packages/llm/llm/src/types.ts` in the Harness source tree.
-- `@deepseek-ai/dsh-llm-dsh-ai` supplies exact owner and endpoint metadata to those resolvers before applying its installed-catalog fallback. The owning adapter integration lives in `packages/llm/llm-dsh-ai/src/adapter.ts`.
+- `@deepseek-ai/dsh-llm-pi-ai` supplies exact owner and endpoint metadata to those resolvers before applying its installed-catalog fallback. The owning adapter integration lives in `packages/llm/llm-pi-ai/src/adapter.ts`.
 - Host model discovery and the Models settings page preserve the upstream `owned_by` value and optional `inputModalities`, so a gateway model can be matched against the correct catalog owner.
 
 The side-loaded package contributes catalog data through those APIs; it does not add the APIs, infer reasoning-effort support, or rewrite provider settings. A DSH build without these extension points is incompatible and must be upgraded first. Once they are part of the Harness baseline, catalog refresh behavior can be updated independently through this Bundle.
@@ -51,6 +51,6 @@ Admitting an image changes request content and its cache identity exactly as a p
 
 - **Refresh is demand-driven** — the plugin checks staleness during model discovery or an exact runtime lookup; it does not poll in the background or silently rewrite saved model rows. An earlier cache is marked stale once so endpoint identities and capacities are fetched and persisted on the next lookup.
 - **Opaque ownership is conservative** — without a recognized `owned_by` or exact provider endpoint match, every field requires identical same-id declarations; it never combines provider-specific extras.
-- **Only implemented transports become effective** — the catalog may declare `audio`, `video`, or `pdf`, but `llm-dsh-ai` exposes those modalities only on Google protocols that serialize arbitrary inline media. Other protocols keep `text/image` and use recognition fallback.
+- **Only implemented transports become effective** — the catalog may declare `audio`, `video`, or `pdf`, but `llm-pi-ai` exposes those modalities only on Google protocols that serialize arbitrary inline media. Other protocols keep `text/image` and use recognition fallback.
 - **Output capability is not a request default** — `limit.output` sizes the provider model descriptor but does not become a request `maxTokens` value unless the provider profile explicitly configured one.
 - **Reasoning levels require an upstream declaration** — only standard levels in `reasoning_options` entries of type `effort` become model capabilities; the plugin does not guess levels when the source omits them.

@@ -26,7 +26,7 @@ dsh plugin --profile <custom-profile> add @deepseek-ai/dsh-model-catalog
 这个 Bundle 可以独立打包，但依赖未修改 DSH runtime 中不存在的模型元数据扩展点：
 
 - `@deepseek-ai/dsh-llm` 提供有序的模型发现补充，以及精确输入和容量解析 API；Harness 源码中的所有者实现位于 `packages/llm/llm/src/index.ts`，公开类型位于 `packages/llm/llm/src/types.ts`。
-- `@deepseek-ai/dsh-llm-dsh-ai` 会先把精确 owner 与端点元数据交给这些解析器，再使用已安装 catalog 回退；Harness 源码中的所有者适配位于 `packages/llm/llm-dsh-ai/src/adapter.ts`。
+- `@deepseek-ai/dsh-llm-pi-ai` 会先把精确 owner 与端点元数据交给这些解析器，再使用已安装 catalog 回退；Harness 源码中的所有者适配位于 `packages/llm/llm-pi-ai/src/adapter.ts`。
 - Host 模型发现和模型设置页会保留上游 `owned_by` 与可选 `inputModalities`，使网关模型可以匹配正确的 catalog owner。
 
 侧载包只通过这些 API 提供 catalog 数据，不会自行增加 API、推断推理等级支持或改写提供方设置。缺少这些扩展点的 DSH 版本不兼容，必须先升级主程序；扩展点进入 Harness 基线后，catalog 刷新逻辑才可以通过这个 Bundle 独立更新。
@@ -51,6 +51,6 @@ dsh plugin --profile <custom-profile> add @deepseek-ai/dsh-model-catalog
 
 - **刷新由查询触发**：模型发现或运行时精确查询会检查快照是否陈旧；插件不在后台轮询，也不静默改写已有模型行。旧缓存会被标记为一次性过期，使下一次查询获取并持久化端点身份与容量。
 - **不透明 owner 采用保守结果**：没有可识别的 `owned_by` 或精确提供方端点匹配时，每个字段的同 id 声明必须完全一致，绝不合并提供方特有内容。
-- **只有已实现的传输会生效**：catalog 可以声明 `audio`、`video` 或 `pdf`，但 `llm-dsh-ai` 仅在能够序列化任意 inline media 的 Google 协议上公开这些模态；其他协议保留 `text/image` 并使用识别回退。
+- **只有已实现的传输会生效**：catalog 可以声明 `audio`、`video` 或 `pdf`，但 `llm-pi-ai` 仅在能够序列化任意 inline media 的 Google 协议上公开这些模态；其他协议保留 `text/image` 并使用识别回退。
 - **输出能力不是请求默认值**：`limit.output` 会确定提供方模型描述符的容量，但只有提供方 profile 显式配置时才会成为请求的 `maxTokens`。
 - **推理等级依赖上游声明**：只有 `reasoning_options` 中类型为 `effort` 的标准等级会进入模型能力；上游没有等级列表时，插件不会为该模型猜测支持项。

@@ -9,22 +9,22 @@
   ],
   "references": [
     {
+      "path": "../../../vendor/cordis"
+    },
+    {
       "path": "../../attachment/attachment"
     },
     {
-      "path": "../../runtime-diagnostics/invariants"
-    },
-    {
       "path": "../ui-renderer"
-    },
-    {
-      "path": "../ui-input-trigger"
     },
     {
       "path": "../ui-chat"
     },
     {
       "path": "../ui-conversation"
+    },
+    {
+      "path": "../ui-tool"
     },
     {
       "path": "../ui-trajectory"

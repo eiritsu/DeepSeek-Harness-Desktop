@@ -2,7 +2,9 @@
 
 import type { ContentBlock } from './types.ts'
 import type { Message } from './message.ts'
-import type { AttachmentStore, FileAttachmentRef, ImageAttachmentRef, ImageMediaType, RequestImageAttachment } from '@deepseek-ai/dsh-attachment'
+import type {
+  AttachmentStore, FileAttachmentRef, ImageAttachmentRef, ImageMediaType, RequestImageAttachment,
+} from '@deepseek-ai/dsh-attachment'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 
 /** Execution-world path that model tools can use to read one normalized attachment. */
@@ -70,12 +72,9 @@ function normalizedAccessText(ref: ImageAttachmentRef, access: ImageAttachmentAc
  * @param ref - durable normalized attachment omitted from the request.
  * @returns deterministic text-only placeholder.
  */
-export function textOnlyImageText(ref: ImageAttachmentRef, recognizedText?: string): string {
+export function textOnlyImageText(ref: ImageAttachmentRef): string {
   const digest = String(ref.attachmentId).slice('sha256:'.length, 'sha256:'.length + 8)
-  const prefix = `[image omitted because this model accepts text only; attachment sha256:${digest}]`
-  return recognizedText === undefined || recognizedText.length === 0
-    ? prefix
-    : `${prefix}\n${recognizedText}`
+  return `[image omitted because this model accepts text only; attachment sha256:${digest}]`
 }
 
 /**
@@ -130,52 +129,77 @@ export function contentHasImage(content: readonly ContentBlock[]): boolean {
 }
 
 /**
- * Stable text representation used when a provider cannot carry binary files.
- * @param ref - durable file reference and metadata.
- * @param recognizedText - optional text extracted by a recognizer.
- * @returns deterministic text representation of the file.
+ * True when typed model content contains a file block, walking nested
+ * tool-result content on the same recursion every file policy shares.
+ * Reads current content on every call without retaining scan results.
+ * @param content - typed model content blocks.
+ * @returns whether any nested block is a file.
  */
-export function fileAttachmentText(ref: FileAttachmentRef, recognizedText?: string): string {
-  const label = ref.name === undefined ? String(ref.attachmentId) : `${quoted(ref.name)} (${ref.attachmentId})`
-  const prefix = `[file ${label}; ${ref.mediaType}; ${ref.bytes} bytes]`
-  return recognizedText === undefined || recognizedText.length === 0 ? prefix : `${prefix}\n${recognizedText}`
+export function contentHasFile(content: readonly ContentBlock[]): boolean {
+  for (const block of content) {
+    if (block.type === 'file'
+      || (block.type === 'tool-result' && contentHasFile(block.content))) return true
+  }
+  return false
 }
 
 /**
- * True when typed model content contains a generic file block.
- * @param content - typed model content blocks.
- * @returns whether any nested block is a generic file.
+ * Stable model-facing handle for one durable file reference: the address of
+ * the verbatim stored copy and the instruction to read it on demand. This is
+ * the only representation a provider ever receives for a file.
+ * @param ref - durable verbatim file reference.
+ * @param readonlyPath - execution-world path of the stored copy, when resolvable.
+ * @returns deterministic handle text naming the file, its size, and its address.
  */
-export function contentHasFile(content: readonly ContentBlock[]): boolean {
-  return content.some(block => block.type === 'file' || (block.type === 'tool-result' && contentHasFile(block.content)))
+export function fileHandleText(ref: FileAttachmentRef, readonlyPath: string | undefined): string {
+  const digest = String(ref.attachmentId).slice('sha256:'.length, 'sha256:'.length + 8)
+  const identity = `File ${quoted(ref.name)} (${ref.bytes} bytes, sha256:${digest})`
+  if (readonlyPath === undefined) {
+    return `[${identity} was uploaded, but the current execution environment cannot access a readable path. Report that limitation if its contents are needed; do not claim to have read it.]`
+  }
+  return `[${identity}: verbatim read-only copy saved at ${quoted(readonlyPath)}. Read that path with your file tools when its contents are needed; copy it to a writable location before modifying it. When delegating file work, include this saved path in the delegation prompt; only subagents sharing this execution environment can read it.]`
 }
 
-function replaceFiles(blocks: readonly ContentBlock[]): ContentBlock[] {
+/** Replace every file occurrence, including nested tool results, with handle text. */
+function replaceFilesWithHandles(
+  blocks: readonly ContentBlock[],
+  resolvePath: (ref: FileAttachmentRef) => string | undefined,
+): ContentBlock[] {
   let next: ContentBlock[] | undefined
   for (const [index, block] of blocks.entries()) {
     if (block.type === 'file') {
       next ??= blocks.slice(0, index)
-      next.push({ type: 'text', text: fileAttachmentText(block.attachment, block.recognizedText) })
-    } else if (block.type === 'tool-result') {
-      const content = replaceFiles(block.content)
+      next.push({ type: 'text', text: fileHandleText(block.attachment, resolvePath(block.attachment)) })
+      continue
+    }
+    if (block.type === 'tool-result') {
+      const content = replaceFilesWithHandles(block.content, resolvePath)
       if (content !== block.content) {
         next ??= blocks.slice(0, index)
         next.push({ ...block, content })
-      } else next?.push(block)
-    } else next?.push(block)
+        continue
+      }
+    }
+    next?.push(block)
   }
   return next ?? blocks as ContentBlock[]
 }
 
 /**
- * Project durable generic files into deterministic text for every provider.
- * @param messages - model messages to project.
- * @returns messages with generic-file blocks replaced by text.
+ * Project durable file history into deterministic handle text for every model
+ * route. Unlike images, no provider receives file blocks natively, so this
+ * projection is unconditional in request assembly.
+ * @param messages - complete request history.
+ * @param resolvePath - resolve one reference's current execution-world read path.
+ * @returns the original list without files, otherwise shallow message copies with handle text.
  */
-export function projectFilesForModel(messages: readonly Message[]): readonly Message[] {
+export function projectFilesToText(
+  messages: readonly Message[],
+  resolvePath: (ref: FileAttachmentRef) => string | undefined,
+): readonly Message[] {
   if (!messages.some(message => contentHasFile(message.content))) return messages
   return messages.map((message) => {
-    const content = replaceFiles(message.content)
+    const content = replaceFilesWithHandles(message.content, resolvePath)
     return content === message.content ? message : { ...message, content }
   })
 }
@@ -254,7 +278,7 @@ function replaceImagesForTextModel(blocks: readonly ContentBlock[]): ContentBloc
   for (const [index, block] of blocks.entries()) {
     if (block.type === 'image') {
       next ??= blocks.slice(0, index)
-      next.push({ type: 'text', text: textOnlyImageText(block.attachment, block.recognizedText) })
+      next.push({ type: 'text', text: textOnlyImageText(block.attachment) })
       continue
     }
     if (block.type === 'tool-result') {
