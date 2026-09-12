@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/simplification/2026-09-13-retire-superseded-desktop-fork-surfaces.md
+2026-09-13-retire-superseded-desktop-fork-surfaces.md: 27739408fd634b96451ed54de0257ca1ed3395d4
+2026-09-13-retire-superseded-desktop-fork-surfaces.zh.md: f994ed631c423d4e15d192c9edf6fd4c657c8764

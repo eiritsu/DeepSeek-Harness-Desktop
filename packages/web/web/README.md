@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Any plugin or tool can search the web or fetch a URL through `dsh-web` (`ctx.web`) without binding to any vendor's API. Search and fetch providers plug in as backends, and the service picks one usable provider per operation, so callers never track which vendor runs behind a call. Choose it when building web tooling or another backend; the shipped model-facing tools (`dsh-tool-web`) mount it automatically. The service itself makes no network calls and registers no model-facing tool: a provider must be mounted before search or fetch can run. Search and fetch share one selection policy, one cancellation and error vocabulary, and one configuration surface, so "how this harness reaches the web" has a single owner.
+Use `dsh-web` to search the web or fetch a URL without tying callers to a specific vendor. It selects a usable backend for each operation and gives callers consistent cancellation, errors, and result limits. Choose it for plugins or tools that call `ctx.web.search()` or `ctx.web.fetch()`; the shipped `dsh-tool-web` tools load it for you. A search or fetch requires a configured, usable provider because this package does not make network requests on its own.
 
 ## Table of Contents
 
@@ -77,8 +77,6 @@ Each call resolves its provider at execution time, and registration or load orde
 
 A provider's availability is a cheap local check — for example whether its API key is present — and never makes network calls, so selection stays fast and deterministic.
 
-A composed plugin may call `setSearchProviderOverride(id)` to select one registered search backend at runtime, then pass `undefined` when its composition is disposed. This is the hook used by credential-gated provider bundles that maintain their own user-configured priority; it does not alter the persisted `searchProvider` setting.
-
 ### Failures and recovery
 
 Failures throw `WebError` with a stable, machine-routable code; the message adds detail such as the missing provider id or the ambiguous candidate set. Callers route on the code and decide how to degrade. To change which backend a call uses, reconfigure the pinned id, mount or unmount providers, or fix the provider's configuration so its availability check passes.
@@ -107,7 +105,7 @@ The package is built on one deliberate separation:
 |---|---|
 | [`src/index.ts`](src/index.ts) | Plugin entry: the `WebRuntime` service, both provider registries, and execution-time selection |
 | [`src/types.ts`](src/types.ts) | Vocabulary: request/result types, the closed `WebFetchBody` union, and the `WebError` taxonomy |
-| [`src/invariant.ts`](src/invariant.ts) | Invariant companion (no runtime invariant; contracts are enforced at the service) |
+| — | No runtime invariant companion is published; provider maps are private and selection/result caps are enforced on each call; the seam publishes no independent registry or request/result observation stream. |
 
 ### Data model
 

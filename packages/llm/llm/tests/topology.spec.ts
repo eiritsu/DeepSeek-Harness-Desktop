@@ -1,8 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import LlmRuntime, { LlmAdapter, LlmError } from '@deepseek-ai/dsh-llm'
-import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
-import type { GenerateOptions, LlmConfigurableProvider, LlmModelReasoningInfo, StreamChunk } from '@deepseek-ai/dsh-llm'
+import type { GenerateOptions, LlmConfigurableProvider, StreamChunk } from '@deepseek-ai/dsh-llm'
 
 class NoopAdapter extends LlmAdapter {
 
@@ -21,7 +20,7 @@ function entry(overrides: Partial<LlmConfigurableProvider> = {}): LlmConfigurabl
   return {
     provider: 'openai',
     displayName: 'OpenAI',
-    settingsNs: 'llm-dsh-ai',
+    settingsNs: 'llm-pi-ai',
     settingsPath: ['providers', 'openai'],
     ...overrides,
   }
@@ -115,7 +114,7 @@ describe('configurable-provider directory', () => {
     const listed = ctx.llm.listConfigurableProviders()
     expect(listed).toEqual([
       { provider: 'deepseek-official', displayName: 'DeepSeek', settingsNs: 'llm-deepseek', settingsPath: [] },
-      { provider: 'openai', displayName: 'OpenAI', settingsNs: 'llm-dsh-ai', settingsPath: ['providers', 'openai'] },
+      { provider: 'openai', displayName: 'OpenAI', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'openai'] },
     ])
     listed[0]!.displayName = 'mutated'
     ;(listed[1]!.settingsPath as string[]).push('mutated')
@@ -313,159 +312,6 @@ describe('model discovery registry', () => {
       .rejects.toMatchObject({ code: 'INVALID_DISCOVERY' })
     // Naming a route alone is enough: the adapter may know it without an endpoint.
     await expect(ctx.llm.discoverModels('llm-example', { provider: 'known-route' })).resolves.toEqual([])
-  })
-})
-
-describe('model metadata enrichment', () => {
-  it('keeps previous-version discovery and exact catalog registrations effect-scoped', async () => {
-    const ctx = await setup()
-    ctx.llm.registerModelDiscovery('legacy', () => Promise.resolve([{ id: 'vision', ownedBy: 'upstream' }]))
-    const discovery = ctx.llm.registerModelDiscoveryEnricher(async ({ models }) => (
-      models.map(model => ({ id: model.id, inputModalities: ['text', 'image'], maxTokens: 8192 }))
-    ))
-    const input = ctx.llm.registerModelInputResolver(async ({ model }) => (
-      model === 'vision' ? ['text', 'image'] : undefined
-    ))
-    const capacity = ctx.llm.registerModelCapacityResolver(async ({ model }) => (
-      model === 'vision' ? { contextWindow: 16_384, maxOutputTokens: 8192 } : undefined
-    ))
-
-    await expect(ctx.llm.discoverModels('legacy', { provider: 'route' })).resolves.toEqual([{
-      id: 'vision',
-      ownedBy: 'upstream',
-      inputModalities: ['text', 'image'],
-      maxTokens: 8192,
-    }])
-    await expect(ctx.llm.resolveModelInput('route', 'vision')).resolves.toEqual(['text', 'image'])
-    await expect(ctx.llm.resolveModelCapacity('route', 'vision')).resolves.toEqual({
-      contextWindow: 16_384,
-      maxOutputTokens: 8192,
-    })
-
-    discovery()
-    input()
-    capacity()
-    await expect(ctx.llm.discoverModels('legacy', { provider: 'route' })).resolves.toEqual([{
-      id: 'vision', ownedBy: 'upstream',
-    }])
-    await expect(ctx.llm.resolveModelInput('route', 'vision')).resolves.toBeUndefined()
-    await expect(ctx.llm.resolveModelCapacity('route', 'vision')).resolves.toBeUndefined()
-  })
-
-  it('fills adapter-unknown exact-route fields without overriding adapter authority', async () => {
-    const ctx = await setup()
-    class CatalogAdapter extends NoopAdapter {
-      override resolveModel(provider: string, model: string): Promise<{
-        provider: string
-        id: string
-        name: string
-        inputModalities: readonly ['text']
-        context: { contextWindow: number }
-      }> {
-        return Promise.resolve({
-          provider,
-          id: model,
-          name: 'Owned',
-          inputModalities: ['text'],
-          context: { contextWindow: 4096 },
-        })
-      }
-    }
-    ctx.llm.registerAdapter(['catalog'], new CatalogAdapter())
-    const observed = vi.fn()
-    const dispose = ctx.llm.registerModelMetadataEnricher('external-catalog', async (request) => {
-      observed(request.metadata)
-      return { inputModalities: ['text', 'image'], contextWindow: 8192, maxTokens: 1024 }
-    })
-
-    await expect(ctx.llm.resolveModelInfo('catalog', 'model')).resolves.toMatchObject({
-      inputModalities: ['text'],
-      context: { contextWindow: 4096 },
-      defaultMaxTokens: 1024,
-    })
-    expect(observed).toHaveBeenCalledWith(expect.objectContaining({ name: 'Owned' }))
-
-    dispose()
-    await expect(ctx.llm.resolveModelInfo('catalog', 'model')).resolves.not.toHaveProperty('defaultMaxTokens')
-  })
-
-  it('lets an authoritative catalog replace stale adapter reasoning metadata', async () => {
-    const ctx = await setup()
-    class StaleAdapter extends NoopAdapter {
-      override resolveModel(provider: string, model: string) {
-        return Promise.resolve({
-          provider,
-          id: model,
-          name: 'Owned',
-          reasoning: {
-            efforts: [{ id: ReasoningEffortId('high'), name: 'High' }],
-          } satisfies LlmModelReasoningInfo,
-        })
-      }
-    }
-    ctx.llm.registerAdapter(['catalog'], new StaleAdapter())
-    ctx.llm.registerModelMetadataEnricher('authoritative-catalog', async () => ({
-      reasoning: {
-        efforts: [
-          { id: ReasoningEffortId('off'), name: 'Off' },
-          { id: ReasoningEffortId('low'), name: 'Low' },
-        ],
-      },
-    }))
-
-    await expect(ctx.llm.resolveModelInfo('catalog', 'model')).resolves.toMatchObject({
-      reasoning: {
-        efforts: [
-          { id: 'off', name: 'Off' },
-          { id: 'low', name: 'Low' },
-        ],
-      },
-    })
-  })
-
-  it('lets an explicitly authoritative catalog replace every stale adapter capability', async () => {
-    const ctx = await setup()
-    class StaleAdapter extends NoopAdapter {
-      override resolveModel(provider: string, model: string) {
-        return Promise.resolve({
-          provider,
-          id: model,
-          name: 'Owned',
-          inputModalities: ['text'] as const,
-          context: { contextWindow: 4096 },
-          defaultMaxTokens: 512,
-        })
-      }
-    }
-    ctx.llm.registerAdapter(['catalog'], new StaleAdapter())
-    ctx.llm.registerModelMetadataEnricher('authoritative-catalog', async () => ({
-      authoritative: true,
-      inputModalities: ['text', 'image'],
-      contextWindow: 8192,
-      maxTokens: 1024,
-    }))
-
-    await expect(ctx.llm.resolveModelInfo('catalog', 'model')).resolves.toMatchObject({
-      inputModalities: ['text', 'image'],
-      context: { contextWindow: 8192 },
-      defaultMaxTokens: 1024,
-    })
-    await expect(ctx.llm.prepareCall({ provider: 'catalog', model: 'model' })).resolves.toMatchObject({
-      inputModalities: ['text', 'image'],
-      context: { contextWindow: 8192 },
-      config: { maxTokens: 1024 },
-    })
-  })
-
-  it('rejects duplicate identities and validates enriched capacities', async () => {
-    const ctx = await setup()
-    ctx.llm.registerAdapter(['catalog'], new NoopAdapter())
-    const enrich = async () => ({ contextWindow: 0 })
-    ctx.llm.registerModelMetadataEnricher('catalog', enrich)
-    expect(() => ctx.llm.registerModelMetadataEnricher('catalog', enrich)).toThrow(/already registered/)
-    await expect(ctx.llm.resolveModelInfo('catalog', 'model')).rejects.toMatchObject({
-      code: 'INVALID_MODEL_CONTEXT',
-    })
   })
 })
 

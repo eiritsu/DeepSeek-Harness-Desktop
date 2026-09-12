@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`@deepseek-ai/dsh-llm-retry` is the retry executor for failed model requests: it applies each provider's resolved retry policy at the agent loop's open-step `agent/request-error` extension point, so every retry re-runs the same step inside the same open turn over the same durable history. It does not wrap the streaming call itself — every adapter call remains one provider attempt, and direct `ctx.llm.stream()` consumers stay single-attempt. Retry scheduling is durable: the plugin appends `llm/retry` events to the session log before waiting, and cancellation during backoff leaves the log consistent. Normal mode retries a bounded set of failure codes up to `maxRetries` with exponential backoff; always mode asks downstream recovery first, then retries every failure without an attempt limit.
+Mount `@deepseek-ai/dsh-llm-retry` to retry failed model requests at durable agent-step boundaries. Provider `retryPolicy` settings choose bounded normal-mode retries or unlimited always-mode retries; scheduled attempts reach the session log before backoff, and cancellation leaves consistent history. Retries re-run the failed step in the same open turn, while direct `ctx.llm.stream()` calls remain single-attempt. Each retry is another billed provider request, and always mode continues until success, cancellation, or disposal.
 
 ## Table of Contents
 
@@ -29,7 +29,7 @@ Mount this plugin when agent runs should recover from transient model-request fa
 
 ### When to choose it
 
-Choose it when a composition runs the agent loop and wants durable request recovery. The plugin is a function plugin with no config; provider adapters such as `dsh-llm-deepseek` and `dsh-llm-dsh-ai` own the `retryPolicy` for their routes, and multi-provider adapters place it inside each provider profile. Skip it when calls go through `ctx.llm.stream()` directly without the agent loop: those consumers remain single-attempt because a raw stream cannot separate already-emitted chunks durably.
+Choose it when a composition runs the agent loop and wants durable request recovery. The plugin is a function plugin with no config; provider adapters such as `dsh-llm-deepseek` and `dsh-llm-pi-ai` own the `retryPolicy` for their routes, and multi-provider adapters place it inside each provider profile. Skip it when calls go through `ctx.llm.stream()` directly without the agent loop: those consumers remain single-attempt because a raw stream cannot separate already-emitted chunks durably.
 
 ### Minimal configuration
 
@@ -99,7 +99,7 @@ Read these pages when the package-level contract is not enough. They move from t
 
 - [dsh-llm service](../llm/README.md) — the provider-neutral service whose adapters own `retryPolicy`.
 - [llm-deepseek adapter](../llm-deepseek/README.md) — a provider adapter with a route-level `retryPolicy`.
-- [llm-dsh-ai adapter](../llm-dsh-ai/README.md) — a multi-provider adapter with per-profile `retryPolicy`.
+- [llm-pi-ai adapter](../llm-pi-ai/README.md) — a multi-provider adapter with per-profile `retryPolicy`.
 - [Terminal LLM stream failures](../../../.agents/notes/implemented/architecture/2026-07-29-terminal-llm-stream-failures.md) — how failures reach the service boundary as terminal chunks.
 - [LLM streaming subsystem](../../../docs/subsystems/llm-streaming.md) — the `StreamChunk` protocol and adapter contract.
 

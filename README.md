@@ -40,17 +40,6 @@ pnpm dsh web
 
 `pnpm run build` prepares the repository artifacts. `pnpm dsh web` uses those built artifacts without rebuilding.
 
-### Run the macOS desktop shell
-
-On macOS 13 or newer with Swift 6 and librsvg installed, build the native WKWebView shell after the repository build:
-
-```sh
-desktop-shell/scripts/build-app.sh
-open "desktop-shell/dist/DeepSeek Harness.app"
-```
-
-The shell uses the same Web profile and data model, adds native lifecycle and reviewed plugin installation, and preserves local desktop commits by refusing an automatic source update when the local and remote histories diverge. See the [desktop guide](desktop-shell/README.md).
-
 ## Community and support
 
 - Submit feedback or bug reports through [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions).
@@ -66,6 +55,18 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 Start with the [development guide](docs/development.md) and [architecture documentation](docs/architecture.md).
 
 For agents, follow [AGENTS.md](AGENTS.md).
+
+## Citation
+
+```bibtex
+@misc{deepseek-harness2026,
+  title={DeepSeek Harness: Everything is a Plugin},
+  author={DeepSeek-AI},
+  year={2026},
+  publisher={GitHub},
+  howpublished={\url{https://github.com/deepseek-ai/deepseek-harness}},
+}
+```
 
 ## License
 

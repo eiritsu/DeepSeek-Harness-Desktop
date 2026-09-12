@@ -9,6 +9,7 @@ import type {
 } from '@deepseek-ai/dsh-api-remotes/client'
 import type {
   SessionAddress,
+  SessionAssistantStreamBaseline,
   SessionControlBaseline,
   SessionControlFrame,
   SessionFollowFrame,
@@ -27,7 +28,7 @@ import {
   type RemoteStreamOptions,
 } from '@deepseek-ai/dsh-api-gateway/client'
 import type { SessionRemotes } from '../src/client/sessions/remotes.ts'
-import { historyRecordLastSeq } from '../src/client/sessions/history-records.ts'
+import { followSnapshot, pageThrough } from './remote/history.client.ts'
 
 const AVAILABLE_STREAM_CONNECTION = {
   generation: {
@@ -136,9 +137,6 @@ export class FakeApiClient {
     }))
   onRename: (payload: unknown) => Promise<RemoteResult<{ title: string; seq: number }>> = () => Promise.resolve(ok({ title: 'fk-renamed', seq: 0 }))
   onFork: (payload: unknown) => Promise<RemoteResult<{ sessionId: SessionId }>> = () => Promise.resolve(ok({ sessionId: 'fk-fork' as SessionId }))
-  onDelete: (payload: unknown) => Promise<RemoteResult<{ deletedSessionIds: SessionId[] }>> = payload => Promise.resolve(
-    ok({ deletedSessionIds: [(payload as { sessionId: SessionId }).sessionId] }),
-  )
   onHistory: (payload: { sessionId: SessionId; throughSeq?: number; beforeSeq?: number; maxMessages?: number })
   => Promise<RemoteResult<SessionPage & { readonly projections?: SessionProjectionBaseline }>> =
     () => Promise.resolve(ok({ records: [], hasMore: false }))
@@ -160,6 +158,9 @@ export class FakeApiClient {
     queues: {},
     jobs: {},
     projections: {},
+  }
+  assistantStreamBaseline: SessionAssistantStreamBaseline = {
+    revision: 0,
   }
   workspaceBaseline: Extract<WorkspaceFollowFrame, { type: 'baseline' }>['value'] = {
     items: [],
@@ -192,9 +193,6 @@ export class FakeApiClient {
 
   onWorkspaceArchiveSession: (payload: unknown) => Promise<RemoteResult<{ archivedSessionIds: SessionId[] }>> =
     payload => Promise.resolve(ok({ archivedSessionIds: [(payload as { sessionId: SessionId }).sessionId] }))
-
-  onWorkspaceAttachSession: (payload: unknown) => Promise<RemoteResult<{ workspace: WorkspaceView }>> =
-    () => Promise.resolve(ok({ workspace: fakeWorkspace('fk-ws') }))
 
   /** Remote namespaces bound to this fake's programmable unary slots and stream pumps. */
   sessionRemotes(): RuntimeRemotes {
@@ -229,7 +227,6 @@ export class FakeApiClient {
         ),
         rename: payload => this.record('session.rename', payload, this.onRename(payload)),
         fork: payload => this.record('session.fork', payload, this.onFork(payload)),
-        delete: payload => this.record('session.delete', payload, this.onDelete(payload)),
         prompt: payload => this.record('session.prompt', payload, this.onPrompt(payload)),
         attachment: payload => this.record('session.attachment', payload, this.onAttachment(payload)),
         updateQueue: payload => this.record('session.updateQueue', payload, this.onUpdateQueue(payload)),
@@ -275,11 +272,6 @@ export class FakeApiClient {
           payload,
           this.onWorkspaceArchiveSession(payload),
         ),
-        attachSession: payload => this.record(
-          'workspace.attachSession',
-          payload,
-          this.onWorkspaceAttachSession(payload),
-        ),
         follow: signal => this.openWorkspace(signal),
       },
     }
@@ -288,7 +280,7 @@ export class FakeApiClient {
   /** Push one live Session event to every follower of that Session. */
   async pushFollow(
     sessionId: SessionId,
-    frame: Extract<SessionFollowFrame, { type: 'event' }>,
+    frame: Exclude<SessionFollowFrame, { type: 'snapshot' }>,
   ): Promise<void> {
     await Promise.all([...(this.followConns.get(sessionId) ?? [])].map(conn => new Promise<void>((resolve) => {
       conn.feed({ kind: 'frame', value: frame, delivered: resolve })
@@ -370,11 +362,7 @@ export class FakeApiClient {
     if (!result.ok) return result
     return {
       ok: true,
-      value: {
-        ...result.value,
-        records: result.value.records
-          .filter(record => historyRecordLastSeq(record) <= request.throughSeq),
-      },
+      value: pageThrough(result.value, request.throughSeq),
     }
   }
 
@@ -395,23 +383,7 @@ export class FakeApiClient {
       })
       if (!response.ok) throw response.error
       const page = response.value
-      const tail = page.records.at(-1)
-      const cursor = this.followCursor ?? (tail === undefined ? -1 : historyRecordLastSeq(tail))
-      yield {
-        type: 'snapshot',
-        header: {
-          version: 0,
-          id: sessionId,
-          createdAt: 0,
-          ...(request.address.kind === 'subagent'
-            ? { origin: 'subagent' as const, parentSession: request.address.parentSessionId }
-            : {}),
-        },
-        cursor,
-        records: page.records.filter(record => historyRecordLastSeq(record) <= cursor),
-        hasMore: page.hasMore,
-        projections: page.projections ?? { asOfSeq: cursor, values: {} },
-      }
+      yield followSnapshot(page, request, this.followCursor, this.assistantStreamBaseline)
       yield* stream.values
     } finally {
       stream.dispose()

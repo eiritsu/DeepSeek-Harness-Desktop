@@ -40,6 +40,10 @@ function text(result: { content: { type: string; text?: string }[] }): string {
   return result.content.filter(b => b.type === 'text').map(b => b.text).join('')
 }
 
+function notObservedDiagnostic(path: string): string {
+  return `Error: cannot modify "${path}": file has not been read — read the file, then retry`
+}
+
 afterEach(async () => {
   await fiber.dispose()
   await rm(dir, { recursive: true, force: true })
@@ -71,9 +75,7 @@ describe('default deployment (with dsh-fs-observation-policy)', () => {
       const result = await call('write', { file_path: 'a.txt', content: 'clobber' })
       expect(result.isError).toBe(true)
       expect(result.error).toMatchObject({ info: { code: 'FS_NOT_OBSERVED' } })
-      // The model-facing text names the remedy, not just the condition.
-      expect(text(result)).toContain('without reading it first')
-      expect(text(result)).toContain('read the file, then retry')
+      expect(text(result)).toBe(notObservedDiagnostic(join(dir, 'a.txt')))
       expect(await readFile(join(dir, 'a.txt'), 'utf8')).toBe('original')
     })
 
@@ -121,25 +123,6 @@ describe('default deployment (with dsh-fs-observation-policy)', () => {
       expect(text(result)).toContain('(End of file - total 2 lines)')
     })
 
-    it('recognizes binary workspace documents through the attachment recognizer', async () => {
-      await writeFile(join(dir, 'report.xlsx'), Buffer.from('PK\x03\x04\x00\x00'))
-      const recognizeFile = vi.fn(async (input: { name?: string; mediaType: string; data: Uint8Array }) => {
-        expect(input.name).toBe('report.xlsx')
-        expect(input.mediaType).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        return { text: 'Quarterly report' }
-      })
-      ctx.provide('attachments', {
-        fileLimits: { maxFileBytes: 1024, maxFilesPerMessage: 1, maxMessageFileBytes: 1024 },
-        recognizeFile,
-      } as never)
-
-      const result = await call('read', { file_path: 'report.xlsx' })
-
-      expect(result.isError).toBe(false)
-      expect(text(result)).toContain('1: Quarterly report')
-      expect(recognizeFile).toHaveBeenCalledOnce()
-    })
-
     it('reports a binary file as an error', async () => {
       await writeFile(join(dir, 'bin'), Buffer.from([0x00, 0x01, 0x02]))
       const result = await call('read', { file_path: 'bin' })
@@ -170,9 +153,7 @@ describe('default deployment (with dsh-fs-observation-policy)', () => {
       const result = await call('edit', { file_path: 'a.txt', old_string: 'world', new_string: 'there' })
       expect(result.isError).toBe(true)
       expect(result.error).toMatchObject({ info: { code: 'FS_NOT_OBSERVED' } })
-      // The policy's refusal reaches the model with the read remedy appended.
-      expect(text(result)).toContain('edit requires reading')
-      expect(text(result)).toContain('read the file, then retry')
+      expect(text(result)).toBe(notObservedDiagnostic(join(dir, 'a.txt')))
       expect(await readFile(join(dir, 'a.txt'), 'utf8')).toBe('hello world')
     })
 

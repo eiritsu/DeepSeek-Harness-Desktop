@@ -3,30 +3,37 @@
 import { Buffer } from 'node:buffer'
 import { AttachmentError } from './error.ts'
 import type { AttachmentStore } from './index.ts'
-import { UNKNOWN_FILE_MEDIA_TYPE } from './types.ts'
-import type { EncodedFileAttachment, EncodedImageAttachment, FileAttachmentRef, ImageAttachmentRef, SaveFileAttachment, SaveImageAttachment } from './types.ts'
-import type { AdmittedPromptContentPart, PromptContentPart } from './types.ts'
+import type {
+  EncodedFileAttachment,
+  EncodedImageAttachment,
+  FileAttachmentRef,
+  ImageAttachmentRef,
+  SaveImageAttachment,
+} from './types.ts'
 
 /** Decode one upload payload while rejecting non-canonical base64 forms. */
-function decodeBase64(data: string, subject: 'Image' | 'File'): Uint8Array {
+function decodeCanonicalBase64(data: string, empty: 'reject' | 'accept', code: 'INVALID_IMAGE_BASE64' | 'INVALID_FILE_BASE64'): Uint8Array {
   const decoded = Buffer.from(data, 'base64')
-  if (data.length === 0 || decoded.toString('base64') !== data) {
-    throw new AttachmentError(`${subject} upload is not canonical base64.`, subject === 'Image' ? 'INVALID_IMAGE_BASE64' : 'INVALID_FILE_BASE64')
+  if ((data.length === 0 && empty === 'reject') || decoded.toString('base64') !== data) {
+    throw new AttachmentError(
+      code === 'INVALID_IMAGE_BASE64' ? 'Image upload is not canonical base64.' : 'File upload is not canonical base64.',
+      code,
+    )
   }
   return new Uint8Array(decoded)
+}
+
+function decodeBase64(data: string): Uint8Array {
+  return decodeCanonicalBase64(data, 'reject', 'INVALID_IMAGE_BASE64')
 }
 
 /** Store input for one decoded upload. */
 function saveInput(image: EncodedImageAttachment): SaveImageAttachment {
   return {
-    data: decodeBase64(image.data, 'Image'),
+    data: decodeBase64(image.data),
     mediaType: image.mediaType,
     ...image.name === undefined ? {} : { name: image.name },
   }
-}
-
-function saveFileInput(file: EncodedFileAttachment): SaveFileAttachment {
-  return { data: decodeBase64(file.data, 'File'), mediaType: file.mediaType || UNKNOWN_FILE_MEDIA_TYPE, ...(file.name === undefined ? {} : { name: file.name }) }
 }
 
 /**
@@ -47,37 +54,21 @@ export async function admitEncodedImages(
 }
 
 /**
- * Admit a browser prompt and replace each uploaded attachment with a durable reference.
- * @param attachments - attachment store owning admission policy.
- * @param content - prompt parts containing text, image, or generic-file uploads.
- * @returns prompt parts with durable attachment references.
+ * Admit one wire file upload: enforce canonical base64 (an empty file is a
+ * valid zero-byte payload), then delegate verbatim commit to
+ * {@link AttachmentStore.saveFile}. The shared entry for every RPC endpoint
+ * accepting browser file uploads.
+ * @param attachments - the deployment attachment store.
+ * @param file - base64-encoded upload and optional display name.
+ * @returns the durable content-addressed file reference.
+ * @throws AttachmentError on a non-canonical payload or a storage failure.
  */
-export async function admitPromptContent(
+export async function admitEncodedFile(
   attachments: AttachmentStore,
-  content: readonly PromptContentPart[],
-): Promise<AdmittedPromptContentPart[]> {
-  const images = content.filter(part => part.type === 'image')
-  const files = content.filter(part => part.type === 'file')
-  const imageRefs = images.length === 0 ? [] : await admitEncodedImages(attachments, images)
-  const fileRefs = files.length === 0 ? [] : await admitEncodedFiles(attachments, files)
-  let imageIndex = 0
-  let fileIndex = 0
-  return content.map((part) => {
-    if (part.type === 'text') return { type: 'text', text: part.text }
-    if (part.type === 'image') return { type: 'image', attachment: imageRefs[imageIndex++] as ImageAttachmentRef }
-    return { type: 'file', attachment: fileRefs[fileIndex++] as FileAttachmentRef }
+  file: EncodedFileAttachment,
+): Promise<FileAttachmentRef> {
+  return attachments.saveFile({
+    data: decodeCanonicalBase64(file.data, 'accept', 'INVALID_FILE_BASE64'),
+    ...file.name === undefined ? {} : { name: file.name },
   })
-}
-
-/**
- * Admit one wire generic-file batch and durably store the original bytes.
- * @param attachments - attachment store owning admission policy.
- * @param files - base64-encoded generic-file uploads in caller order.
- * @returns durable references in the same order as `files`.
- */
-export async function admitEncodedFiles(
-  attachments: AttachmentStore,
-  files: readonly EncodedFileAttachment[],
-): Promise<readonly FileAttachmentRef[]> {
-  return attachments.saveFiles(files.map(saveFileInput))
 }

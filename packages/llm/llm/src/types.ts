@@ -72,15 +72,19 @@ export interface ImageBlock {
   type: 'image'
   /** Immutable bytes and intrinsic display metadata owned by the attachment service. */
   attachment: ImageAttachmentRef
-  /** Optional bounded text extracted by an attachment recognizer for text-only routes. */
-  recognizedText?: string
 }
 
-/** A durable generic file reference with optional recognizer output. */
+/**
+ * A durable verbatim file reference, valid in user content. Files never reach
+ * a provider natively: request assembly projects every occurrence to
+ * deterministic handle text (name, byte size, and the read-only saved path),
+ * so adapters and providers see text in its place while the durable log keeps
+ * the structured reference for presentation and authorization.
+ */
 export interface FileBlock {
   type: 'file'
+  /** Immutable verbatim bytes and display metadata owned by the attachment service. */
   attachment: FileAttachmentRef
-  recognizedText?: string
 }
 
 /** A tool invocation requested by the model. */
@@ -205,9 +209,6 @@ export interface ModelModalityMap {
 /** Any declared provider model modality. */
 export type ModelModality = ModelModalityMap[keyof ModelModalityMap]
 
-/** Previous-version discovery vocabulary retained at the compatibility API. */
-export type LegacyModelModality = ModelModality | 'audio' | 'video' | 'pdf'
-
 /**
  * One provider route an adapter plugin can activate through configuration,
  * whether or not the route is currently registered. Configuration surfaces
@@ -235,6 +236,8 @@ export interface LlmConfigurableProvider {
    * from outside.
    */
   declared?: boolean
+  /** Configuration diagnostic for repair; unaffected models may remain serviceable. */
+  error?: string
 }
 
 /**
@@ -286,78 +289,13 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
 export interface LlmDiscoveredModel {
   /** Model id the endpoint accepts. */
   id: string
-  /** Provider owner identifier when the endpoint discloses one. */
-  ownedBy?: string
   /** Human-readable name when the endpoint supplies one. */
   name?: string
   /** Maximum combined request and response context, when disclosed. */
   contextWindow?: number
   /** Maximum output tokens, when disclosed. */
   maxTokens?: number
-  /** Accepted request modalities when the provider explicitly discloses them. */
-  inputModalities?: readonly LegacyModelModality[]
 }
-
-/** Candidate metadata contributed by a discovery enricher. */
-export interface LlmModelDiscoveryPatch extends LlmDiscoveredModel {
-  /** Replace candidate fields when the catalog is newer and authoritative. */
-  authoritative?: boolean
-}
-
-/** Input presented to a compatibility model-discovery enrichment plugin. */
-export interface LlmModelDiscoveryEnrichmentRequest {
-  /** Settings namespace whose discovery produced the candidates. */
-  settingsNs: string
-  /** Original provider draft and operation-local cancellation. */
-  request: LlmModelDiscoveryOperation
-  /** Detached candidates after earlier enrichers filled missing metadata. */
-  models: readonly LlmDiscoveredModel[]
-}
-
-/** Compatibility plugin that fills missing fields on discovered model ids. */
-export type LlmModelDiscoveryEnricher = (
-  request: LlmModelDiscoveryEnrichmentRequest,
-) => Promise<readonly LlmModelDiscoveryPatch[]>
-
-/** Exact route/model identity presented to a compatibility input resolver. */
-export interface LlmModelInputRequest {
-  /** Configured provider route. */
-  provider: string
-  /** Exact model id sent to the provider. */
-  model: string
-  /** Upstream model owner preserved from discovery, when disclosed. */
-  ownedBy?: string
-  /** Exact provider endpoint used by the configured route, when available. */
-  baseURL?: string
-  /** Operation-local cancellation. */
-  signal?: AbortSignal
-}
-
-/** Compatibility plugin that supplies exact model input modalities. */
-export type LlmModelInputResolver = (
-  request: LlmModelInputRequest,
-) => Promise<readonly LegacyModelModality[] | undefined>
-
-/** Exact model capacities supplied by a compatibility catalog. */
-export interface LlmModelCapacity {
-  /** Maximum combined request and response context in tokens. */
-  contextWindow?: number
-  /** Maximum generated output in tokens. */
-  maxOutputTokens?: number
-}
-
-/** Exact route/model identity presented to a compatibility capacity resolver. */
-export interface LlmModelCapacityRequest extends LlmModelInputRequest {}
-
-/** Compatibility plugin that supplies exact model capacities. */
-export type LlmModelCapacityResolver = (
-  request: LlmModelCapacityRequest,
-) => Promise<LlmModelCapacity | undefined>
-
-/** Compatibility plugin that supplies exact model reasoning levels. */
-export type LlmModelReasoningResolver = (
-  request: LlmModelInputRequest,
-) => Promise<readonly string[] | undefined>
 
 /** One adapter-discovered model; catalog membership is advisory, not request validation. */
 export interface LlmModelInfo {
@@ -400,6 +338,14 @@ export interface LlmModelReasoningInfo {
   defaultEffort?: ReasoningEffortId
 }
 
+/**
+ * How a model applies a system prompt that changes mid-conversation.
+ * `'in-history'`: the model reads the latest `system` message at any position
+ * of `messages` as the complete effective system prompt, so a changed prompt
+ * can follow the cached history instead of rewriting message 0.
+ */
+export type SystemPromptUpdate = 'in-history'
+
 /** Exact-route model metadata resolved by its owning adapter. */
 export interface LlmResolvedModelInfo extends LlmModelInfo {
   /** Provider-owned context capacity when known. */
@@ -408,38 +354,9 @@ export interface LlmResolvedModelInfo extends LlmModelInfo {
   defaultMaxTokens?: number
   /** Adapter-owned selectable reasoning levels when exposed. */
   reasoning?: LlmModelReasoningInfo
+  /** Declared mid-conversation system prompt handling; absent means only a leading system message is read. */
+  systemPromptUpdate?: SystemPromptUpdate
 }
-
-/** Metadata fields an effect-scoped catalog may fill for one exact model route. */
-export interface LlmModelMetadataPatch {
-  /** Replace adapter fields when the catalog is newer and authoritative. */
-  authoritative?: boolean
-  /** Accepted request modalities. */
-  inputModalities?: readonly ModelModality[]
-  /** Maximum combined request and response context in tokens. */
-  contextWindow?: number
-  /** Adapter-default output cap. */
-  maxTokens?: number
-  /** Adapter-owned selectable reasoning levels. */
-  reasoning?: LlmModelReasoningInfo
-}
-
-/** Exact-route input supplied to a model metadata enricher. */
-export interface LlmModelMetadataEnrichmentRequest {
-  /** Registered provider route. */
-  provider: string
-  /** Exact model id requested from the route. */
-  model: string
-  /** Metadata resolved by the owning adapter and earlier enrichers. */
-  metadata: LlmResolvedModelInfo
-  /** Operation-local cancellation. */
-  signal?: AbortSignal
-}
-
-/** Effect-scoped exact-model metadata lookup. */
-export type LlmModelMetadataEnricher = (
-  request: LlmModelMetadataEnrichmentRequest,
-) => Promise<LlmModelMetadataPatch | undefined>
 
 /**
  * Adapter-private lossless-JSON state for replaying a successful response,
@@ -506,12 +423,16 @@ export interface GenerateOptions {
   /** Adapter-owned reasoning effort selected for this exact model. */
   reasoningEffort?: ReasoningEffortId
   /**
-   * Ordered conversation messages, exactly as the provider sees them (after
-   * the `system` slot). A loop-built request assembles them as
-   * the derived history (dsh-agent-loop); a hand-built one-shot passes any list.
+   * Ordered conversation messages, exactly as the provider sees them. A
+   * loop-built request passes the derived history (dsh-agent-loop), whose
+   * leading system-role message carries the system prompt; a hand-built
+   * one-shot passes any list.
    */
   messages: Message[]
-  /** System prompt text (adapters map to the provider's system slot). */
+  /**
+   * System prompt text for one-shot callers; adapters map it to the provider's
+   * system slot ahead of `messages`. Loop-built requests leave it undefined.
+   */
   system?: string
   /** Tool schemas (adapters map to the provider's `tools` field). */
   tools?: ToolSchema[]

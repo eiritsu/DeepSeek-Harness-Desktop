@@ -42,15 +42,6 @@ function parseSettingsNamespace(value: string): SettingsNamespace {
   return value as SettingsNamespace
 }
 
-/**
- * Validate and brand a settings namespace for plugin-owned constants.
- * @param value - namespace string to validate.
- * @returns validated settings namespace.
- */
-export function settingsNamespace(value: string): SettingsNamespace {
-  return parseSettingsNamespace(value)
-}
-
 /** When a namespace's changes take effect for its owner. */
 export type SettingsApplies = 'live' | 'restart'
 
@@ -897,27 +888,6 @@ export interface SettingsSectionHooks<T> {
    * @param value - the resolved section, schema-valid by construction.
    */
   validate?: (value: T) => void
-}
-
-/**
- * Compatibility installer for plugins written against the pre-alpha.3 settings
- * helper. New code should call `ctx.settings.installSection` directly.
- * @param ctx - consumer plugin context owning the wiring.
- * @param ns - consumer-owned settings namespace.
- * @param schema - settings schema.
- * @param entry - composition entry used as the base layer.
- * @param hooks - source sink, change notification, and optional validation.
- */
-export function installSettingsSection<T>(
-  ctx: Context,
-  ns: SettingsNamespace,
-  schema: z<T>,
-  entry: T,
-  hooks: SettingsSectionHooks<T>,
-): void {
-  ctx.inject(['settings'], (settingsCtx) => {
-    settingsCtx.settings.installSection(ctx, ns, schema, entry, hooks)
-  })
 }
 
 export default SettingsProvider

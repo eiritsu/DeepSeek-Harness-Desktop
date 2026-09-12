@@ -21,15 +21,12 @@ import type {
 /** Adapter-level request defaults (from plugin config). */
 export interface RequestDefaults {
   thinking?: 'enabled' | 'disabled' | undefined
-  reasoningEffort?: DeepSeekReasoningEffort | undefined
+  reasoningEffort?: 'off' | 'low' | 'high' | 'max' | undefined
 }
-
-/** Reasoning levels accepted by the DeepSeek-compatible endpoint. */
-export type DeepSeekReasoningEffort = 'off' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
 interface ResolvedThinking {
   thinking?: 'enabled' | 'disabled'
-  reasoningEffort?: Exclude<DeepSeekReasoningEffort, 'off'>
+  reasoningEffort?: 'low' | 'high' | 'max'
 }
 
 /** Provider representation for every retained image in one request. */
@@ -72,10 +69,9 @@ export interface ImageWireLocation {
 const TOOL_RESULT_IMAGE_TEXT = 'Attached image(s) from tool result:'
 
 /** Validate the adapter-owned effort before resolving its DeepSeek wire fields. */
-function reasoningEffort(effort: NonNullable<GenerateOptions['reasoningEffort']>): DeepSeekReasoningEffort {
-  if (effort === 'off' || effort === 'low' || effort === 'medium'
-    || effort === 'high' || effort === 'xhigh' || effort === 'max') {
-    return effort as DeepSeekReasoningEffort
+function reasoningEffort(effort: NonNullable<GenerateOptions['reasoningEffort']>): 'off' | 'low' | 'high' | 'max' {
+  if (effort === 'off' || effort === 'low' || effort === 'high' || effort === 'max') {
+    return effort as 'off' | 'low' | 'high' | 'max'
   }
   throw new LlmError(
     `DeepSeek does not support reasoning effort "${effort}"`,
@@ -96,8 +92,7 @@ function resolveThinking(options: GenerateOptions, defaults: RequestDefaults): R
     )
   }
   if (effort === 'off') return { thinking: 'disabled' }
-  if (effort === 'low' || effort === 'medium' || effort === 'high'
-    || effort === 'xhigh' || effort === 'max') {
+  if (effort === 'low' || effort === 'high' || effort === 'max') {
     return { thinking: 'enabled', reasoningEffort: effort }
   }
   return defaults.thinking === undefined ? {} : { thinking: defaults.thinking }

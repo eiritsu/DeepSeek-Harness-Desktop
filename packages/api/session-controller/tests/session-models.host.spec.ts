@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry, { agentEvents } from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import AttachmentStore, { type SaveFileAttachment } from '@deepseek-ai/dsh-attachment'
+import AttachmentStore from '@deepseek-ai/dsh-attachment'
 import LlmRuntime, { LlmAdapter, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type {
   GenerateOptions, LlmCallConfig, LlmCallConfigAdapterDefaults, LlmModelInfo,
@@ -95,7 +95,7 @@ async function harness(logged?: {
 }> {
   const ctx = new Context()
   await ctx.plugin(SessionStore)
-  await ctx.plugin(SystemPrompt, { persona: '' })
+  await ctx.plugin(SystemPrompt, { personaPrefix: '' })
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(AgentRegistry)
   ctx.llm.registerAdapter(['deepseek-official'], new CatalogAdapter('DeepSeek', [
@@ -158,41 +158,6 @@ function currentSelection(ctx: Context, sessionId: SessionId) {
 }
 
 describe('Web session model selection', () => {
-  it('writes recognized generic-file text into the admitted user message', async () => {
-    const { ctx, agent, sessionId } = await harness()
-    const saveFiles = vi.fn((_inputs: readonly SaveFileAttachment[]) => Promise.resolve([{
-      attachmentId: 'scanned-pdf', mediaType: 'application/pdf', bytes: 4, name: 'scan.pdf',
-    }]))
-    const recognizeFile = vi.fn(() => Promise.resolve({ text: 'OCR extracted text' }))
-    ctx.provide('attachments', { saveFiles, recognizeFile } as never)
-    const followup = vi.fn()
-    Object.assign(agent, { followup })
-    const remote = createSessionTestRemote(ctx, {
-      defaultModelSelection: () => ({ provider: 'deepseek-official', model: 'deepseek-chat' }),
-      cwd: '/tmp',
-    })
-
-    expectValue(await remote.prompt(promptRequest({
-      sessionId,
-      mode: 'queue',
-      content: [{ type: 'file', mediaType: 'application/pdf', data: 'c2Nhbg==', name: 'scan.pdf' }],
-    })))
-
-    expect(saveFiles).toHaveBeenCalledTimes(1)
-    expect(saveFiles.mock.calls[0]?.[0]?.[0]).toMatchObject({ mediaType: 'application/pdf', name: 'scan.pdf' })
-    expect(recognizeFile).toHaveBeenCalledWith({
-      attachmentId: 'scanned-pdf', mediaType: 'application/pdf', bytes: 4, name: 'scan.pdf',
-    })
-    expect((followup.mock.calls[0]?.[0] as UserMessage).content).toEqual([{
-      type: 'file',
-      attachment: {
-        attachmentId: 'scanned-pdf', mediaType: 'application/pdf', bytes: 4, name: 'scan.pdf',
-      },
-      recognizedText: 'OCR extracted text',
-    }])
-    await ctx.fiber.dispose()
-  })
-
   it('validates an ordered image batch before persisting any member', async () => {
     const { ctx, agent, sessionId } = await harness()
     const validateImage = vi.fn((_input: { data: Uint8Array }) => Promise.resolve())
@@ -336,7 +301,7 @@ describe('Web session model selection', () => {
       id: 'summary', role: 'user', source: { kind: 'plugin', plugin: 'compact' },
       content: [{ type: 'text', text: 'image summarized' }],
     } as never, {
-      surfaceOp: { op: 'replace', start: imageEvent.seq, end: imageEvent.seq },
+      surfaceOp: { op: 'replace', startSeq: imageEvent.seq, endSeq: imageEvent.seq },
       sourceEventSeqs: [imageEvent.seq],
     })
     ;(agent.inbox.nextTurn as UserMessage[]).push({
@@ -700,7 +665,7 @@ describe('Web session model selection', () => {
     const savedRef = {
       attachmentId: 'saved-image', mediaType: 'image/png' as const, bytes: 1, width: 1, height: 1,
     }
-    ctx.provide('attachments', {
+    ctx.provide('attachments', Object.setPrototypeOf({
       saveImages: () => {
         if (saveMode === 'error') return Promise.reject(new Error('image store offline'))
         if (saveMode === 'remote') {
@@ -708,8 +673,7 @@ describe('Web session model selection', () => {
         }
         return Promise.resolve([savedRef])
       },
-      recognizeFile: () => Promise.resolve({ text: 'recognized image text' }),
-    } as never)
+    }, AttachmentStore.prototype) as never)
     const followup = vi.fn()
     Object.assign(agent, { followup })
     const remote = createSessionTestRemote(ctx, {
@@ -721,12 +685,12 @@ describe('Web session model selection', () => {
     expectValue(await remote.selectModel(request({
       sessionId, provider: 'text-only', model: 'plain',
     })))
-    expectValue(await remote.prompt(promptRequest({
+    expect(await remote.prompt(promptRequest({
       sessionId, mode: 'queue', content: [image],
-    })))
-    expect((followup.mock.calls[0]?.[0] as UserMessage).content).toEqual([{
-      type: 'image', attachment: savedRef, recognizedText: 'recognized image text',
-    }])
+    }))).toMatchObject({
+      ok: false,
+      error: { code: 'session/attachment-invalid', details: { reason: 'MODEL_DOES_NOT_SUPPORT_IMAGES' } },
+    })
 
     expectValue(await remote.selectModel(request({
       sessionId, provider: 'image-capable', model: 'vision',
@@ -748,7 +712,7 @@ describe('Web session model selection', () => {
     }))).toMatchObject({ ok: false, error: { code: 'gateway/internal', message: 'fixture rejected' } })
     saveMode = 'success'
     expectValue(await remote.prompt(promptRequest({ sessionId, mode: 'queue', content: [image] })))
-    expect(followup).toHaveBeenCalledTimes(2)
+    expect(followup).toHaveBeenCalledOnce()
 
     ;(agent.inbox.nextTurn as UserMessage[]).push({
       id: 'pending-image', role: 'user', source: { kind: 'user' },

@@ -71,12 +71,12 @@
       name: '@deepseek-ai/dsh-plugin-package-inventory-deepseek'
 
     # The transport-independent default for Agents created by entry points.
-    # Desktop disables this built-in selection until the user configures one.
+    # Settings may supply a saved selection; consumers read it at creation time.
     - id: agent-default-model
       name: '@deepseek-ai/dsh-agent-default-model'
       config:
-        provider: !!js "process.env.DSH_DESKTOP_SHELL === '1' ? '' : 'deepseek-official'"
-        model: !!js "process.env.DSH_DESKTOP_SHELL === '1' ? '' : 'deepseek-v4-flash'"
+        provider: deepseek-official
+        model: deepseek-flash
 
     - id: jobs
       name: '@deepseek-ai/dsh-jobs-local'
@@ -85,12 +85,10 @@
       name: '@deepseek-ai/dsh-llm-retry'
 
     # User-settings document (`$DSH_HOME/settings.yaml`, hot-reloaded): a
-    # `llm-deepseek:` or `llm-dsh-ai:` section there overrides the adapter entries
+    # `llm-deepseek:` or `llm-pi-ai:` section there overrides the adapter entries
     # below without a restart, and is what the web Models page writes.
     - id: settings
       name: '@deepseek-ai/dsh-settings-file'
-      config:
-        sqlitePath: !!js dshHomePath('dsh-desktop.sqlite')
 
     # Credential sources: inherited environment over the managed
     # `$DSH_HOME/.credentials.yaml`, with project and user `.env` fallbacks.
@@ -98,30 +96,21 @@
     # managed document, which is never materialized into the process environment.
     - id: credentials
       name: '@deepseek-ai/dsh-credentials-local'
-      config:
-        sqlitePath: !!js dshHomePath('dsh-desktop.sqlite')
-
-    # API-key gated external tools. Provider credentials resolve through the
-    # credential service; only provider switches and endpoint overrides live in
-    # the settings document.
-    - id: external-tools
-      name: '@deepseek-ai/dsh-external-tools'
 
     # The pi-ai multi-provider twin, mounted dormant: zero routes (and no extra
-    # models in the picker) until a `llm-dsh-ai:` settings section supplies provider
+    # models in the picker) until a `llm-pi-ai:` settings section supplies provider
     # profiles — then those routes register live, keys resolving per request
     # through their apiKeyEnv references, and drop again when the section empties.
     # Supplying those profiles is exactly what the web Models page does. Which
     # adapters exist is composition; which providers run is the user's settings
     # document.
-    - id: llm-dsh-ai
-      name: '@deepseek-ai/dsh-llm-dsh-ai'
+    - id: llm-pi-ai
+      name: '@deepseek-ai/dsh-llm-pi-ai'
 
-    - id: session-persistence-sqlite
-      name: '@deepseek-ai/dsh-session-persistence-sqlite'
+    - id: session-persistence-jsonl
+      name: '@deepseek-ai/dsh-session-persistence-jsonl'
       config:
-        path: !!js dshHomePath('dsh-desktop.sqlite')
-        legacyRoot: !!js dshHomePath('sessions')
+        root: !!js dshHomePath('sessions')
 
     # Durable image bytes live outside the append-only session log. Messages
     # keep content-addressed references that this shared backend resolves for
@@ -149,22 +138,22 @@
     - id: session-projection
       name: '@deepseek-ai/dsh-session-projection'
 
-    # Durable KV storage: the storage hub, the SQLite backend, and the
+    # Durable KV storage: the storage hub, the json backend, and the
     # schema-validated domain form over them. Session-layer persistence (the
-    # projection cache below; workspace and message-feedback in web layers)
+    # projection cache below; workspace in web layers)
     # routes through this stack, so it belongs to the shared base.
     - id: storage
       name: '@deepseek-ai/dsh-storage'
 
-    - id: storage-sqlite
-      name: '@deepseek-ai/dsh-storage-sqlite'
+    - id: storage-json
+      name: '@deepseek-ai/dsh-storage-json'
       config:
-        path: !!js dshHomePath('dsh-desktop.sqlite')
+        root: !!js dshHomePath('storages')
 
     - id: storage-domain
       name: '@deepseek-ai/dsh-storage-domain'
       config:
-        backend: sqlite
+        backend: json
 
     # Persisted projection cache: throttled write-behind over the
     # session_projcache domain (per-record layout — one version-stamped
@@ -176,14 +165,8 @@
         writeEveryEvents: 200
         writeIntervalMs: 5000
 
-    # Session telemetry defaults to feedback-gated sharing: FEEDBACK_ONLY
-    # uploads only when the user records /feedback, releasing the session
-    # records since the last handoff through that event (a resumed session
-    # shares only its current lifecycle). DSH_TELEMETRY_MODE overrides to
-    # FULL or DISABLED; uploading mirrors session-log records onto OTLP/HTTP
-    # logs with no session-telemetry/record redaction rule, so exports are
-    # the raw captured copy. The deployment stance, env seams, and follow-ups
-    # are pinned in the feedback-gated-default Agent Note.
+    # OTel releases a Session-log prefix only after explicit user feedback,
+    # regardless of model provider. Ordinary activity never triggers capture.
     # DSH_TELEMETRY_OTLP_URL overrides the production endpoint. A non-empty
     # DSH_TELEMETRY_DISABLED — any value, including '0'/'false' — opts the
     # process out (the launchers patch the row disabled; config cannot disable
@@ -371,9 +354,9 @@
         backgroundMode: continuable
 
     # Fork omits model selection so provider/model stay equal to the parent and
-    # the inherited history remains eligible for KV Cache reuse. It stays one-shot
-    # because a continuable child's `report` tool and prompt section precede that
-    # history and invalidate the same prefix.
+    # the inherited history remains eligible for KV Cache reuse. This base row
+    # stays one-shot; preset layers may select continuable mode without adding a
+    # child-only system-prompt section or tool schema ahead of that history.
     # See .agents/notes/implemented/feature/2026-08-18-model-selected-subagent-routes.md
     # and .agents/notes/implemented/architecture/2026-08-10-fork-children-stay-one-shot.md.
     - id: tool-subagent-fork
@@ -382,10 +365,6 @@
         provider: fork
         toolName: subagent_fork
         backgroundMode: one-shot
-
-    # Optional direct-child return channel; absent from roots and one-shot agents.
-    - id: tool-subagent-report
-      name: '@deepseek-ai/dsh-tool-subagent-report'
 
     - id: workflow-worker-thread
       name: '@deepseek-ai/dsh-workflow-worker-thread'
@@ -436,11 +415,6 @@
         subagentProvider: spawn
         maxRounds: 64
 
-    - id: tool-str-replace-editor
-      name: '@deepseek-ai/dsh-tool-str-replace-editor'
-      config:
-        maxOutputChars: 16000
-
     # Consecutive-repeat reminders on the tool chain.
     - id: repeat-tool-reminder
       name: '@deepseek-ai/dsh-repeat-tool-reminder'
@@ -448,9 +422,10 @@
         thresholds: [3, 5, 8]
         argumentsPreviewChars: 500
 
-    # Every mode enables the stable model-facing web_search tool. The Web app's
-    # per-agent presets additionally enable web_fetch; other products opt in by
-    # overriding tool-web. DeepSeek search resolves the same DEEPSEEK_API_KEY
+    # The shared base enables the stable model-facing web_search and web_fetch
+    # tools. The Web app disables this host row and composes both tools per agent
+    # preset; products with a stricter network policy override tool-web. DeepSeek
+    # search resolves the same DEEPSEEK_API_KEY
     # credential the Models page manages for chat, at each search; its Messages
     # endpoint is separate from the chat-completions endpoint, so it takes its own
     # base-URL override. Anonymous fetch accepts only public HTTP(S) destinations,
@@ -461,7 +436,7 @@
     - id: web
       name: '@deepseek-ai/dsh-web'
       config:
-        searchProvider: !!js "process.env.DSH_DESKTOP_SHELL === '1' ? undefined : 'deepseek-official'"
+        searchProvider: deepseek-official
         fetchProvider: http
 
     - id: web-search-deepseek
@@ -475,7 +450,7 @@
     - id: tool-web
       name: '@deepseek-ai/dsh-tool-web'
       config:
-        fetch: false
+        fetch: true
         searchTimeoutMs: 60000
 
     # ── rows every mode mounts, whose values each overlay may state ──────────────
@@ -490,7 +465,7 @@
     - id: system-prompt
       name: '@deepseek-ai/dsh-system-prompt'
       config:
-        persona: ''
+        personaPrefix: ''
 
     # Agents created at startup. The base stays empty; raw overlays may create
     # agents, while Web creates sessions on client request.
@@ -506,8 +481,7 @@
 
     # The native DeepSeek adapter. No key or endpoint is inlined: both resolve per
     # request from the `llm-deepseek:` settings section over this entry, with the
-    # key coming from the credential store below. The desktop profile disables
-    # this optional official route so users start with a provider they configure.
+    # key coming from the credential store below. Thinking defaults are a deployment
+    # choice.
     - id: llm-deepseek
       name: '@deepseek-ai/dsh-llm-deepseek'
-      disabled: !!js process.env.DSH_DESKTOP_SHELL === '1'
