@@ -3,4 +3,4 @@
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-04-distribution-runtime-provenance.md
 2026-09-04-distribution-runtime-provenance.md: b025131e91879299d4fea84ff7b69948e4f0eaaa
-2026-09-04-distribution-runtime-provenance.zh.md: 8fd90c600eb2461b3ea583b203c2be861f15e112
+2026-09-04-distribution-runtime-provenance.zh.md: 5bce27463d42539284f434d21b21dcb9b41963dc

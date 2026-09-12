@@ -45,7 +45,7 @@ The shared `PersistenceCoordinator` owns batching, sequence checks, crash closer
 ## Further Exploration
 
 - [Session persistence service](../session-persistence/README.md)
-- [Desktop data migration note](../../../.agents/notes/implemented/architecture/2026-09-03-desktop-application-support-data-and-plugin-management.md)
+- [Desktop fork Electron migration proposal](../../../.agents/notes/proposed/architecture/2026-09-13-desktop-fork-electron-migration.md)
 
 ## Model Experience
 

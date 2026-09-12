@@ -48,7 +48,7 @@ kind: "package-reference"
 ## 进一步探索
 
 - [会话持久化服务](../session-persistence/README.zh.md)
-- [桌面数据迁移笔记](../../../.agents/notes/implemented/architecture/2026-09-03-desktop-application-support-data-and-plugin-management.zh.md)
+- [桌面分支 Electron 迁移提案](../../../.agents/notes/proposed/architecture/2026-09-13-desktop-fork-electron-migration.zh.md)
 
 <a id="model-experience"></a>
 ## 模型体验

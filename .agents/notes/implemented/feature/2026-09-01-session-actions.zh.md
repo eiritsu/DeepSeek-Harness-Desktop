@@ -1,6 +1,6 @@
 # Agent Note: 会话删除与工作区操作
 
-状态：已实现
+Status: implemented
 
 [English](2026-09-01-session-actions.md) | 中文
 

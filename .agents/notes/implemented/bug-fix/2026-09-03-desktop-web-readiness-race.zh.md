@@ -1,4 +1,4 @@
-# Agent Note：等待桌面 Web bundle 就绪后再打开 WebView
+# Agent Note: 等待桌面 Web bundle 就绪后再打开 WebView
 
 Status: implemented
 

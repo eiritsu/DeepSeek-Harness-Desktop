@@ -1,10 +1,10 @@
-# Agent Note：推理控制遵循供应商能力元数据
+# Agent Note: 推理控制遵循供应商能力元数据
 
-状态：已实现
+Status: implemented
 
 [English](2026-09-01-reasoning-capability-and-empty-row.md) | 中文
 
-## 问题
+## Problem
 
 模型选择器曾为没有供应商推理能力元数据的模型显示 Off/Low/High/Max。适配器随后在分发时临时提升这些模型，因此控制项可以被选中，却没有供应商保证，也没有可靠的线协议效果。供应商还可能在输出文本前或关闭推理时发出空推理块，界面因此留下空白的“思考”行。
 

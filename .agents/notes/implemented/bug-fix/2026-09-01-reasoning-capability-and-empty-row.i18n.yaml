@@ -3,4 +3,4 @@
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-01-reasoning-capability-and-empty-row.md
 2026-09-01-reasoning-capability-and-empty-row.md: 1eb0b8b7f0c748d5836de8fd31c3e71e6fcfdfe4
-2026-09-01-reasoning-capability-and-empty-row.zh.md: f1ea5545709d1b3996951b6f79a06ee76ba86555
+2026-09-01-reasoning-capability-and-empty-row.zh.md: 09d4329aac11a374bd46e186a6e418fe3abb815c

@@ -1,4 +1,4 @@
-# Agent Note：会话删除声明持久化依赖
+# Agent Note: 会话删除声明持久化依赖
 
 Status: implemented
 

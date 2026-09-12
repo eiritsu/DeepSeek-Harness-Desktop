@@ -1,6 +1,6 @@
-# Agent Note：发行运行时来源已固定并校验
+# Agent Note: 发行运行时来源已固定并校验
 
-状态：已实现
+Status: implemented
 
 [English](2026-09-04-distribution-runtime-provenance.md) | 中文
 

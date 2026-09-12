@@ -3,4 +3,4 @@
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-09-03-desktop-application-support-data-and-plugin-management.md
 2026-09-03-desktop-application-support-data-and-plugin-management.md: 6efbe8c8cde9109290a03cb14ec700f76d571324
-2026-09-03-desktop-application-support-data-and-plugin-management.zh.md: fb3d7ad03eda969067d1fdec55d15bc20a14a056
+2026-09-03-desktop-application-support-data-and-plugin-management.zh.md: 073828697139f97a538421de4c4ff5f0af49d968
