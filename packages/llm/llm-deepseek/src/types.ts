@@ -18,7 +18,7 @@ export interface WireRequest {
   /** Thinking-mode toggle (top level, NOT inside extra_body on the wire). */
   thinking?: { type: 'enabled' | 'disabled' }
   /** Thinking effort (official levels). */
-  reasoning_effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+  reasoning_effort?: 'low' | 'high' | 'max'
   tools?: WireTool[]
   temperature?: number
   max_tokens?: number
@@ -145,14 +145,17 @@ export interface WireDelta {
 export interface WireToolCallDelta {
   /** Disambiguates parallel tool calls; stable across a call's deltas. */
   index: number
-  /** Present on the first delta of each call only. */
-  id?: string
+  /**
+   * Carried by the first delta of each call. Gateways observed in the wild
+   * repeat it on continuation deltas as `''` or `null`; both mean "unchanged".
+   */
+  id?: string | null
   type?: 'function'
   function?: {
-    /** Present on the first delta of each call only. */
-    name?: string
+    /** Carried by the first delta of each call, with the same `''`/`null` repetition as {@link WireToolCallDelta.id}. */
+    name?: string | null
     /** Argument JSON fragment (concatenate across deltas). */
-    arguments?: string
+    arguments?: string | null
   }
 }
 

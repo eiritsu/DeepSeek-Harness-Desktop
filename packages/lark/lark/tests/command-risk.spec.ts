@@ -31,6 +31,10 @@ describe('Lark CLI command risk classification', () => {
       .toEqual(['calendar', 'events', 'get', '--help'])
     expect(commandHelpArguments(['skills', 'install', 'owner/repo']))
       .toEqual(['skills', 'install', '--help'])
+    expect(commandHelpArguments([])).toBeUndefined()
+    expect(commandHelpArguments(['api', 'GET', '/open-apis/contact/v3/users'])).toBeUndefined()
+    expect(commandHelpArguments(['doctor'])).toEqual(['doctor', '--help'])
+    expect(commandHelpArguments(['calendar', 'events'])).toEqual(['calendar', 'events', '--help'])
   })
 
   it('accepts only the official read risk declaration', () => {

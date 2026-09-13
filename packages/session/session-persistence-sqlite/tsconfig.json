@@ -1,13 +1,33 @@
 {
   "extends": "../../../tsconfig.base.json",
-  "compilerOptions": { "rootDir": "src", "outDir": "lib/types" },
-  "include": ["src"],
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types"
+  },
+  "include": [
+    "src"
+  ],
   "references": [
-    { "path": "../../../vendor/cordis" },
-    { "path": "../../../vendor/schemastery" },
-    { "path": "../../core/session" },
-    { "path": "../session-persistence" },
-    { "path": "../session-persistence-jsonl" },
-    { "path": "../../runtime-diagnostics/invariants" }
+    {
+      "path": "../../../vendor/cosmokit"
+    },
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../../../vendor/schemastery"
+    },
+    {
+      "path": "../../core/session"
+    },
+    {
+      "path": "../session-format"
+    },
+    {
+      "path": "../session-format-catalog"
+    },
+    {
+      "path": "../session-persistence"
+    }
   ]
 }

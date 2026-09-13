@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-任何插件或工具都可以通过 `dsh-web`（`ctx.web`）搜索 web 或抓取 URL，而无需绑定任何厂商的 API。搜索与抓取提供方以后端形式接入，服务按操作挑选一个可用的提供方，调用方无需追踪每次调用背后是哪家厂商。在构建 web 工具或其他后端时选择它；已交付的面向模型工具（`dsh-tool-web`）会自动挂载它。服务本身不发起网络调用、不注册面向模型的工具：搜索或抓取执行前必须已挂载提供方。搜索与抓取共用同一套选择策略、取消与错误词汇以及配置接口，因此「这个 harness 如何访问 web」只有一个归属方。
+使用 `dsh-web` 搜索 web 或抓取 URL，而无需让调用方依赖特定厂商。它为每项操作选择可用后端，并为调用方提供一致的取消、错误和结果上限。在调用 `ctx.web.search()` 或 `ctx.web.fetch()` 的插件或工具中选择它；已交付的 `dsh-tool-web` 工具会为你加载它。搜索或抓取需要已配置且可用的提供方，因为本包自身不发起网络请求。
 
 ## 目录
 
@@ -29,11 +29,11 @@ kind: "package-reference"
 
 ### 何时选择
 
-当插件或工具必须搜索或抓取、又不希望硬编码厂商时选择本服务；只使用已交付的 `web_search`／`web_fetch` 工具的组合会通过 `dsh-tool-web` 免费获得它。当组合从不访问 web 时，你不需要它。服务本身不增加任何网络访问能力：没有至少一个可用提供方时，每次调用都会以结构化 `WebError` 失败。
+当插件或工具必须搜索或抓取、又不希望硬编码厂商时选择本服务；只使用已交付的 `web_search`／`web_fetch` 工具的组合会通过 `dsh-tool-web` 自动加载本服务。当组合从不访问 web 时，你不需要它。服务本身不增加任何网络访问能力：没有至少一个可用提供方时，每次调用都会以结构化 `WebError` 失败。
 
 ### 最小配置
 
-加载服务并让唯一挂载的后端自动选择，或用 `searchProvider`／`fetchProvider` 固定提供方 id。环境变量 `$DSH_WEB_SEARCH_PROVIDER` 与 `$DSH_WEB_FETCH_PROVIDER` 提供相同字段，不是另一条优先级链。
+加载服务并让唯一挂载的后端自动选择，或用 `searchProvider`／`fetchProvider` 固定提供方 id。环境变量 `$DSH_WEB_SEARCH_PROVIDER` 与 `$DSH_WEB_FETCH_PROVIDER` 提供相同字段，不是另一条优先级链。拥有实时提供方偏好的组合可以调用 `setSearchProviderOverride(id)`，且在偏好不再适用时必须以 `undefined` 清除；这个显式覆盖优先于静态字段，但不改变注册顺序。
 
 ```yaml
 - name: '@deepseek-ai/dsh-web'
@@ -64,7 +64,7 @@ const page = await ctx.web.fetch({ url: 'https://example.com' })
 
 ### 提供方选择
 
-每次调用都在执行时解析提供方，注册或加载顺序从不影响结果。已配置的提供方 id 在已注册且可用时优先；没有配置 id 时，服务运行唯一可用的提供方，或在情况不明时明确失败：
+每次调用都在执行时解析提供方，注册或加载顺序从不影响结果。实时组合覆盖优先，其次是已配置的提供方 id；两者都不存在时，服务运行唯一可用的提供方，或在情况不明时明确失败：
 
 | 情况 | 结果 |
 |---|---|
@@ -76,8 +76,6 @@ const page = await ctx.web.fetch({ url: 'https://example.com' })
 | 无 id，多个可用提供方 | `WEB_PROVIDER_AMBIGUOUS` |
 
 提供方的可用性是一项廉价的局部检查——例如其 API 密钥是否存在——并且从不发起网络调用，因此选择保持快速且确定。
-
-组合插件可以调用 `setSearchProviderOverride(id)` 在运行时选择一个已注册的搜索后端，并在组合释放时传入 `undefined`。凭据门控的提供方集合用这个钩子实现用户配置的优先级；它不会修改持久化的 `searchProvider` 设置。
 
 ### 失败与恢复
 
@@ -107,11 +105,11 @@ const page = await ctx.web.fetch({ url: 'https://example.com' })
 |---|---|
 | [`src/index.ts`](src/index.ts) | 插件入口：`WebRuntime` 服务、两个提供方注册表与执行时选择 |
 | [`src/types.ts`](src/types.ts) | 词汇：请求／结果类型、封闭的 `WebFetchBody` 联合与 `WebError` 分类体系 |
-| [`src/invariant.ts`](src/invariant.ts) | 不变式伴生插件（无运行时不变式；约定在服务处强制执行） |
+| — | 不发布运行时不变式配套项；提供方映射是私有数据，服务会在每次调用时执行提供方选择并强制执行结果上限；该 seam 不发布独立注册表，也不发布请求／结果观测流。 |
 
 ### 数据模型
 
-请求与结果类型定义了调用方赖以构建的规范化词汇——一组 `Search` 对与一组 `Fetch` 对——穷尽式字段与 JSDoc 见 [`src/types.ts`](src/types.ts) 与 [web 子系统](../../../docs/subsystems/web.zh.md) 参考。两个刻意的选择塑造了它们：`WebFetchBody` 是这里拥有的封闭联合（`html` | `text`），因此新增类型会破坏编译，直到每个消费方都处理它；`WebError` 继承 `HarnessError`，携带开放的字符串 `code`，因此消费方必须容忍提供方专有的取值。来源字段保持可选，因为并非每个提供方都返回全部字段。
+请求与结果类型定义了调用方赖以构建的规范化词汇——`Search` 请求／结果对与 `Fetch` 请求／结果对各一组——穷尽式字段与 JSDoc 见 [`src/types.ts`](src/types.ts) 与 [web 子系统](../../../docs/subsystems/web.zh.md) 参考。两个刻意的选择塑造了它们：`WebFetchBody` 是这里拥有的封闭联合（`html` | `text`），因此新增类型会破坏编译，直到每个消费方都处理它；`WebError` 继承 `HarnessError`，携带开放的字符串 `code`，因此消费方必须容忍提供方专有的取值。来源字段保持可选，因为并非每个提供方都返回全部字段。
 
 ### 选择流程
 

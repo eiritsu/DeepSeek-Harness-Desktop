@@ -64,8 +64,8 @@ export interface IWorkspaces {
   archiveSession(sessionId: SessionId): Promise<void>
   /**
    * Add a known Session to a Workspace's manual account.
-   * @param workspaceId - target Workspace.
-   * @param sessionId - Session to account.
+   * @param workspaceId - Workspace that should account for the Session.
+   * @param sessionId - Known Session to attach.
    * @returns the changed Workspace.
    */
   attachSession(workspaceId: WorkspaceId, sessionId: SessionId): Promise<WorkspaceView>

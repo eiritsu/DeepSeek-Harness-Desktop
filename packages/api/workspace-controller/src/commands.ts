@@ -164,8 +164,8 @@ export class WorkspaceCommands {
 
   /**
    * Add one known Session to a Workspace's manual account.
-   * @param request - Workspace and Session identities.
-   * @returns the updated Workspace projection.
+   * @param request - Workspace and Session identities to associate.
+   * @returns the changed Workspace projection.
    */
   async attachSession(request: WorkspaceAttachSessionRequest): Promise<WorkspaceAttachSessionValue> {
     const workspace = this.requireWorkspace(request.workspaceId)

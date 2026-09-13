@@ -6,7 +6,12 @@ export interface PendingUserAuthorization {
   readonly scopes: readonly string[]
 }
 
-/** Serialize a pending authorization for credential storage. */
+/**
+ * Serialize a pending authorization for credential storage.
+ * @param deviceCode - Opaque code returned by the official CLI.
+ * @param scopes - Exact user scopes associated with the code.
+ * @returns the credential-safe serialized state.
+ */
 export function encodePendingUserAuthorization(
   deviceCode: string,
   scopes: readonly string[],
@@ -15,7 +20,12 @@ export function encodePendingUserAuthorization(
   return JSON.stringify({ deviceCode, scopes })
 }
 
-/** Decode a pending authorization only when it matches the current scope set. */
+/**
+ * Decode a pending authorization only when it matches the current scope set.
+ * @param value - Serialized credential value.
+ * @param currentScopes - Exact scopes required by the current release.
+ * @returns validated pending state, or `undefined` when stale or invalid.
+ */
 export function decodePendingUserAuthorization(
   value: string,
   currentScopes: readonly string[],

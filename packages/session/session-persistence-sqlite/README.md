@@ -1,5 +1,5 @@
 ---
-description: "SQLite session persistence for the desktop database and maintainers configuring durable event logs."
+description: "SQLite Session persistence for desktop deployments that need one authoritative database, transactional appends, cheap listing metadata, and backup-friendly storage."
 kind: "package-reference"
 ---
 
@@ -7,11 +7,9 @@ kind: "package-reference"
 
 English | [中文](README.zh.md)
 
-`dsh-session-persistence-sqlite` stores each session header and its contiguous `SessionEvent` rows in one SQLite database. It uses the shared persistence coordinator, so session creation, append ordering, resume preparation, crash closers, revisions, and deletion have the same semantics as the JSONL backend while the desktop database remains the single durable medium.
-
 ## Summary
 
-The backend keeps the logical session stream in SQLite rows and uses the shared coordinator for lifecycle and write ordering. Choose it when a desktop deployment needs one owner-controlled database instead of one artifact per session.
+`dsh-session-persistence-sqlite` stores Session headers and events in one SQLite database. It commits each event batch and its count in one transaction, keeps the database in WAL mode with full synchronization, and exposes the same handle API as the JSONL provider. Choose it for a desktop profile that needs one authoritative, backup-friendly store and does not require a separate file for every Session.
 
 ## Table of Contents
 
@@ -22,52 +20,87 @@ The backend keeps the logical session stream in SQLite rows and uses the shared 
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
 - [Dev Note](#dev-note)
 
+-----
+
+<a id="use-this-package"></a>
 ## Use this package
 
-Mount the backend in the desktop profile. It registers `ctx.sessionPersistence` and keeps the old JSONL files as a rollback source during the one-time import.
-
-## Configuration
+Mount this provider after the Session service and give it one database path. A composition must mount exactly one `SessionPersistence` provider.
 
 ```yaml
-- id: session-persistence-sqlite
-  name: '@deepseek-ai/dsh-session-persistence-sqlite'
+- name: '@deepseek-ai/dsh-session'
+- name: '@deepseek-ai/dsh-session-persistence-sqlite'
   config:
-    path: /path/to/dsh-desktop.sqlite
-    legacyRoot: /path/to/legacy/sessions
+    path: /absolute/path/to/sessions.sqlite
 ```
 
-`path` is required. When `legacyRoot` is set, existing JSONL sessions are imported once before the first SQLite read; the import marker is stored in SQLite and later starts are idempotent. The backend creates the parent directory, enables WAL and full synchronous commits, and restricts the database file to the owner on POSIX filesystems.
+| Field | Default | Meaning |
+|---|---|---|
+| `path` | required | SQLite database file; `:memory:` is intended for tests |
 
+A new Session remains process-local until its first event batch or explicit `flush`. The first durable write inserts its header and events in one transaction. Later appends verify the stored next sequence, insert a contiguous batch, and update `event_count`, `revision`, and `updated_at` before the transaction commits. `stat` and `list` read the stored count without loading event bodies.
+
+The backend creates missing parent directories and database files with owner-only permissions. It enables foreign keys, WAL journaling, and `synchronous=FULL`. Schema version `1` adds lineage, count, and revision columns to the unstamped desktop schema before stamping `PRAGMA user_version`.
+
+-----
+
+<a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-The shared `PersistenceCoordinator` owns batching, sequence checks, crash closers, and lifecycle disposal. This provider owns the SQLite schema, transactions, revisions, and the idempotent legacy importer.
+<details>
+<summary>Implementation internals — click to expand</summary>
 
+The provider owns one `DatabaseSync` connection. Metadata rows hold the immutable Session header, inherited prefix length, event count, and revision. Event rows use `(session_id, seq)` as their primary key and cascade-delete with metadata. Each write handle serializes explicit appends and routed live-event drains on one promise chain; the service routes `session/event`, `session/flush`, and `session/disposed` to the current writer for that Session id.
+
+Reads parse the durable JSON, check the requested id and current Session format version, require contiguous row and payload sequence numbers, and run the shared fail-closed event validator. Returned event graphs are deep-frozen before the handle reports `shared-frozen` ownership.
+
+| File | Role |
+|---|---|
+| [`src/index.ts`](src/index.ts) | Schema setup, backend service, Session handle, live-event routing, and teardown |
+| [`tests/sqlite.spec.ts`](tests/sqlite.spec.ts) | Shared persistence/live-write contracts and SQLite metadata coverage |
+
+</details>
+
+-----
+
+<a id="further-exploration"></a>
 ## Further Exploration
 
-- [Session persistence service](../session-persistence/README.md)
-- [Desktop data migration note](../../../.agents/notes/implemented/architecture/2026-09-03-desktop-application-support-data-and-plugin-management.md)
+- [Session persistence subsystem](../../../docs/subsystems/persistence.md) — provider-neutral handle, durability, and recovery semantics.
+- [Session persistence seam](../session-persistence/README.md) — the API implemented by this provider.
+- [JSONL provider](../session-persistence-jsonl/README.md) — the per-Session-file alternative with released-format migration.
 
+-----
+
+<a id="model-experience"></a>
 ## Model Experience
 
-### Session restoration
+### Resumed conversation history
 
 #### What the model sees
 
-SQLite does not add prompt content or model-visible fields. The model receives the same reconstructed session events and request metadata from `ctx.sessionPersistence` after a restart; SQLite is an implementation detail.
+SQLite contributes no prompt text. A resumed lifecycle reconstructs the same validated `SessionPersistence` events exposed by any conforming persistence provider.
 
 #### Token effect
 
-Zero additional tokens are introduced by the storage backend.
+Zero live-request tokens beyond the restored conversation history and current request envelope.
 
 #### KV Cache effect
 
-The backend does not alter request prefixes, so cache reuse follows the selected model provider's normal rules.
+Storage choice does not change request prefixes. Cache reuse depends on reconstructed history, the current envelope, and the selected model route.
 
 ## Known Limitations and Deferred Work
 
-- The backend exposes a reconstructed JSONL view for export through `readRaw`; the SQLite rows remain authoritative. It does not provide a separate per-session artifact path. Legacy import intentionally leaves the original JSONL files untouched so rollback remains recoverable.
+<a id="known-limitations-and-deferred-work"></a>
+
+- **Only installed migrations are accepted** — the provider upgrades the recognized legacy desktop schema and released Session formats through the format catalog, but refuses unknown layouts and newer formats.
+- **One writer is enforced per backend instance** — a second write handle in the same Host rejects. Cross-process exclusion belongs to the application; both desktop shells use `$DSH_HOME/desktop/runtime.lock` before starting a Host.
+- **Deletion is transactional** — `delete(id)` refuses an active writer and deletes the metadata row inside `BEGIN IMMEDIATE`; foreign-key cascade removes its events before commit.
+- **WAL creates companion files** — a backup operation must checkpoint and close the Host before copying the database; copying only the main file while it is live can omit committed pages.
+
+No runtime invariant companion is published; durable reads validate the authoritative database directly, and focused persistence contracts own transaction and lifecycle behavior.
 
 <a id="dev-note"></a>
 ### Dev Note
 
-The desktop migration mirrors settings, credentials, workspace, profile, plugin, skill, and model-catalog payloads into SQLite. Sessions, settings, credentials, and storage units now use the database at runtime; profile, Skill, plugin-audit, and source-release owners still retain file compatibility while their transactional migrations are completed.
+The dual desktop shells now own a shared process-lifetime lock, released Session-format migration, and closed-Host backup/import flows. Packaged oldest/newest-platform qualification remains release work.

@@ -3,12 +3,68 @@ import Foundation
 /// Creates and restores a versioned, desensitized desktop configuration archive.
 final class DesktopBackupManager: @unchecked Sendable {
   private static let archiveVersion = 1
+  private static let maximumSessionSchemaVersion = 2
   private let supportRoot: URL
   private let dataRoot: URL
 
-  init(supportRoot: URL) {
+  init(supportRoot: URL, dataRoot: URL? = nil) {
     self.supportRoot = supportRoot
-    dataRoot = supportRoot.appendingPathComponent("data", isDirectory: true)
+    self.dataRoot = dataRoot ?? supportRoot.appendingPathComponent("data", isDirectory: true)
+  }
+
+  /// Export the closed authoritative Session database without redaction.
+  func exportSessions(to destination: URL) throws {
+    let source = sessionDatabase
+    try validateSessionDatabase(at: source)
+    let fileManager = FileManager.default
+    try fileManager.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+    let staged = destination.deletingLastPathComponent()
+      .appendingPathComponent(".session-export-\(UUID().uuidString).sqlite")
+    defer { try? fileManager.removeItem(at: staged) }
+    try fileManager.copyItem(at: source, to: staged)
+    try validateSessionDatabase(at: staged)
+    if fileManager.fileExists(atPath: destination.path) { try fileManager.removeItem(at: destination) }
+    try fileManager.moveItem(at: staged, to: destination)
+  }
+
+  /// Import a validated Session database while retaining the previous file for rollback.
+  func importSessions(from source: URL) throws {
+    try validateSessionDatabase(at: source)
+    let fileManager = FileManager.default
+    let target = sessionDatabase
+    let rollback = supportRoot.appendingPathComponent(".session-rollback-\(UUID().uuidString).sqlite")
+    let staged = target.deletingLastPathComponent()
+      .appendingPathComponent(".session-import-\(UUID().uuidString).sqlite")
+    try fileManager.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+    defer {
+      try? fileManager.removeItem(at: staged)
+      try? fileManager.removeItem(at: rollback)
+    }
+    try fileManager.copyItem(at: source, to: staged)
+    try validateSessionDatabase(at: staged)
+    let retained = fileManager.fileExists(atPath: target.path)
+    if retained { try fileManager.moveItem(at: target, to: rollback) }
+    do {
+      try fileManager.moveItem(at: staged, to: target)
+      for suffix in ["-wal", "-shm"] {
+        let sidecar = URL(fileURLWithPath: target.path + suffix)
+        if fileManager.fileExists(atPath: sidecar.path) { try fileManager.removeItem(at: sidecar) }
+      }
+    } catch {
+      if retained, fileManager.fileExists(atPath: rollback.path) {
+        try? fileManager.moveItem(at: rollback, to: target)
+      }
+      throw error
+    }
+  }
+
+  /// Delete only the authoritative Session database and its SQLite sidecars.
+  func resetSessions() throws {
+    let fileManager = FileManager.default
+    for suffix in ["", "-wal", "-shm"] {
+      let item = URL(fileURLWithPath: sessionDatabase.path + suffix)
+      if fileManager.fileExists(atPath: item.path) { try fileManager.removeItem(at: item) }
+    }
   }
 
   /// Export settings metadata and executable plugin/Skill/Profile artifacts.
@@ -29,7 +85,7 @@ final class DesktopBackupManager: @unchecked Sendable {
     let manifestData = try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys])
     try (manifestData + Data("\n".utf8)).write(to: stage.appendingPathComponent("manifest.json"), options: .atomic)
 
-    let database = dataRoot.appendingPathComponent("dsh-desktop.sqlite")
+    let database = dataRoot.appendingPathComponent("desktop/dsh-desktop.sqlite")
     if fileManager.fileExists(atPath: database.path) {
       let copy = stage.appendingPathComponent("dsh-desktop.sqlite")
       try fileManager.copyItem(at: database, to: copy)
@@ -79,7 +135,7 @@ final class DesktopBackupManager: @unchecked Sendable {
     let importedDB = root.appendingPathComponent("dsh-desktop.sqlite")
     do {
       if fileManager.fileExists(atPath: importedDB.path) {
-        let target = dataRoot.appendingPathComponent("dsh-desktop.sqlite")
+        let target = dataRoot.appendingPathComponent("desktop/dsh-desktop.sqlite")
         try stageExisting(target, in: rollbackRoot, moved: &moved)
         try replace(importedDB, at: target)
       }
@@ -91,7 +147,7 @@ final class DesktopBackupManager: @unchecked Sendable {
         try copyArtifacts(from: imported, to: target)
       }
     } catch {
-      for name in ["dsh-desktop.sqlite", "profiles", "skills"] {
+      for name in ["desktop/dsh-desktop.sqlite", "profiles", "skills"] {
         let target = dataRoot.appendingPathComponent(name)
         if fileManager.fileExists(atPath: target.path) { try? fileManager.removeItem(at: target) }
       }
@@ -108,8 +164,19 @@ final class DesktopBackupManager: @unchecked Sendable {
   func resetData() throws {
     let fileManager = FileManager.default
     try fileManager.createDirectory(at: dataRoot, withIntermediateDirectories: true)
-    for item in try fileManager.contentsOfDirectory(at: dataRoot, includingPropertiesForKeys: nil) {
-      try fileManager.removeItem(at: item)
+    for relative in [
+      "desktop/dsh-desktop.sqlite",
+      "desktop/dsh-desktop.sqlite-wal",
+      "desktop/dsh-desktop.sqlite-shm",
+      "sessions",
+      "attachments",
+      "storages",
+      "settings.yaml",
+      ".credentials.yaml",
+      ".anonymous-user-id",
+    ] {
+      let item = dataRoot.appendingPathComponent(relative)
+      if fileManager.fileExists(atPath: item.path) { try fileManager.removeItem(at: item) }
     }
     // Keep the legacy migration gate so a reset cannot silently re-import ~/.dsh.
     try Data("reset by desktop configuration action\n".utf8)
@@ -124,6 +191,29 @@ final class DesktopBackupManager: @unchecked Sendable {
       throw DesktopError.message("配置备份目录结构无效。")
     }
     return try archiveRoot(in: entries[0])
+  }
+
+  private var sessionDatabase: URL {
+    dataRoot.appendingPathComponent("desktop/dsh-desktop.sqlite")
+  }
+
+  private func validateSessionDatabase(at database: URL) throws {
+    let query = "PRAGMA user_version; SELECT name FROM sqlite_master WHERE type='table' AND name IN ('dsh_session_metadata','dsh_session_events') ORDER BY name;"
+    let result = try CommandRunner.run(
+      executable: URL(fileURLWithPath: "/usr/bin/sqlite3"),
+      arguments: [database.path, query]
+    )
+    guard result.status == 0 else {
+      throw DesktopError.message("会话备份不是可读取的 SQLite 数据库：\(result.output)")
+    }
+    let lines = result.output.split(whereSeparator: \.isNewline).map(String.init)
+    guard let version = lines.first.flatMap(Int.init), version >= 1,
+          version <= Self.maximumSessionSchemaVersion else {
+      throw DesktopError.message("会话备份的 SQLite schema 版本不受支持。")
+    }
+    guard Array(lines.dropFirst()) == ["dsh_session_events", "dsh_session_metadata"] else {
+      throw DesktopError.message("会话备份缺少必需的 Session 表。")
+    }
   }
 
   private func replace(_ source: URL, at destination: URL) throws {

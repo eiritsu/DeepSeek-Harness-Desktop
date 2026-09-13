@@ -3,14 +3,15 @@
 import { Buffer } from 'node:buffer'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import type { FileRecognizer } from '@deepseek-ai/dsh-attachment'
+import type { AttachmentRecognizer, FileAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
-import { settingsNamespace } from '@deepseek-ai/dsh-settings'
+import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import { parseOfficeAsync } from 'officeparser'
 import yauzl from 'yauzl'
 import type { Entry } from 'yauzl'
 
-type RecognizerFile = { data: Uint8Array; mediaType: string; name?: string }
+type RecognizerFile = { data: Uint8Array; mediaType?: string; name?: string }
+type ConfiguredRecognitionEndpoint = RecognitionEndpointConfig & { endpoint: string; model: string }
 
 const OFFICE_EXTENSIONS = new Set(['docx', 'pptx', 'xlsx', 'odt', 'odp', 'ods', 'pdf'])
 const ZIP_OFFICE_EXTENSIONS = new Set(['docx', 'pptx', 'xlsx', 'odt', 'odp', 'ods'])
@@ -74,7 +75,7 @@ export const name = 'file-recognizer-office'
 export const inject = ['attachments']
 
 /** Settings namespace for external file-recognition providers. */
-export const FILE_RECOGNIZER_SETTINGS_NAMESPACE = settingsNamespace('file-recognizer-office')
+export const FILE_RECOGNIZER_SETTINGS_NAMESPACE = 'file-recognizer-office' as SettingsNamespace
 
 /** Credential references used by the Deepseek-Files settings page. */
 export const FILE_RECOGNIZER_CREDENTIAL_REFS = {
@@ -90,12 +91,13 @@ function validateConfig(config: Config): void {
     videoUnderstanding: config.videoUnderstanding,
   })) {
     if (endpoint === undefined) continue
-    const hasEndpoint = endpoint.endpoint !== undefined && endpoint.endpoint.length > 0
-    const hasModel = endpoint.model !== undefined && endpoint.model.length > 0
-    if (hasEndpoint !== hasModel) throw new TypeError(`${name} requires both endpoint and model`)
-    if (!hasEndpoint) continue
     const endpointUrl = endpoint.endpoint
-    if (endpointUrl === undefined) continue
+    const model = endpoint.model
+    if (endpointUrl === undefined || endpointUrl.length === 0) {
+      if (model !== undefined && model.length > 0) throw new TypeError(`${name} requires both endpoint and model`)
+      continue
+    }
+    if (model === undefined || model.length === 0) throw new TypeError(`${name} requires both endpoint and model`)
     const protocol = new URL(endpointUrl).protocol
     if (protocol !== 'http:' && protocol !== 'https:') {
       throw new TypeError(`${name} endpoint must use HTTP or HTTPS`)
@@ -115,13 +117,12 @@ function truncate(text: string, limit: number): string {
   return text.slice(0, limit) + '\n[attachment text truncated]'
 }
 
-function configured(endpoint: RecognitionEndpointConfig | undefined): endpoint is Required<Pick<RecognitionEndpointConfig, 'endpoint' | 'model'>> & RecognitionEndpointConfig {
+function configured(endpoint: RecognitionEndpointConfig | undefined): endpoint is ConfiguredRecognitionEndpoint {
   return endpoint?.endpoint !== undefined && endpoint.endpoint.length > 0
     && endpoint.model !== undefined && endpoint.model.length > 0
 }
 
-function operationEndpoint(config: RecognitionEndpointConfig, operation: string): string {
-  if (config.endpoint === undefined) throw new TypeError('recognition endpoint is not configured')
+function operationEndpoint(config: ConfiguredRecognitionEndpoint, operation: string): string {
   const endpoint = new URL(config.endpoint)
   const path = endpoint.pathname.replace(/\/+$/, '')
   if (/\/(?:api\/)?v\d+(?:\.\d+)?$/.test(path)) endpoint.pathname = `${path}/${operation}`
@@ -199,14 +200,14 @@ async function recognizeChatFile(
 
 async function transcribeAudio(
   ctx: Context,
-  file: RecognizerFile,
+  file: RecognizerFile & FileAttachmentRef,
   config: RecognitionEndpointConfig,
   signal: AbortSignal | undefined,
 ): Promise<string | undefined> {
   if (!configured(config)) return undefined
   const form = new FormData()
   form.set('model', config.model)
-  form.set('file', new File([Uint8Array.from(file.data).buffer], file.name ?? 'audio', { type: file.mediaType || 'application/octet-stream' }))
+  form.set('file', new File([Uint8Array.from(file.data).buffer], file.name, { type: file.mediaType || 'application/octet-stream' }))
   const response = await fetch(operationEndpoint(config, 'audio/transcriptions'), {
     method: 'POST',
     headers: await authorizationHeaders(ctx, config),
@@ -230,6 +231,7 @@ async function preflightZip(data: Uint8Array, maxEntries: number, maxBytes: numb
       let bytes = 0
       let settled = false
       const finish = (accepted: boolean): void => {
+        /* v8 ignore next -- yauzl may race its error and end events, while either deterministic test trigger removes the other. */
         if (settled) return
         settled = true
         resolve(accepted)
@@ -256,6 +258,7 @@ async function preflightZip(data: Uint8Array, maxEntries: number, maxBytes: numb
 
 /** Register the common-document recognizer into the mounted attachment store. */
 export function apply(ctx: Context, config: Config): void {
+  validateConfig(config)
   let current: () => Config = () => config
   ctx.inject(['settings'], (settingsCtx) => {
     settingsCtx.settings.installSection(ctx, FILE_RECOGNIZER_SETTINGS_NAMESPACE, Config, config, {
@@ -271,6 +274,7 @@ export function apply(ctx: Context, config: Config): void {
   const recognizer = {
     id: 'officeparser',
     priority: 100,
+    maxInputBytes,
     supports: (file) => {
       const suffix = extension(file)
       const settings = current()
@@ -287,7 +291,7 @@ export function apply(ctx: Context, config: Config): void {
     recognize: async (file, signal) => {
       signal?.throwIfAborted()
       if (file.data.byteLength > maxInputBytes) return undefined
-      const input: RecognizerFile = 'ref' in file ? { ...file.ref, data: file.data } : file
+      const input: RecognizerFile = { ...file.ref, data: file.data }
       const mediaType = input.mediaType ?? ''
       const suffix = extension(input)
       const settings = current()
@@ -302,7 +306,8 @@ export function apply(ctx: Context, config: Config): void {
           return text === undefined ? undefined : { text: truncate(text, maxExtractedChars) }
         }
         if (mediaType.startsWith('audio/') || (suffix !== undefined && AUDIO_EXTENSIONS.has(suffix))) {
-          const text = await transcribeAudio(ctx, input, settings.audioTranscription ?? {}, signal)
+          // Image references cannot satisfy audio routing; durable file references always carry a name.
+          const text = await transcribeAudio(ctx, input as RecognizerFile & FileAttachmentRef, settings.audioTranscription ?? {}, signal)
           return text === undefined ? undefined : { text: truncate(text, maxExtractedChars) }
         }
         if (mediaType.startsWith('image/') || (suffix !== undefined && IMAGE_EXTENSIONS.has(suffix))) {
@@ -327,6 +332,6 @@ export function apply(ctx: Context, config: Config): void {
         return undefined
       }
     },
-  } satisfies FileRecognizer & { priority: number }
-  ctx.effect(() => ctx.attachments.registerFileRecognizer(recognizer), 'file-recognizer-office registration')
+  } satisfies AttachmentRecognizer & { priority: number }
+  ctx.effect(() => ctx.attachments.registerRecognizer(recognizer), 'file-recognizer-office registration')
 }

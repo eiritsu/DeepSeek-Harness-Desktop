@@ -376,7 +376,7 @@ private func createSourceArchive(from source: URL, at archive: URL) throws {
   let temporaryRoot = FileManager.default.temporaryDirectory
     .appendingPathComponent("dsh-installed-list-\(UUID().uuidString)", isDirectory: true)
   defer { try? FileManager.default.removeItem(at: temporaryRoot) }
-  let profileRoot = temporaryRoot.appendingPathComponent("home/profiles/web", isDirectory: true)
+  let profileRoot = temporaryRoot.appendingPathComponent("home/profiles/desktop-lite", isDirectory: true)
   try FileManager.default.createDirectory(at: profileRoot, withIntermediateDirectories: true)
   try Data(#"{"dependencies":{"@fixture/plugin":"file:../plugin"},"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base","@fixture/plugin"]}}}"#.utf8)
     .write(to: profileRoot.appendingPathComponent("package.json"))
@@ -400,7 +400,7 @@ private func createSourceArchive(from source: URL, at archive: URL) throws {
   let temporaryRoot = FileManager.default.temporaryDirectory
     .appendingPathComponent("dsh-installed-empty-\(UUID().uuidString)", isDirectory: true)
   defer { try? FileManager.default.removeItem(at: temporaryRoot) }
-  let profileRoot = temporaryRoot.appendingPathComponent("home/profiles/web", isDirectory: true)
+  let profileRoot = temporaryRoot.appendingPathComponent("home/profiles/desktop-lite", isDirectory: true)
   try FileManager.default.createDirectory(at: profileRoot, withIntermediateDirectories: true)
   try Data(#"{"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base","@deepseek-ai/dsh-web-app"]}}}"#.utf8)
     .write(to: profileRoot.appendingPathComponent("package.json"))
@@ -420,7 +420,7 @@ private func createSourceArchive(from source: URL, at archive: URL) throws {
   let temporaryRoot = FileManager.default.temporaryDirectory
     .appendingPathComponent("dsh-installed-embedded-\(UUID().uuidString)", isDirectory: true)
   defer { try? FileManager.default.removeItem(at: temporaryRoot) }
-  let profileRoot = temporaryRoot.appendingPathComponent("home/profiles/web", isDirectory: true)
+  let profileRoot = temporaryRoot.appendingPathComponent("home/profiles/desktop-lite", isDirectory: true)
   let packageRoot = temporaryRoot.appendingPathComponent("packages/extensions/external-tools", isDirectory: true)
   try FileManager.default.createDirectory(at: profileRoot, withIntermediateDirectories: true)
   try FileManager.default.createDirectory(at: packageRoot, withIntermediateDirectories: true)
@@ -447,7 +447,7 @@ private func createSourceArchive(from source: URL, at archive: URL) throws {
     .appendingPathComponent("dsh-plugin-recovery-\(UUID().uuidString)", isDirectory: true)
   defer { try? FileManager.default.removeItem(at: temporaryRoot) }
   let home = temporaryRoot.appendingPathComponent("home", isDirectory: true)
-  let web = home.appendingPathComponent("profiles/web", isDirectory: true)
+  let web = home.appendingPathComponent("profiles/desktop-lite", isDirectory: true)
   try FileManager.default.createDirectory(
     at: web.appendingPathComponent("node_modules", isDirectory: true),
     withIntermediateDirectories: true

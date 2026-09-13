@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   archived pairs are frozen and sealed by verify-archived-agent-notes
+2026-09-13-retire-superseded-desktop-fork-surfaces.md: 37fd5828fe4f90586a5517d549a5ee9cda66c9fb
+2026-09-13-retire-superseded-desktop-fork-surfaces.zh.md: 3016b8067edb45e9bd3475abbfc8f65e9c797cb8

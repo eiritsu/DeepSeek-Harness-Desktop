@@ -137,14 +137,14 @@ final class RuntimeController: @unchecked Sendable {
     self.supportRoot = supportRoot ?? FileManager.default.urls(
       for: .applicationSupportDirectory,
       in: .userDomainMask
-    )[0].appendingPathComponent("DeepSeek Harness Desktop", isDirectory: true)
+    )[0].appendingPathComponent("DeepSeek Harness Lite", isDirectory: true)
     self.runtimePIDURL = self.supportRoot.appendingPathComponent("runtime.pid")
   }
 
   func start(
     sourceRoot: URL,
     dshHome: URL,
-    profile: String = "web",
+    profile: String = "desktop-lite",
     progress: @escaping @Sendable (String) -> Void,
     completion: @escaping @Sendable (Result<URL, Error>) -> Void
   ) {

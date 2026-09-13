@@ -33,7 +33,7 @@ import { Service } from '@deepseek-ai/cordis'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Entry } from '@deepseek-ai/cordis-plugin-loader'
 import type { IndexInjection } from '@deepseek-ai/dsh-host-webserver'
-import { optionalStringArray, stripClientSuffix } from './client/manifest.ts'
+import { exactPackageSpecifier, parseDshClient, stripClientSuffix } from './client/manifest.ts'
 import type { WebBootBatch, WebBootBatchPhase, WebBootEntry, WebBootGraph } from './client/manifest.ts'
 
 export { stripClientSuffix } from './client/manifest.ts'
@@ -46,22 +46,6 @@ declare module '@deepseek-ai/cordis' {
     /** The web plugin table (provided by the client-modules node half). */
     clientModules: ClientModuleRegistry
   }
-}
-
-/** package.json `dsh.client` declaration fields, validated one by one after reading the file. */
-interface DshClientDeclaration {
-  inject?: string[]
-  platform: string
-  /** Boot phase-one registration barrier; absent rows still ride the shared application batch. */
-  immediately?: boolean
-  /**
-   * Exact module-table requests beyond the implicit client baseline. Any
-   * specifier is valid, including subpaths such as `<pkg>/client`; each
-   * importing package declares its own exceptional requests. A type-only
-   * import is not a request because the transform erases it before resolution.
-   * Absent means the package uses only the baseline externals.
-   */
-  external?: string[]
 }
 
 /** The declared fields a graph row carries, normalized (absent array declarations become empty). */
@@ -178,10 +162,8 @@ type BatchArtifact = ComboArtifact & { descriptor: WebBootBatch }
 
 /** Versioned code is immutable; mismatched revisions are rejected instead of serving newer bytes. */
 const IMMUTABLE_CACHE = 'public, max-age=31536000, immutable'
-/** Keep generated request URLs below WebKit's conservative request-target limit. */
-const MAX_COMBO_URL_BYTES = 2 * 1024
-/** Keep one generated classic script below WebKit's conservative source limit. */
-const MAX_COMBO_SCRIPT_BYTES = 2 * 1024 * 1024
+/** Generated request URLs stay below conservative browser and intermediary request-target limits. */
+const MAX_COMBO_URL_BYTES = 3 * 1024
 const HASH_REVISION_LENGTH = 12
 const COMBO_REVISION_PLACEHOLDER = '0'.repeat(HASH_REVISION_LENGTH)
 
@@ -189,38 +171,6 @@ const COMBO_REVISION_PLACEHOLDER = '0'.repeat(HASH_REVISION_LENGTH)
 const SOURCE_MAP_TRAILER = /(?:\r?\n)?\/\/# sourceMappingURL=[^\r\n]*(?:\r?\n)?$/
 /** Debugger source name appended to page bundles in the WebWorker image. */
 const SOURCE_URL_TRAILER = /(?:\r?\n)?\/\/# sourceURL=([^\r\n]+)(?:\r?\n)?$/
-
-/** Return a bare package-root specifier, excluding package subpaths and path-like entries. */
-function exactPackageSpecifier(specifier: string): string | undefined {
-  if (specifier.startsWith('@')) {
-    const parts = specifier.split('/')
-    return parts.length === 2 && parts.every(Boolean) ? specifier : undefined
-  }
-  return specifier.length > 0 && !specifier.includes('/') ? specifier : undefined
-}
-
-/** Narrow an unknown parsed JSON value to the `dsh.client` declaration, throwing on malformed fields. */
-function parseDshClient(pkgName: string, value: unknown): DshClientDeclaration | undefined {
-  if (value === undefined) return undefined
-  if (typeof value !== 'object' || value === null) {
-    throw new Error(`client-modules: ${pkgName} has a non-object dsh.client declaration`)
-  }
-  const decl = value as Record<string, unknown>
-  if (typeof decl.platform !== 'string') {
-    throw new Error(`client-modules: ${pkgName} dsh.client.platform must be a string`)
-  }
-  const inject = optionalStringArray(pkgName, 'dsh.client.inject', decl.inject)
-  const external = optionalStringArray(pkgName, 'dsh.client.external', decl.external)
-  if (decl.immediately !== undefined && typeof decl.immediately !== 'boolean') {
-    throw new Error(`client-modules: ${pkgName} dsh.client.immediately must be a boolean`)
-  }
-  return {
-    platform: decl.platform,
-    ...(inject !== undefined ? { inject } : {}),
-    ...(external !== undefined ? { external } : {}),
-    ...(decl.immediately !== undefined ? { immediately: decl.immediately } : {}),
-  }
-}
 
 /** Resolve `exports["./client"]` to a relative path, accepting the string and one-level conditional forms. */
 function clientExportOf(pkgName: string, exportsField: unknown): string | undefined {
@@ -267,24 +217,13 @@ function projectedComboUrlBytes(records: readonly WebPluginRecord[]): number {
   ))
 }
 
-/** Upper-bound the generated script bytes, including each bundle separator. */
-function projectedComboScriptBytes(records: readonly WebPluginRecord[]): number {
-  return records.reduce((total, record) => total + record.bundle.byteLength + 2, 0)
-}
-
-/** Check both request-target and script-size limits before extending a batch. */
-function comboWithinLimits(records: readonly WebPluginRecord[]): boolean {
-  return projectedComboUrlBytes(records) <= MAX_COMBO_URL_BYTES
-    && projectedComboScriptBytes(records) <= MAX_COMBO_SCRIPT_BYTES
-}
-
 /** Partition one phase in graph order without allowing a generated URL above the protocol limit. */
 function partitionComboRecords(records: readonly WebPluginRecord[]): WebPluginRecord[][] {
   const chunks: WebPluginRecord[][] = []
   let current: WebPluginRecord[] = []
   for (const record of records) {
     const candidate = [...current, record]
-    if (comboWithinLimits(candidate)) {
+    if (projectedComboUrlBytes(candidate) <= MAX_COMBO_URL_BYTES) {
       current = candidate
       continue
     }
@@ -295,7 +234,7 @@ function partitionComboRecords(records: readonly WebPluginRecord[]): WebPluginRe
     }
     chunks.push(current)
     current = [record]
-    if (!comboWithinLimits(current)) {
+    if (projectedComboUrlBytes(current) > MAX_COMBO_URL_BYTES) {
       throw new Error(
         `client-modules: ${record.entry.id} exceeds the ${String(MAX_COMBO_URL_BYTES)}-byte combo URL limit`,
       )
@@ -544,7 +483,7 @@ window.__ModuleLoader__={
  * boot activation audit reports it).
  */
 export class ClientModuleRegistry extends Service {
-  static inject = ['webServer', 'loader']
+  static inject = ['loader']
 
   private readonly table = new Map<string, WebPluginRecord>()
   private readonly sources = new Map<string, ClientPackageSource>()
@@ -561,12 +500,11 @@ export class ClientModuleRegistry extends Service {
   /** One prior graph generation covers a request racing the HMR recomposition that replaced its URL. */
   private previousBatchResponses = new Map<string, { body: Buffer; contentType: string }>()
   private flushQueued = false
-  private startupReady = false
   private composed: WebBootGraph
 
   /**
    * Build the service: subscribe, seed, and run the activation flush.
-   * @param ctx - plugin context carrying webServer and loader.
+   * @param ctx - plugin context carrying Loader and an optional Web carrier.
    */
   constructor(ctx: Context) {
     super(ctx, 'clientModules')
@@ -574,7 +512,6 @@ export class ClientModuleRegistry extends Service {
     // same dirty set (Set idempotence makes the overlap harmless). An entry-less
     // fiber is a child plugin or a manual mount — never a loader row; O(1) drop.
     ctx.on('internal/plugin', (fiber) => {
-      this.startupReady = false
       const entryName = fiber.entry?.options.name
       if (entryName === undefined) return
       this.dirty.add(entryName)
@@ -583,7 +520,6 @@ export class ClientModuleRegistry extends Service {
       queueMicrotask(() => {
         this.flushQueued = false
         this.flush((err) => { ctx.logger.warn(err) })
-        if (this.dirty.size === 0) this.startupReady = true
       })
     })
 
@@ -597,17 +533,15 @@ export class ClientModuleRegistry extends Service {
     if (failures.length > 0) {
       throw new ClientPackageCompositionError(failures)
     }
-    // Loader activation can deliver the final internal/plugin events in the
-    // same microtask turn as construction. Do not advertise readiness until
-    // that turn has drained and any queued recomposition has completed.
-    queueMicrotask(() => {
-      if (!this.flushQueued && this.dirty.size === 0) this.startupReady = true
-    })
 
-    ctx.effect(
-      () => ctx.webServer.register({ kind: 'prefix', path: '/plugins', handler: this.serveBundle }),
-      'client-modules: bundle route',
-    )
+    const registerWebCarrier = (webCtx: Context): void => {
+      webCtx.effect(
+        () => webCtx.webServer.register({ kind: 'prefix', path: '/plugins', handler: this.serveBundle }),
+        'client-modules: bundle route',
+      )
+    }
+    if (ctx.get('webServer') === undefined) ctx.inject(['webServer'], registerWebCarrier)
+    else registerWebCarrier(ctx)
     ctx.on('webserver/index-inject', (table) => {
       table.push(...bootInjections(this.composed))
     })
@@ -628,6 +562,22 @@ export class ClientModuleRegistry extends Service {
    */
   clientPath(id: string): string | undefined {
     return this.table.get(id)?.meta.clientPath
+  }
+
+  /**
+   * Serve an advertised revisioned bundle or source map without a Web server.
+   * Unknown URLs return 404, unsupported methods return 405, and `HEAD`
+   * returns the same immutable headers without a body.
+   * @param request - shell-carrier request for a `/plugins` resource.
+   * @returns the exact response also exposed by the optional Web route.
+   */
+  fetchBundle(request: Request): Response {
+    const resource = this.bundleResource(request.method, request.url)
+    const body = resource.body === undefined ? null : Uint8Array.from(resource.body)
+    return new Response(body, {
+      status: resource.status,
+      ...(resource.headers === undefined ? {} : { headers: resource.headers }),
+    })
   }
 
   /**
@@ -1021,33 +971,32 @@ export class ClientModuleRegistry extends Service {
     this.notifyGraphChanged()
   }
 
-  private readonly serveBundle = (req: IncomingMessage, res: ServerResponse): void => {
-    if (req.method !== 'GET' && req.method !== 'HEAD') {
-      res.writeHead(405)
-      res.end()
-      return
-    }
-    /* v8 ignore next -- `?? '/'` arm: node:http always sets url on server requests. */
-    const requestUrl = new URL(req.url ?? '/', 'http://x')
-    if (requestUrl.pathname === '/plugins/__dsh_ready') {
-      res.writeHead(this.startupReady ? 204 : 503, { 'cache-control': 'no-store' })
-      res.end()
-      return
-    }
+  private bundleResource(method: string | undefined, url: string): {
+    status: number
+    headers?: Record<string, string>
+    body?: Buffer
+  } {
+    if (method !== 'GET' && method !== 'HEAD') return { status: 405 }
+    const requestUrl = new URL(url, 'http://x')
     const resourceUrl = `${requestUrl.pathname}${requestUrl.search}`
     const response = this.responses.get(resourceUrl) ?? this.previousBatchResponses.get(resourceUrl)
     if (response !== undefined) {
-      res.writeHead(200, {
-        'content-type': response.contentType,
-        'cache-control': IMMUTABLE_CACHE,
-      })
-      res.end(req.method === 'HEAD' ? undefined : response.body)
-      return
+      return {
+        status: 200,
+        headers: { 'content-type': response.contentType, 'cache-control': IMMUTABLE_CACHE },
+        ...(method === 'HEAD' ? {} : { body: response.body }),
+      }
     }
     // Anything else under /plugins (including unadvertised combinations and
     // /plugins/events when the HMR row is absent) is an unknown resource.
-    res.writeHead(404)
-    res.end()
+    return { status: 404 }
+  }
+
+  private readonly serveBundle = (req: IncomingMessage, res: ServerResponse): void => {
+    /* v8 ignore next -- `?? '/'` arm: node:http always sets url on server requests. */
+    const response = this.bundleResource(req.method, req.url ?? '/')
+    res.writeHead(response.status, response.headers)
+    res.end(response.body)
   }
 }
 

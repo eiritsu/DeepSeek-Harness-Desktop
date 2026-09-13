@@ -1,8 +1,22 @@
+---
+description: "Bounded local Office-document extraction and optional OCR, audio, and video recognition for desktop attachments."
+kind: "package-bundle"
+---
+
 # @deepseek-ai/dsh-file-recognizer-office
 
 English | [中文](README.zh.md)
 
+## Summary
+
 This installable Profile Bundle registers bounded semantic extraction for UTF-8 plain text and source files, Markdown, CSV/TSV, DOCX, XLSX, PPTX, ODT, ODS, ODP, and PDF attachments. It also installs a `Deepseek-Files` Settings page for optional OCR, audio transcription, and video-understanding endpoints. The original file remains the durable source; extracted text is capped and recorded in the owning file content block so model requests remain reconstructable.
+
+## Table of Contents
+
+- [Required Harness extension points](#required-harness-extension-points)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
 
 Install it through the desktop plugin review flow using an exact npm version or pinned Git commit. Installation disables lifecycle scripts. The parser runs as trusted local plugin code and applies input, ZIP-entry, uncompressed-byte, and extracted-character limits.
 
@@ -12,8 +26,8 @@ Each remote capability has a Model ID, an API Base URL or complete Endpoint URL,
 
 This Bundle is independently packaged but is not portable to an unmodified DSH runtime. The compatible Harness build must already provide the following owner-side capabilities:
 
-- `@deepseek-ai/dsh-attachment` defines `FileRecognizer` and `AttachmentService.registerFileRecognizer()`. The owning implementation lives in `packages/attachment/attachment/src/types.ts` and `packages/attachment/attachment/src/index.ts` in the Harness source tree.
-- Host prompt admission resolves the selected model's effective input modalities, invokes attachment recognition for unsupported media, and records returned text in the durable file or image content block before the request becomes model-visible. The owning integration lives in `packages/host/apiproxy/src/api-proxy.ts`.
+- `@deepseek-ai/dsh-attachment` defines `AttachmentRecognizer` and `AttachmentStore.registerRecognizer()`. The owning implementation lives in `packages/attachment/attachment/src/types.ts` and `packages/attachment/attachment/src/index.ts`.
+- Session Controller prompt admission resolves the selected model's effective input modalities, invokes attachment recognition for unsupported media, and records returned text in the durable file or image content block before the request becomes model-visible. The owning integration lives in `packages/api/session-controller/src/commands.ts`.
 - The Host Credentials RPC and client Settings slots accept write-only API keys and dynamic settings pages. The plugin stores only credential references in settings and cannot read a saved key back into the browser.
 
 The side-loaded package registers implementations on those extension points; it does not add them, monkey-patch the agent loop, or change the database and sandbox. A DSH build without these capabilities is incompatible and must be upgraded before installation. Once the capabilities are present, recognizer and Settings UI updates can be shipped independently through this Bundle.
@@ -48,3 +62,10 @@ Recognized text appends with the user message and remains stable on later turns.
 - Legacy binary DOC, XLS, PPT, RTF, and EPUB files are stored and downloadable but are not parsed by this provider.
 - Provider compatibility is protocol-specific. An endpoint that labels itself OpenAI-compatible may still omit `file` or `video_url` content, so verify those capabilities with its documentation.
 - Recognition uploads the complete bounded attachment to the configured third-party endpoint; the Harness sandbox does not constrain that provider's retention or processing.
+
+No runtime invariant companion is published; extraction results are validated at the recognizer call, while focused tests own registration and disposal behavior.
+
+<a id="dev-note"></a>
+### Dev Note
+
+The desktop profiles mount this recognizer and its Client settings package together. Keep model-route modality decisions in Session Controller prompt admission rather than in this provider.

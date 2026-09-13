@@ -123,7 +123,9 @@ export function LarkManagementSection({ useLarkManagement, controller, t }: Lark
       <section className={css.card}>
         <div className={css.heading}><div><h2>{t('permissions')}</h2><p>{t('permissionsIntro')}</p></div><button className={css.secondary} type="button" disabled={state.busy !== undefined || value === undefined} onClick={() => { void controller.copyPermissions() }}>{t('copyPermissions')}</button></div>
         <div className={css.permissions}>
-          {value?.capabilities.map(capability => <div key={capability.id}><span>{capability.label}</span><strong data-state={capability.state}>{t(capability.state)}</strong></div>)}
+          {value?.capabilities.map(capability => <div key={capability.id}>
+            <span>{capability.label}</span><strong data-state={capability.state}>{t(capability.state)}</strong>
+          </div>)}
         </div>
         <div className={css.actions}><button className={css.secondary} type="button" disabled={state.busy !== undefined} onClick={() => { void controller.refresh() }}>{t('refresh')}</button></div>
       </section>

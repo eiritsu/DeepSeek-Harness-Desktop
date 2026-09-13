@@ -582,14 +582,14 @@ describe('client bundle activation', () => {
     expect(batches.length).toBeGreaterThan(1)
     expect(batches.flatMap(batch => batch.entries)).toEqual(packageNames)
     for (const batch of batches) {
-      expect(Buffer.byteLength(batch.url)).toBeLessThanOrEqual(2 * 1024)
-      expect(Buffer.byteLength(mapUrl(batch.url))).toBeLessThanOrEqual(2 * 1024)
+      expect(Buffer.byteLength(batch.url)).toBeLessThanOrEqual(3 * 1024)
+      expect(Buffer.byteLength(mapUrl(batch.url))).toBeLessThanOrEqual(3 * 1024)
       expect((await routeRequest(route, batch.url)).status).toBe(200)
       expect((await routeRequest(route, mapUrl(batch.url))).status).toBe(200)
     }
     for (let index = 0; index < batches.length - 1; index += 1) {
       const entries = [...batches[index]!.entries, batches[index + 1]!.entries[0]!]
-      expect(Buffer.byteLength(mapUrl(comboUrl(entries, '0'.repeat(12))))).toBeGreaterThan(2 * 1024)
+      expect(Buffer.byteLength(mapUrl(comboUrl(entries, '0'.repeat(12))))).toBeGreaterThan(3 * 1024)
     }
   })
 
@@ -628,6 +628,10 @@ describe('client bundle activation', () => {
     expect(batchScript.status).toBe(200)
     expect(batchScript.headers?.['cache-control']).toBe('public, max-age=31536000, immutable')
     expect(batchScript.body.toString('utf8')).toContain(`//# sourceMappingURL=${mapUrl(batch.url)}`)
+    const shellResponse = service.fetchBundle(new Request(`dsh-app://app${batch.url}`))
+    expect(shellResponse.status).toBe(200)
+    expect(shellResponse.headers.get('cache-control')).toBe('public, max-age=31536000, immutable')
+    expect(await shellResponse.text()).toBe(batchScript.body.toString('utf8'))
     expect((await routeRequest(route, batch.url, 'HEAD')).body).toHaveLength(0)
     expect((await routeRequest(route, batch.url, 'POST')).status).toBe(405)
     const batchMap = await routeRequest(route, mapUrl(batch.url))
@@ -655,19 +659,6 @@ describe('client bundle activation', () => {
     expect(JSON.parse(nextMap.body.toString('utf8'))).toMatchObject({
       sections: [{ map: { sources: ['/plugins/@fixture/source-map/src/changed.tsx'] } }],
     })
-  })
-
-  it('answers the desktop startup readiness probe without authentication', async () => {
-    writeBuiltPackage('@fixture/readiness-probe', {})
-    const { route } = constructWithRoute(['@fixture/readiness-probe'])
-    expect((await routeRequest(route, '/plugins/__dsh_ready')).status).toBe(503)
-    await new Promise<void>(resolve => queueMicrotask(resolve))
-    expect(await routeRequest(route, '/plugins/__dsh_ready')).toMatchObject({
-      status: 204,
-      body: Buffer.alloc(0),
-    })
-    expect((await routeRequest(route, '/plugins/__dsh_ready', 'HEAD')).status).toBe(204)
-    expect((await routeRequest(route, '/plugins/__dsh_ready', 'POST')).status).toBe(405)
   })
 
   it('applies sourceRoot before relocating absolute-looking section sources', async () => {

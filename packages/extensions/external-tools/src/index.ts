@@ -77,7 +77,7 @@ export class ExternalToolsRegistry extends Service {
   private scheduleReconcile(): void {
     if (this.closed) return
     this.reconcileChain = this.reconcileChain.then(() => this.reconcile(), () => this.reconcile())
-    void this.reconcileChain.catch(error => this.ctx.logger.error(error))
+    void this.reconcileChain.catch((error: unknown) => { this.ctx.logger.error(error) })
   }
 
   /** Secret-free provider status for future diagnostics surfaces.
@@ -99,6 +99,8 @@ export class ExternalToolsRegistry extends Service {
     if (credentials === undefined) return
     for (const entry of EXTERNAL_TOOL_CATALOG) {
       const configured = (await credentials.resolve(credentialRef(entry.credentialRef))) !== undefined
+      // The service can close while credential resolution is awaiting external storage.
+      // oxlint-disable-next-line typescript/no-unnecessary-condition
       if (this.closed) return
       if (configured) this.configuredIds.add(entry.id)
       else this.configuredIds.delete(entry.id)

@@ -10,11 +10,15 @@ function currentBrowser(): VerificationBrowser {
   return {
     desktopBridgeAvailable: Reflect.has(window, 'dshDesktopPluginBridge'),
     open: url => window.open(url, '_blank', 'noopener,noreferrer'),
-    assign: url => { window.location.assign(url) },
+    assign: (url) => { window.location.assign(url) },
   }
 }
 
-/** Open a verification URL, falling back to same-tab navigation outside the desktop shell. */
+/**
+ * Open a verification URL, falling back to same-tab navigation outside the desktop shell.
+ * @param url - Provider-owned verification page.
+ * @param browser - Browser operations, injectable for deterministic tests.
+ */
 export function openVerificationUrl(url: string, browser: VerificationBrowser = currentBrowser()): void {
   const opened = browser.open(url)
   if (opened === null && !browser.desktopBridgeAvailable) browser.assign(url)

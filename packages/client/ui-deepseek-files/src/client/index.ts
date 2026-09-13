@@ -2,11 +2,13 @@
 
 import type {} from '@deepseek-ai/dsh-api-remotes/types'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { DeepseekFilesSettingsController } from './controller.ts'
 import type { DeepseekFilesSettings } from './controller.ts'
 import { DeepseekFilesSection } from './DeepseekFilesSection.tsx'
+import { DesktopDataSection } from './DesktopDataSection.tsx'
 import type { DeepseekFilesSectionInjected } from './DeepseekFilesSection.tsx'
 import { en, zh, type DeepseekFilesLocaleKey } from './locales.ts'
 
@@ -49,4 +51,12 @@ export function apply(ctx: ClientContext): void {
     locale: 'settings.deepseekFiles',
     inject: injected,
   }, DeepseekFilesSection))
+  ctx.slots.inject('settings.section', () => ctx.slots.register({
+    name: 'settings.section',
+    id: 'desktop-data',
+    order: 46,
+    label: () => t('dataNav'),
+    locale: 'settings.deepseekFiles',
+    inject: () => ({}),
+  }, DesktopDataSection))
 }

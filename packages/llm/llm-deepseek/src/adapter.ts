@@ -20,6 +20,7 @@ import type {
   ModelModality,
   ResolvedRetryPolicy,
   StreamChunk,
+  SystemPromptUpdate,
 } from '@deepseek-ai/dsh-llm'
 import type {
   AttachmentId,
@@ -63,6 +64,12 @@ export interface DeepSeekCatalogModel {
   imagePixelBudget?: number | 'low'
   /** Encoded-byte target for one deterministic request preview; the smallest quality-ladder output is used when no quality fits. */
   imageMaxBytes?: number
+  /**
+   * `'in-history'` declares that the endpoint reads the latest `system`
+   * message at any position of the conversation as the complete effective
+   * system prompt; omission means only a leading system message is read.
+   */
+  systemPromptUpdate?: SystemPromptUpdate
 }
 
 /**
@@ -160,9 +167,7 @@ const STREAM_IDLE_TIMEOUT_CODE = 'LLM_STREAM_IDLE_TIMEOUT'
 const FILES_API_TIMEOUT_CODE = 'DEEPSEEK_FILES_API_TIMEOUT'
 const OFF_REASONING_EFFORT = ReasoningEffortId('off')
 const LOW_REASONING_EFFORT = ReasoningEffortId('low')
-const MEDIUM_REASONING_EFFORT = ReasoningEffortId('medium')
 const HIGH_REASONING_EFFORT = ReasoningEffortId('high')
-const XHIGH_REASONING_EFFORT = ReasoningEffortId('xhigh')
 const MAX_REASONING_EFFORT = ReasoningEffortId('max')
 const REASONING_EFFORTS = [
   {
@@ -176,19 +181,9 @@ const REASONING_EFFORTS = [
     description: 'Prefer for routine or latency-sensitive tasks.',
   },
   {
-    id: MEDIUM_REASONING_EFFORT,
-    name: 'Medium',
-    description: 'Use for balanced reasoning depth and latency.',
-  },
-  {
     id: HIGH_REASONING_EFFORT,
     name: 'High',
     description: 'The default balance for most tasks.',
-  },
-  {
-    id: XHIGH_REASONING_EFFORT,
-    name: 'XHigh',
-    description: 'Use for extended reasoning on difficult tasks.',
   },
   {
     id: MAX_REASONING_EFFORT,
@@ -196,22 +191,6 @@ const REASONING_EFFORTS = [
     description: 'Reserve for the hardest quality-first tasks.',
   },
 ] as const
-
-/** Resolve the configured default to the ordered effort metadata entry. */
-function configuredReasoningEffort(
-  effort: RequestDefaults['reasoningEffort'],
-): ReturnType<typeof ReasoningEffortId> {
-  switch (effort) {
-    case 'off': return OFF_REASONING_EFFORT
-    case 'low': return LOW_REASONING_EFFORT
-    case 'medium': return MEDIUM_REASONING_EFFORT
-    case 'high': return HIGH_REASONING_EFFORT
-    case 'xhigh': return XHIGH_REASONING_EFFORT
-    case 'max': return MAX_REASONING_EFFORT
-    default: return HIGH_REASONING_EFFORT
-  }
-}
-
 const OFF_ONLY_REASONING_EFFORTS = [
   {
     id: OFF_REASONING_EFFORT,
@@ -435,6 +414,7 @@ export class DeepSeekAdapter extends LlmAdapter {
         : modelInfo(provider, configured),
       context: { contextWindow },
       defaultMaxTokens: configured?.maxTokens ?? connection.maxTokens,
+      ...configured?.systemPromptUpdate === undefined ? {} : { systemPromptUpdate: configured.systemPromptUpdate },
       ...connection.defaults.thinking === 'disabled'
         ? {
           reasoning: {
@@ -445,7 +425,13 @@ export class DeepSeekAdapter extends LlmAdapter {
         : {
           reasoning: {
             efforts: REASONING_EFFORTS,
-            defaultEffort: configuredReasoningEffort(connection.defaults.reasoningEffort),
+            defaultEffort: connection.defaults.reasoningEffort === 'off'
+              ? OFF_REASONING_EFFORT
+              : connection.defaults.reasoningEffort === 'low'
+                ? LOW_REASONING_EFFORT
+                : connection.defaults.reasoningEffort === 'max'
+                  ? MAX_REASONING_EFFORT
+                  : HIGH_REASONING_EFFORT,
           },
         },
     }

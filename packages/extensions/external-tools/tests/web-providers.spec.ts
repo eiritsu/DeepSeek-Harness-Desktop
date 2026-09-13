@@ -68,7 +68,12 @@ describe('native external search adapters', () => {
     process.env.DSH_DESKTOP_SHELL = '1'
     const ctx = new Context()
     const dir = await mkdtemp(join(tmpdir(), 'dsh-external-tools-'))
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => jsonResponse(String(input).includes('brave') ? { web: { results: [{ url: 'https://brave.test' }] } } : { results: [{ url: 'https://tavily.test' }] }))
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input instanceof URL ? input.href : typeof input === 'string' ? input : input.url
+      return jsonResponse(url.includes('brave')
+        ? { web: { results: [{ url: 'https://brave.test' }] } }
+        : { results: [{ url: 'https://tavily.test' }] })
+    })
     vi.stubGlobal('fetch', fetchMock)
     try {
       await ctx.plugin(SystemPrompt)

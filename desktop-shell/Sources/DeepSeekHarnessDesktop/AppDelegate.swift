@@ -105,12 +105,12 @@ final class DesktopWebView: WKWebView {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate,
-  WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandler, WKScriptMessageHandlerWithReply
+  WKUIDelegate, WKScriptMessageHandler, WKScriptMessageHandlerWithReply
 {
   private let sources = SourceManager()
   private lazy var runtime = RuntimeController(supportRoot: sources.supportRoot)
   private lazy var plugins = PluginManager(supportRoot: sources.supportRoot, dshHome: sources.dshHome)
-  private lazy var backup = DesktopBackupManager(supportRoot: sources.supportRoot)
+  private lazy var backup = DesktopBackupManager(supportRoot: sources.supportRoot, dataRoot: sources.dshHome)
   private var instanceLock: RuntimeInstanceLock?
   private var sourceRoot: URL?
   private var runtimeURL: URL?
@@ -147,7 +147,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     do {
-      instanceLock = try RuntimeInstanceLock(supportRoot: sources.supportRoot)
+      instanceLock = try RuntimeInstanceLock(
+        supportRoot: sources.dshHome.appendingPathComponent("desktop", isDirectory: true)
+      )
     } catch let RuntimeInstanceLockError.alreadyRunning(processIdentifier) {
       if let processIdentifier {
         NSRunningApplication(processIdentifier: processIdentifier)?.activate(options: [
@@ -170,7 +172,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
   }
 
   private func configureWindow() {
-    window.title = "DeepSeek Harness"
+    window.title = "DeepSeek Harness Lite"
     window.center()
     window.minSize = NSSize(width: 860, height: 600)
     window.delegate = self
@@ -236,7 +238,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     let appItem = NSMenuItem()
     main.addItem(appItem)
     let appMenu = NSMenu()
-    appMenu.addItem(withTitle: "关于 DeepSeek Harness", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+    appMenu.addItem(withTitle: "关于 DeepSeek Harness Lite", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
     appMenu.addItem(.separator())
     appMenu.addItem(withTitle: "检查并更新源码…", action: #selector(checkForUpdates), keyEquivalent: "u")
     appMenu.addItem(withTitle: "回退到上一个源码版本…", action: #selector(rollbackSource), keyEquivalent: "")
@@ -254,7 +256,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     appMenu.addItem(withTitle: "打开源码目录", action: #selector(openSourceDirectory), keyEquivalent: "")
     appMenu.addItem(withTitle: "打开桌面日志", action: #selector(openLog), keyEquivalent: "l")
     appMenu.addItem(.separator())
-    appMenu.addItem(withTitle: "退出 DeepSeek Harness", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+    appMenu.addItem(withTitle: "退出 DeepSeek Harness Lite", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
     appItem.submenu = appMenu
 
     let editItem = NSMenuItem()
@@ -327,7 +329,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 
   private func startRuntime(
     source: URL,
-    profile: String = "web",
+    profile: String = "desktop-lite",
     allowPluginRecovery: Bool = true,
     progress: @escaping @Sendable (String) -> Void
   ) {
@@ -572,7 +574,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     decidePolicyFor navigationAction: WKNavigationAction,
     decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void
   ) {
-    if navigationAction.shouldPerformDownload {
+    if #available(macOS 11.3, *), navigationAction.shouldPerformDownload {
       decisionHandler(.download)
       return
     }
@@ -584,50 +586,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     }
     NSWorkspace.shared.open(url)
     decisionHandler(.cancel)
-  }
-
-  /// Keep WebKit downloads inside the desktop app instead of handing them to a browser.
-  func webView(
-    _ webView: WKWebView,
-    navigationAction: WKNavigationAction,
-    didBecome download: WKDownload
-  ) {
-    download.delegate = self
-  }
-
-  func webView(
-    _ webView: WKWebView,
-    navigationResponse: WKNavigationResponse,
-    didBecome download: WKDownload
-  ) {
-    download.delegate = self
-  }
-
-  func download(
-    _ download: WKDownload,
-    decideDestinationUsing response: URLResponse,
-    suggestedFilename: String,
-    completionHandler: @escaping @MainActor @Sendable (URL?) -> Void
-  ) {
-    let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
-      ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads", isDirectory: true)
-    try? FileManager.default.createDirectory(at: downloads, withIntermediateDirectories: true)
-    let filename = URL(fileURLWithPath: suggestedFilename).lastPathComponent
-    let safeName = filename.isEmpty ? "session-log.json" : filename
-    completionHandler(Self.uniqueDownloadURL(directory: downloads, filename: safeName))
-    LogStore.shared.append("session download started: \(safeName)")
-    _ = response
-  }
-
-  func downloadDidFinish(_ download: WKDownload) {
-    LogStore.shared.append("session download finished")
-    _ = download
-  }
-
-  func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
-    LogStore.shared.append("session download failed: \(error.localizedDescription)")
-    _ = download
-    _ = resumeData
   }
 
   static func uniqueDownloadURL(directory: URL, filename: String) -> URL {
@@ -1065,6 +1023,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
       exportConfiguration(replyHandler: replyHandler)
     case "importConfig":
       importConfiguration(replyHandler: replyHandler)
+    case "exportSessionDatabase":
+      exportSessionDatabase(replyHandler: replyHandler)
+    case "importSessionDatabase":
+      importSessionDatabase(replyHandler: replyHandler)
+    case "resetSessionDatabase":
+      resetSessionDatabase(replyHandler: replyHandler)
     case "resetData":
       resetConfiguration(replyHandler: replyHandler)
     default:
@@ -1113,6 +1077,73 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         try self.backup.import(from: url)
         return ["ok": true]
       }
+    }
+  }
+
+  private func exportSessionDatabase(
+    replyHandler: @escaping @MainActor @Sendable (Any?, String?) -> Void
+  ) {
+    guard !updating else {
+      replyHandler(nil, "桌面运行时正在执行其他维护操作。")
+      return
+    }
+    let panel = NSSavePanel()
+    panel.nameFieldStringValue = "deepseek-harness-sessions.sqlite"
+    panel.allowedContentTypes = [.database]
+    panel.beginSheetModal(for: window) { [weak self] response in
+      guard let self, response == .OK, let url = panel.url else {
+        replyHandler([:], nil)
+        return
+      }
+      self.runBackupMutation(replyHandler: replyHandler) {
+        try self.backup.exportSessions(to: url)
+        return ["path": url.path]
+      }
+    }
+  }
+
+  private func importSessionDatabase(
+    replyHandler: @escaping @MainActor @Sendable (Any?, String?) -> Void
+  ) {
+    guard !updating else {
+      replyHandler(nil, "桌面运行时正在执行其他维护操作。")
+      return
+    }
+    let panel = NSOpenPanel()
+    panel.allowedContentTypes = [.database]
+    panel.allowsMultipleSelection = false
+    panel.beginSheetModal(for: window) { [weak self] response in
+      guard let self, response == .OK, let url = panel.url else {
+        replyHandler([:], nil)
+        return
+      }
+      self.runBackupMutation(replyHandler: replyHandler) {
+        try self.backup.importSessions(from: url)
+        return ["ok": true]
+      }
+    }
+  }
+
+  private func resetSessionDatabase(
+    replyHandler: @escaping @MainActor @Sendable (Any?, String?) -> Void
+  ) {
+    guard !updating else {
+      replyHandler(nil, "桌面运行时正在执行其他维护操作。")
+      return
+    }
+    let confirmation = NSAlert()
+    confirmation.messageText = "清空会话数据库？"
+    confirmation.informativeText = "会永久删除会话正文、附件索引和工作区归属；凭据、插件与 Skill 不受影响。"
+    confirmation.addButton(withTitle: "清空")
+    confirmation.addButton(withTitle: "取消")
+    guard confirmation.runModal() == .alertFirstButtonReturn else {
+      replyHandler([:], nil)
+      return
+    }
+    runBackupMutation(replyHandler: replyHandler) {
+      try self.backup.resetSessions()
+      UserDefaults.standard.removeObject(forKey: SessionSelectionBridge.nativeStorageKey)
+      return ["ok": true]
     }
   }
 
@@ -1251,5 +1282,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
       }
     }
     return .terminateLater
+  }
+}
+
+@available(macOS 11.3, *)
+extension AppDelegate: WKDownloadDelegate {
+  /// Keep WebKit downloads inside the desktop app instead of handing them to a browser.
+  func webView(
+    _ webView: WKWebView,
+    navigationAction: WKNavigationAction,
+    didBecome download: WKDownload
+  ) {
+    download.delegate = self
+  }
+
+  func webView(
+    _ webView: WKWebView,
+    navigationResponse: WKNavigationResponse,
+    didBecome download: WKDownload
+  ) {
+    download.delegate = self
+  }
+
+  func download(
+    _ download: WKDownload,
+    decideDestinationUsing response: URLResponse,
+    suggestedFilename: String,
+    completionHandler: @escaping @MainActor @Sendable (URL?) -> Void
+  ) {
+    let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+      ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads", isDirectory: true)
+    try? FileManager.default.createDirectory(at: downloads, withIntermediateDirectories: true)
+    let filename = URL(fileURLWithPath: suggestedFilename).lastPathComponent
+    let safeName = filename.isEmpty ? "session-log.json" : filename
+    completionHandler(Self.uniqueDownloadURL(directory: downloads, filename: safeName))
+    LogStore.shared.append("session download started: \(safeName)")
+    _ = response
+  }
+
+  func downloadDidFinish(_ download: WKDownload) {
+    LogStore.shared.append("session download finished")
+    _ = download
+  }
+
+  func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
+    LogStore.shared.append("session download failed: \(error.localizedDescription)")
+    _ = download
+    _ = resumeData
   }
 }

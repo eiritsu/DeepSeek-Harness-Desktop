@@ -429,6 +429,17 @@ export class TestSessions implements ISessions {
   }
 
   /**
+   * Permanently remove a fixture through the production service face.
+   * @param id - Fixture Session identity to remove.
+   * @returns the removed identity list.
+   */
+  async delete(id: SessionId): Promise<readonly SessionId[]> {
+    this.calls.push({ method: 'delete', args: [id] })
+    await this.remove(id)
+    return [id]
+  }
+
+  /**
    * Service-level selection call (recorded, then applied to the list store
    * synchronously — inject callbacks call this outside any act window; the
    * store notify is microtask-batched so the next stabilized step observes it).
@@ -515,13 +526,6 @@ export class TestSessions implements ISessions {
   fork(opts: { sessionId: SessionId; atSeq?: number; increaseTitle?: boolean }): Promise<SessionId> {
     this.calls.push({ method: 'fork', args: [opts] })
     return Promise.resolve(opts.sessionId)
-  }
-
-  /** Permanently remove a fixture session from the test projection. */
-  async delete(sessionId: SessionId): Promise<readonly SessionId[]> {
-    this.calls.push({ method: 'delete', args: [sessionId] })
-    await this.remove(sessionId)
-    return [sessionId]
   }
 
   /**

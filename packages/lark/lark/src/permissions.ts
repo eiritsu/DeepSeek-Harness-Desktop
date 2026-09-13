@@ -165,7 +165,10 @@ export const LARK_CAPABILITIES: readonly LarkCapabilityDefinition[] = [
   { id: 'apps', label: '妙搭应用', tenant: [], user: ['spark:app:read', 'spark:app:write', 'spark:directory.user.id_convert:read'] },
 ]
 
-/** Import payload accepted by the Feishu/Lark permission batch-import dialog. */
+/**
+ * Import payload accepted by the Feishu/Lark permission batch-import dialog.
+ * @returns formatted permission-import JSON.
+ */
 export function permissionImportTemplate(): string {
   return JSON.stringify({
     scopes: {
@@ -175,7 +178,10 @@ export function permissionImportTemplate(): string {
   }, null, 2)
 }
 
-/** Complete tenant-scope set requested by managed registration and the import template. */
+/**
+ * Complete tenant-scope set requested by managed registration and the import template.
+ * @returns sorted unique tenant scopes.
+ */
 export function requestedTenantScopes(): string[] {
   return [...new Set([
     ...PERMISSION_INSPECTION_SCOPES,
@@ -183,7 +189,10 @@ export function requestedTenantScopes(): string[] {
   ])].sort()
 }
 
-/** Complete user-scope set requested by the management page's OAuth flow. */
+/**
+ * Complete user-scope set requested by the management page's OAuth flow.
+ * @returns sorted unique user scopes.
+ */
 export function requestedUserScopes(): string[] {
   return [...new Set(LARK_CAPABILITIES.flatMap(capability => capability.user))].sort()
 }

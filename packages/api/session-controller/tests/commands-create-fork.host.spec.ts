@@ -4,6 +4,7 @@ import type { Agent, AgentHandle, CreateAgentOptions } from '@deepseek-ai/dsh-ag
 import type {} from '@deepseek-ai/dsh-agent-presets'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import type { SessionHeader } from '@deepseek-ai/dsh-session'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import type { Workspace, WorkspaceId } from '@deepseek-ai/dsh-workspace'
 import { describe, expect, it, vi } from 'vitest'
@@ -254,7 +255,9 @@ describe('Session fork failures', () => {
     const create = vi.spyOn(ctx.agents, 'create').mockImplementation(
       (options: CreateAgentOptions) => Promise.resolve(resolvedHandle(ctx, options.sessionId)),
     )
-    const controller = new SessionCommandController(ctx, controllerAgents(), '/default')
+    const controller = new SessionCommandController(ctx, controllerAgents({
+      createFork: async (options: CreateAgentOptions) => (await ctx.agents.create(options)).agent,
+    }), '/default')
 
     await expectFailure(controller.fork({ sessionId: source.id }), 'session/workspace-attach-failed')
     const options = create.mock.calls[0]?.[0]
@@ -273,6 +276,7 @@ describe('Session fork failures', () => {
     )
     const controller = new SessionCommandController(ctx, controllerAgents({
       composeAgent: () => Promise.resolve({ agentPreset: 'minimal', setup: () => {} }),
+      createFork: async (options: CreateAgentOptions) => (await ctx.agents.create(options)).agent,
     }), '/default')
 
     const forked = await controller.fork({ sessionId: source.id })
@@ -280,6 +284,44 @@ describe('Session fork failures', () => {
     const options = create.mock.calls[0]?.[0]
     if (options === undefined) throw new Error('Agent creation was not attempted')
     expect(options.meta?.agentPreset).toBe('minimal')
+    await ctx.fiber.dispose()
+  })
+})
+
+describe('Session deletion', () => {
+  it('preflights and removes descendants before their parent', async () => {
+    const ctx = await baseContext()
+    const root = SessionId('delete-root')
+    const child = SessionId('delete-child')
+    const grandchild = SessionId('delete-grandchild')
+    const headers = [
+      { id: root } as SessionHeader,
+      { id: child, parentSession: root } as SessionHeader,
+      { id: grandchild, parentSession: child } as SessionHeader,
+    ]
+    const removed: SessionId[] = []
+    ctx.provide('sessionPersistence', testSessionPersistence(ctx, {
+      list: () => Promise.resolve(headers),
+      delete: async (id: SessionId) => { removed.push(id) },
+    }) as never)
+    const detachSession = vi.fn<(id: SessionId) => Promise<void>>(async () => {})
+    ctx.provide('workspaceRegistry', {
+      list: () => [{ sessionIds: [root, child, grandchild], detachSession }],
+    } as never)
+    const assertDeletable = vi.fn<(id: SessionId) => void>()
+    const disposeForDeletion = vi.fn<(id: SessionId) => Promise<void>>(async () => {})
+    const controller = new SessionCommandController(ctx, controllerAgents({
+      assertDeletable,
+      disposeForDeletion,
+    }), '/default')
+
+    await expectFailure(controller.delete({ sessionId: root, recursive: false }), 'session/has-children')
+    await expect(controller.delete({ sessionId: root, recursive: true }))
+      .resolves.toEqual({ deletedSessionIds: [grandchild, child, root] })
+    expect(assertDeletable.mock.calls.map(([id]) => id)).toEqual([grandchild, child, root])
+    expect(disposeForDeletion.mock.calls.map(([id]) => id)).toEqual([grandchild, child, root])
+    expect(removed).toEqual([grandchild, child, root])
+    expect(detachSession.mock.calls.map(([id]) => id)).toEqual([grandchild, child, root])
     await ctx.fiber.dispose()
   })
 })

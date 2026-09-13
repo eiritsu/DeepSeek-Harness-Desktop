@@ -1,6 +1,6 @@
 /** Full-frame SkillHub skill and skill-package marketplace. */
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type JSX } from 'react'
 import { IconCloseOutline16, IconSearchOutline16, IconSkillOutline16, IconTrashOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { fetchSkills, skillUrl, type SkillHubSkill } from './api.ts'
@@ -52,10 +52,9 @@ export function SkillLibraryOverlay({ controller, bridge, t }: SkillLibraryOverl
   }, [installedQuery, installedSkills])
 
   const load = async (nextPage: number, reset: boolean): Promise<void> => {
-    if (loadingRef.current) return
-    loadingRef.current = true
     const version = reset ? requestVersion.current + 1 : requestVersion.current
     if (reset) requestVersion.current = version
+    loadingRef.current = true
     setLoading(true)
     setError(undefined)
     try {
@@ -72,8 +71,10 @@ export function SkillLibraryOverlay({ controller, bridge, t }: SkillLibraryOverl
     } catch (reason) {
       if (version === requestVersion.current) setError(message(reason))
     } finally {
-      loadingRef.current = false
-      if (version === requestVersion.current) setLoading(false)
+      if (version === requestVersion.current) {
+        loadingRef.current = false
+        setLoading(false)
+      }
     }
   }
 
@@ -87,7 +88,9 @@ export function SkillLibraryOverlay({ controller, bridge, t }: SkillLibraryOverl
 
   useEffect(() => {
     if (!open || tab !== 'installed') return
-    void bridge.request({ action: 'listSkills' }).then((result) => { setInstalledSkills(result.skills) }).catch((reason) => { setError(message(reason)) })
+    void bridge.request({ action: 'listSkills' })
+      .then((result) => { setInstalledSkills(result.skills) })
+      .catch((reason: unknown) => { setError(message(reason)) })
   }, [bridge, open, tab])
 
   const onScroll = (element: HTMLDivElement): void => {

@@ -96,9 +96,9 @@ export interface ISessions {
    */
   fork(opts: { sessionId: SessionId; atSeq?: number; increaseTitle?: boolean }): Promise<SessionId>
   /**
-   * Permanently delete a Session and all of its durable descendants.
-   * @param sessionId - root Session to delete.
-   * @returns deleted Session identities in child-before-parent order.
+   * Permanently delete a Session and every durable descendant.
+   * @param sessionId - root Session identity to delete.
+   * @returns deleted identities in child-before-parent order.
    */
   delete(sessionId: SessionId): Promise<readonly SessionId[]>
   /**

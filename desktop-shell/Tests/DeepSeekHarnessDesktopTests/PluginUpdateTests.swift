@@ -15,7 +15,7 @@ import Testing
   let temporaryRoot = FileManager.default.temporaryDirectory
     .appendingPathComponent("dsh-installed-updates-\(UUID().uuidString)", isDirectory: true)
   defer { try? FileManager.default.removeItem(at: temporaryRoot) }
-  let profileRoot = temporaryRoot.appendingPathComponent("home/profiles/web", isDirectory: true)
+  let profileRoot = temporaryRoot.appendingPathComponent("home/profiles/desktop-lite", isDirectory: true)
   try FileManager.default.createDirectory(at: profileRoot, withIntermediateDirectories: true)
   try Data(#"{"dependencies":{"@fixture/current":"1.2.3","@fixture/preview":"2.0.0-rc.2","@fixture/local":"file:/tmp/plugin"},"dsh":{"profile":{"bundles":[]}}}"#.utf8)
     .write(to: profileRoot.appendingPathComponent("package.json"))
@@ -45,17 +45,17 @@ import Testing
   #expect(byName["@fixture/local"]?.latestVersion == nil)
 }
 
-@Test func installedListIncludesAppManagedBundles() async throws {
+@Test func installedListIncludesDeepSeekFilesBundle() async throws {
   let temporaryRoot = FileManager.default.temporaryDirectory
     .appendingPathComponent("dsh-managed-list-\(UUID().uuidString)", isDirectory: true)
   defer { try? FileManager.default.removeItem(at: temporaryRoot) }
-  let profileRoot = temporaryRoot.appendingPathComponent("home/profiles/web", isDirectory: true)
-  let packageRoot = temporaryRoot.appendingPathComponent("packages/client/ui-plugin-library", isDirectory: true)
+  let profileRoot = temporaryRoot.appendingPathComponent("home/profiles/desktop-lite", isDirectory: true)
+  let packageRoot = temporaryRoot.appendingPathComponent("packages/attachment/file-recognizer-office", isDirectory: true)
   try FileManager.default.createDirectory(at: profileRoot, withIntermediateDirectories: true)
   try FileManager.default.createDirectory(at: packageRoot, withIntermediateDirectories: true)
-  try Data(#"{"name":"@deepseek-ai/dsh-client-ui-plugin-library","version":"0.1.1"}"#.utf8)
+  try Data(#"{"name":"@deepseek-ai/dsh-file-recognizer-office","version":"0.1.5-rc.2"}"#.utf8)
     .write(to: packageRoot.appendingPathComponent("package.json"))
-  try Data(#"{"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base","@deepseek-ai/dsh-client-ui-plugin-library"]}}}"#.utf8)
+  try Data(#"{"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base","@deepseek-ai/dsh-web-app","@deepseek-ai/dsh-desktop-lite"]}}}"#.utf8)
     .write(to: profileRoot.appendingPathComponent("package.json"))
   let manager = PluginManager(
     supportRoot: temporaryRoot.appendingPathComponent("support", isDirectory: true),
@@ -66,8 +66,8 @@ import Testing
     manager.list(sourceRoot: temporaryRoot) { continuation.resume(with: $0) }
   }
 
-  let plugin = try #require(plugins.first { $0.name == "@deepseek-ai/dsh-client-ui-plugin-library" })
-  #expect(plugin.version == "0.1.1")
+  let plugin = try #require(plugins.first { $0.name == "@deepseek-ai/dsh-file-recognizer-office" })
+  #expect(plugin.version == "0.1.5-rc.2")
   #expect(!plugin.removable)
 }
 
@@ -75,7 +75,7 @@ import Testing
   let temporaryRoot = FileManager.default.temporaryDirectory
     .appendingPathComponent("dsh-installed-update-review-\(UUID().uuidString)", isDirectory: true)
   defer { try? FileManager.default.removeItem(at: temporaryRoot) }
-  let profileRoot = temporaryRoot.appendingPathComponent("home/profiles/web", isDirectory: true)
+  let profileRoot = temporaryRoot.appendingPathComponent("home/profiles/desktop-lite", isDirectory: true)
   try FileManager.default.createDirectory(at: profileRoot, withIntermediateDirectories: true)
   try Data(#"{"dependencies":{"@fixture/plugin":"1.2.3"},"dsh":{"profile":{"bundles":[]}}}"#.utf8)
     .write(to: profileRoot.appendingPathComponent("package.json"))

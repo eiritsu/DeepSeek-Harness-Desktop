@@ -174,9 +174,9 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
 
   /**
    * Add a Session to a Workspace and merge the returned row.
-   * @param workspaceId - target Workspace.
-   * @param sessionId - known Session to account.
-   * @returns generated Remote result.
+   * @param workspaceId - Workspace that should account for the Session.
+   * @param sessionId - Known Session to attach.
+   * @returns the Remote result containing the changed Workspace.
    */
   async attachSession(
     workspaceId: WorkspaceAttachSessionRequest['workspaceId'],

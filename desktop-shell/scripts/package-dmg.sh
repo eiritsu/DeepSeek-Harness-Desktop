@@ -4,8 +4,8 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 SHELL_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 OUTPUT_ROOT="$SHELL_ROOT/dist"
-APP_ROOT="$OUTPUT_ROOT/DeepSeek Harness.app"
-DMG_PATH="$OUTPUT_ROOT/DeepSeek-Harness-macOS.dmg"
+APP_ROOT="$OUTPUT_ROOT/DeepSeek Harness Lite.app"
+DMG_PATH="$OUTPUT_ROOT/DeepSeek-Harness-Lite-macOS.dmg"
 STAGE=$(mktemp -d)
 ARCHIVE_LIST=$(mktemp)
 AUDIT_ROOT=$(mktemp -d)
@@ -14,7 +14,7 @@ trap 'rm -rf "$STAGE" "$ARCHIVE_LIST" "$AUDIT_ROOT"' EXIT
 "$SCRIPT_DIR/build-app.sh" --distribution
 codesign --verify --deep --strict "$APP_ROOT"
 
-if [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_ROOT/Contents/Info.plist")" != "ai.deepseek.harness.desktop" ]; then
+if [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_ROOT/Contents/Info.plist")" != "ai.deepseek.harness.desktop.lite" ]; then
   echo "package-dmg: distribution app uses the development bundle identifier" >&2
   exit 1
 fi
@@ -50,12 +50,11 @@ if rg -n -I -F "$HOME" "$AUDIT_ROOT" >/dev/null \
   exit 1
 fi
 for PACKAGE in \
-  packages/client/ui-plugin-library \
-  packages/client/ui-skill-library \
   packages/client/ui-deepseek-files \
   packages/attachment/file-recognizer-office \
-  packages/lark/lark \
-  packages/llm/model-catalog
+  packages/extensions/external-tools \
+  packages/session/session-persistence-sqlite \
+  packages/bundle/desktop-lite
 do
   if ! grep -F "./$PACKAGE/package.json" "$ARCHIVE_LIST" >/dev/null; then
     echo "package-dmg: bundled plugin $PACKAGE is missing" >&2
@@ -66,20 +65,16 @@ if ! grep -F './packages/boot/app-boot/src/profile.ts' "$ARCHIVE_LIST" >/dev/nul
   echo "package-dmg: release Web profile template is missing" >&2
   exit 1
 fi
-if ! grep -F "@deepseek-ai/dsh-client-ui-plugin-library" "$AUDIT_ROOT/packages/boot/app-boot/src/profile.ts" \
-  | grep -F "@deepseek-ai/dsh-client-ui-skill-library" \
-  | grep -F "@deepseek-ai/dsh-file-recognizer-office" \
-  | grep -F "@deepseek-ai/dsh-lark" \
-  | grep -F "@deepseek-ai/dsh-model-catalog" >/dev/null; then
-  echo "package-dmg: release Web profile does not enable the self-developed bundles" >&2
+if ! grep -F "@deepseek-ai/dsh-desktop-lite" "$AUDIT_ROOT/packages/boot/app-boot/src/profile.ts" >/dev/null; then
+  echo "package-dmg: release does not declare the desktop-lite profile" >&2
   exit 1
 fi
 
-ditto "$APP_ROOT" "$STAGE/DeepSeek Harness.app"
+ditto "$APP_ROOT" "$STAGE/DeepSeek Harness Lite.app"
 ln -s /Applications "$STAGE/Applications"
 rm -f "$DMG_PATH"
 hdiutil create \
-  -volname "DeepSeek Harness" \
+  -volname "DeepSeek Harness Lite" \
   -srcfolder "$STAGE" \
   -ov \
   -format UDZO \

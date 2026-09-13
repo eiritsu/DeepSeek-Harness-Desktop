@@ -181,12 +181,8 @@ registerSearchProvider(provider: WebSearchProvider): () => void
 registerFetchProvider(provider: WebFetchProvider): () => void
 
 /**
- * Override search-provider selection for a composed runtime.
- *
- * The override is intentionally volatile: callers must restore it when
- * their composition is disposed. Passing `undefined` returns selection to
- * the configured provider or normal auto-selection.
- * @param providerId - provider id to select, or `undefined` to restore defaults.
+ * Select one registered search provider until the owning composition clears it.
+ * @param providerId - provider id, or `undefined` to restore configured/automatic selection.
  */
 setSearchProviderOverride(providerId: string | undefined): void
 

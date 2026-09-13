@@ -1,17 +1,105 @@
+---
+description: "Lark and Feishu application management, official CLI tools, and durable private-chat Sessions for DeepSeek Harness."
+kind: "package-bundle"
+---
+
 # @deepseek-ai/dsh-lark
 
-侧载式 Lark/飞书集成。Host 插件通过 DSH Credentials 保存 App Secret，通过 Host Remote 向管理页提供不含秘密值的状态，通过官方 `@larksuite/cli` 执行业务命令，并通过官方 `@larksuite/channel` 建立消息长连接。插件注册 `lark_cli` 工具；审批层读取官方 CLI 的 `Risk: read` 命令声明，只读查询直接执行，数据变更命令进入 DSH approval 流程。
+English | [中文](README.zh.md)
 
-默认快速连接使用官方 Channel SDK 的 `registerApp`，用户通过官方页面批准后，平台创建应用并返回凭据；Host 会在轮询完成时自动保存 App ID、App Secret 并初始化 CLI，页面不要求用户手填这些值，确认按钮只负责继续当前用户 OAuth。注册请求声明管理页权限模板中的 tenant/user scope，并包含 `im.message.receive_v1` 事件。高级方式可连接已有自建应用，插件通过官方 `config init --app-secret-stdin` 接口同步凭据，Secret 不进入 argv、浏览器响应或日志；自建应用还需在开放平台启用长连接事件订阅并订阅 `im.message.receive_v1`。
+## Summary
 
-两种方式都把 OAuth token 和 CLI 配置隔离在 `$DSH_HOME/lark-cli`，不读取系统级 `~/.lark-cli`。经 SHA-256 校验的官方 v1.0.90 二进制按平台下载到 `$DSH_HOME/lark-cli-bin/v1.0.90`，不会写入插件安装目录。管理页先显示应用/Bot 连接，再显示用户 OAuth；只有应用连接完成后才能授权当前用户。应用创建或批量导入一次性声明全部 capability user scope，紧接着的 OAuth 一次性请求同一集合，包括以当前用户身份发送消息所需的 `im:message.send_as_user`。应用权限已获取不等于用户已登录，查询个人日历等用户数据前必须完成用户 OAuth。待完成的用户授权由 Host Credentials 保存，关闭设置页、重启 App 或重载插件后仍可继续；功能更新改变用户权限集合时，旧授权请求自动失效，管理页会列出当前 token 缺少的 scope 并要求重新授权。两个身份可以同时使用；清除连接会移除该目录管理的应用配置和 token。
+`dsh-lark` connects a managed or self-built Lark/Feishu application to DeepSeek Harness. It stores secrets through DSH Credentials, runs the verified official CLI, registers the model-visible `lark_cli` tool, and maps an authorized user's private chats to durable Harness Sessions. The desktop profiles mount it together with the separate Client settings package.
 
-权限页通过官方 Open Platform 应用信息接口分别核验 tenant 与 user scope；批量导入模板包含该检查所需的最小应用身份权限 `application:application:self_manage`，不申请可读取企业全部应用信息的高级权限 `admin:app.info:readonly`。任一层未开通时都不会显示“已获取”。复制按钮只把批量导入模板写入剪贴板，不在页面或 Remote 日志中渲染 JSON。用户 OAuth 仅请求同一模板中的 user scope，使应用后台权限与个人授权保持对应。
+## Table of Contents
 
-私聊 Channel 只接受完成用户授权时记录的 Open ID，群聊和其他发送者不会进入 Agent。每个 `(App ID, chat ID)` 映射到一个稳定的 DSH session；收到的消息以 `kind: lark` 及 app、chat、message、sender 标识写入持久日志，平台重投同一 message ID 时不会再次提交。新会话按 `conversationCwd` 创建或复用可重命名的 DSH Workspace；恢复或已由其他客户端恢复的私聊 session 按其持久化 cwd 重新加入原 Workspace，因此默认目录变更不会破坏已有聊天。新会话使用当前默认模型，已有会话从 session persistence 恢复；如果旧 Agent 在默认模型尚未配置时创建，首次请求会从当前默认模型补齐 provider/model。
+- [Use this package](#use-this-package)
+- [Understand the implementation](#understand-the-implementation)
+- [Further Exploration](#further-exploration)
+- [Model Experience](#model-experience)
+- [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
+- [Dev Note](#dev-note)
 
-入站文本直接进入用户消息；图片和文件由 Channel 下载后保存到 DSH attachment store，并附带可用的识别文本。assistant 回复中的文本通过 Channel 的 text 消息发送，图片 attachment 和文件 attachment 会依次回复到原飞书消息。文件能力以结构化 attachment block 为准，不会把回复文本中的本地路径当作待上传文件。
+-----
 
-对话连接默认启用，可通过 `conversationEnabled` 关闭。`conversationUserOpenId`、`conversationHandshakeTimeoutMs`、`conversationResponseTimeoutMs`、`conversationCwd` 和 `conversationTimeZone` 可在 Cordis 配置中覆盖；`conversationCwd` 为空时，新私聊会话使用 DSH 运行目录。每个 Lark Agent 都挂载 DSH `time-context`，在飞书消息不含浏览器时区时使用 `conversationTimeZone`（默认 `Asia/Shanghai`）提供当前时间。管理页连接流程会自动维护允许的用户 Open ID。每条消息完成或失败后，插件释放自己创建的空闲 Agent；下一条消息按持久化 session 恢复，因此不会长期占用会话，也不会阻止桌面端删除已完成的会话。插件卸载或重载会先停止入站、等待在途消息处理结束，再断开 Channel 并释放其创建或恢复的 Agent。
+<a id="use-this-package"></a>
+## Use this package
 
-安装本包会通过 `cordis.patch.yml` 加入一个同时提供 Host 与浏览器 face 的 Lark 条目；Lark 管理页面由该 package root 的 `dsh.client` 声明进入 Web 模块表，不会修改 DeepSeek Harness 源码或数据库格式。
+Mount the package in a composition and open **Lark Management** in Settings. Official quick connect creates an application through the Lark Channel SDK and then continues current-user OAuth. Advanced setup accepts an existing App ID and write-only App Secret. Both paths isolate OAuth and CLI state under `$DSH_HOME/lark-cli`; the verified official CLI binary is installed under `$DSH_HOME/lark-cli-bin`.
+
+```yaml
+- name: '@deepseek-ai/dsh-lark'
+```
+
+Application permission grants and current-user OAuth are separate. The Settings page reports both identities and missing scopes. Its copy action writes the batch permission template directly to the clipboard without rendering the JSON. A self-built application must enable long-connection event subscriptions and subscribe to `im.message.receive_v1`.
+
+Private-chat ingestion is enabled by default. `conversationUserOpenId` restricts it to the authorized user; group messages and other senders do not reach an Agent. `conversationCwd`, `conversationTimeZone`, handshake/response timeouts, CLI deadlines, output limits, and connection enablement are validated Cordis configuration fields.
+
+-----
+
+<a id="understand-the-implementation"></a>
+## Understand the implementation
+
+<details>
+<summary>Implementation internals — click to expand</summary>
+
+The Host exposes a typed `larkManagement` Remote service and keeps App Secret plus unfinished OAuth state in Credentials. Read-only official CLI commands proceed directly; commands not proven read-only enter the normal DSH approval flow. CLI secrets use stdin and never enter argv, renderer responses, or logs.
+
+Each `(App ID, chat ID)` maps to one stable Session. Incoming text, downloaded files, and recognized attachment text are logged with Lark message and sender identifiers, so a repeated platform message ID is not resubmitted. New chats use `conversationCwd` and the current default model; restored chats retain their persisted cwd, Workspace membership, Session ID, and model. Text and structured file/image attachment replies return to the originating message. Teardown stops intake, waits for in-flight work, disconnects the channel, and releases plugin-owned Agents.
+
+| File | Role |
+|---|---|
+| [`src/index.ts`](src/index.ts) | settings, credentials, Remote methods, CLI tool, and approval gate |
+| [`src/conversation.ts`](src/conversation.ts) | private-chat lifecycle, durable Session mapping, attachments, and replies |
+| [`src/permissions.ts`](src/permissions.ts) | capability scopes and import template |
+| [`vendor/larksuite-cli`](vendor/larksuite-cli) | checksummed cross-platform official CLI launcher |
+
+</details>
+
+-----
+
+<a id="further-exploration"></a>
+## Further Exploration
+
+- [Lark Client settings](../../client/ui-lark/README.md) — browser management surface.
+- [Session persistence](../../session/session-persistence/README.md) — durable event authority used by private chats.
+- [Attachments](../../attachment/attachment/README.md) — file storage and recognition seam.
+
+-----
+
+<a id="model-experience"></a>
+## Model Experience
+
+### Official CLI and private-chat input
+
+#### What the model sees
+
+The tool catalog contains `lark_cli` with a string-array command argument. Private-chat text enters as a logged user message; files enter as structured attachment blocks with recognized text when available. Application secrets, OAuth device codes, permission-template JSON, and raw CLI configuration never enter model context.
+
+#### Token effect
+
+Tool results and recognized attachment text consume context like other logged tool and user content. Configuration and permission status do not consume tokens unless a user explicitly asks the Agent to query Lark.
+
+#### KV Cache effect
+
+Stable tool declarations are cacheable. Chat-specific text, attachments, and CLI results vary per turn and extend the Session transcript.
+
+## Known Limitations and Deferred Work
+
+<a id="known-limitations-and-deferred-work"></a>
+
+- Lark service availability, application approval, scopes, and long-connection delivery remain external dependencies.
+- The bundled CLI checksum table supports reviewed Darwin, Linux, and Windows targets only; a new upstream CLI release requires a checksum and packaging update.
+- Private-chat admission intentionally supports one configured authorized Open ID per application and does not accept group chats.
+
+No runtime invariant companion is published; the gateway exposes no independent durable relation beyond Session, tool, credential, and Settings services that own their checks.
+
+<a id="dev-note"></a>
+### Dev Note
+
+<details>
+<summary>Working context for maintainers — click to expand</summary>
+
+This package was ported from the desktop fork to the current Settings, SessionQuery, Attachment, Typert, and lifecycle APIs. Do not restore the removed package-root `dsh.client` declaration; the Client package is mounted by current compositions.
+
+</details>

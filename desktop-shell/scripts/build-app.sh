@@ -7,7 +7,7 @@ HARNESS_ROOT=$(CDPATH= cd -- "$SHELL_ROOT/.." && pwd)
 SOURCE_ROOT=${DSH_SOURCE_DIR:-$HARNESS_ROOT}
 SOURCE_ROOT=$(CDPATH= cd -- "$SOURCE_ROOT" && pwd)
 OUTPUT_ROOT="$SHELL_ROOT/dist"
-APP_ROOT="$OUTPUT_ROOT/DeepSeek Harness.app"
+APP_ROOT="$OUTPUT_ROOT/DeepSeek Harness Lite.app"
 ICON_SOURCE="$SHELL_ROOT/Resources/AppIcon.svg"
 ICON_WORK=$(mktemp -d)
 SNAPSHOT_WORK=""
@@ -48,12 +48,12 @@ const path = require('node:path')
 
 const [root, harnessCommit, pluginCommit] = process.argv.slice(2)
 const packagePaths = [
-  'packages/client/ui-plugin-library',
-  'packages/client/ui-skill-library',
   'packages/client/ui-deepseek-files',
+  'packages/client/ui-skill-library',
   'packages/attachment/file-recognizer-office',
-  'packages/lark/lark',
-  'packages/llm/model-catalog',
+  'packages/extensions/external-tools',
+  'packages/session/session-persistence-sqlite',
+  'packages/bundle/desktop-lite',
 ]
 const artifactRoots = [
   'apps/cli/lib',
@@ -126,7 +126,7 @@ cp "$SHELL_ROOT/.build/release/DeepSeekHarnessDesktop" "$APP_ROOT/Contents/MacOS
 /usr/bin/strip -S "$APP_ROOT/Contents/MacOS/DeepSeekHarnessDesktop"
 cp "$SHELL_ROOT/Resources/Info.plist" "$APP_ROOT/Contents/Info.plist"
 if [ "$DISTRIBUTION" = true ]; then
-  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ai.deepseek.harness.desktop" "$APP_ROOT/Contents/Info.plist"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ai.deepseek.harness.desktop.lite" "$APP_ROOT/Contents/Info.plist"
   /usr/libexec/PlistBuddy -c "Delete :DSHSourceRoot" "$APP_ROOT/Contents/Info.plist"
   /usr/libexec/PlistBuddy -c "Set :DSHSourceRepository https://github.com/eiritsu/DeepSeek-Harness-Desktop.git" "$APP_ROOT/Contents/Info.plist"
   /usr/libexec/PlistBuddy -c "Set :DSHSourceBranch main" "$APP_ROOT/Contents/Info.plist"
@@ -135,12 +135,12 @@ if [ "$DISTRIBUTION" = true ]; then
   mkdir -p "$SNAPSHOT_ROOT"
   copy_committed_files "$SOURCE_ROOT" "$SNAPSHOT_ROOT" .
   for PACKAGE in \
-    packages/client/ui-plugin-library \
-    packages/client/ui-skill-library \
     packages/client/ui-deepseek-files \
+    packages/client/ui-skill-library \
     packages/attachment/file-recognizer-office \
-    packages/lark/lark \
-    packages/llm/model-catalog
+    packages/extensions/external-tools \
+    packages/session/session-persistence-sqlite \
+    packages/bundle/desktop-lite
   do
     if [ ! -d "$SOURCE_ROOT/$PACKAGE/lib" ]; then
       echo "build-app: built plugin artifacts are missing at $SOURCE_ROOT/$PACKAGE/lib; run pnpm run build first" >&2
@@ -219,48 +219,6 @@ function visit(directory) {
 }
 visit(root)
 NODE
-  PLUGIN_LIBRARY_VERSION=$(node -p "require('$SOURCE_ROOT/packages/client/ui-plugin-library/package.json').version")
-  node - "$SNAPSHOT_ROOT/packages/client/ui-plugin-library/package.json" "$PLUGIN_LIBRARY_VERSION" <<'NODE'
-const fs = require('node:fs')
-const [manifestPath, version] = process.argv.slice(2)
-const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
-manifest.version = version
-fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
-NODE
-  node - \
-    "$SNAPSHOT_ROOT/packages/boot/app-boot/src/profile.ts" \
-    "$SNAPSHOT_ROOT/packages/boot/app-boot/lib/index.js" \
-    "$SNAPSHOT_ROOT/packages/boot/app-boot/lib/types/profile.js" <<'NODE'
-const fs = require('node:fs')
-const paths = process.argv.slice(2)
-const replacements = [
-  ["bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'],", "bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh-client-ui-plugin-library', '@deepseek-ai/dsh-client-ui-skill-library', '@deepseek-ai/dsh-file-recognizer-office', '@deepseek-ai/dsh-lark', '@deepseek-ai/dsh-model-catalog'],"],
-  ['bundles: ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app"],', 'bundles: ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "@deepseek-ai/dsh-client-ui-plugin-library", "@deepseek-ai/dsh-client-ui-skill-library", "@deepseek-ai/dsh-file-recognizer-office", "@deepseek-ai/dsh-lark", "@deepseek-ai/dsh-model-catalog"],'],
-]
-for (const path of paths) {
-  let source = fs.readFileSync(path, 'utf8')
-  for (const [from, to] of replacements) source = source.replace(from, to)
-  if (!source.includes('@deepseek-ai/dsh-file-recognizer-office')) {
-    throw new Error(`build-app: Web profile template was not found in ${path}`)
-  }
-  fs.writeFileSync(path, source)
-}
-NODE
-  node - "$SNAPSHOT_ROOT/apps/cli/package.json" <<'NODE'
-const fs = require('node:fs')
-const path = process.argv[2]
-const manifest = JSON.parse(fs.readFileSync(path, 'utf8'))
-const dependencies = {
-  '@deepseek-ai/dsh-client-ui-plugin-library': 'workspace:^',
-  '@deepseek-ai/dsh-client-ui-skill-library': 'workspace:^',
-  '@deepseek-ai/dsh-client-ui-deepseek-files': 'workspace:^',
-  '@deepseek-ai/dsh-file-recognizer-office': 'workspace:^',
-  '@deepseek-ai/dsh-lark': 'workspace:^',
-  '@deepseek-ai/dsh-model-catalog': 'workspace:^',
-}
-manifest.dependencies = { ...manifest.dependencies, ...dependencies }
-fs.writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`)
-NODE
   # Side-loaded plugin manifests were developed against the previous rc
   # version. In the distribution snapshot they must resolve every Harness
   # package from this same workspace, otherwise pnpm may install an older
@@ -313,7 +271,7 @@ rewrite(root)
 NODE
   # The release snapshot has to install the workspace packages and their
   # external runtime dependencies on first launch. Regenerate the lockfile
-  # after replacing the plugin workspaces and the release-only Web template.
+  # after staging the current workspace packages and desktop-lite profile.
   (
     cd "$SNAPSHOT_ROOT"
     npx --yes pnpm@11.7.0 install --lockfile-only --ignore-scripts --no-frozen-lockfile \

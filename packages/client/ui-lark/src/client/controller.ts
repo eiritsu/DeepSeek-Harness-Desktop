@@ -63,7 +63,12 @@ export class LarkManagementController {
     }
   }
 
-  /** Save application values; an empty secret preserves the existing one. */
+  /**
+   * Save application values; an empty secret preserves the existing one.
+   * @param appId - Existing Lark or Feishu application identifier.
+   * @param brand - Lark deployment whose endpoints own the application.
+   * @param appSecret - Replacement secret, or empty text to retain the saved value.
+   */
   async save(appId: string, brand: 'feishu' | 'lark', appSecret: string): Promise<void> {
     this.begin('save')
     try {
@@ -96,7 +101,10 @@ export class LarkManagementController {
     }
   }
 
-  /** Start official PersonalAgent registration and open its opaque verification URL. */
+  /**
+   * Start official PersonalAgent registration and open its opaque verification URL.
+   * @param brand - Lark deployment on which to create the managed application.
+   */
   async beginManagedRegistration(brand: 'feishu' | 'lark'): Promise<void> {
     this.begin('begin-registration')
     try {

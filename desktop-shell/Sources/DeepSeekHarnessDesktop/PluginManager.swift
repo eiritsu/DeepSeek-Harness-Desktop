@@ -99,17 +99,13 @@ struct DesktopRecoveryProfile: Sendable {
 
 final class PluginManager: @unchecked Sendable {
   /// Bundles shipped by the desktop distribution and managed by the app.
-  private static let managedBundleNames = [
-    "@deepseek-ai/dsh-file-recognizer-office",
-    "@deepseek-ai/dsh-lark",
-    "@deepseek-ai/dsh-model-catalog",
-  ]
+  private static let managedBundleNames: [String] = []
   /// Client features are mounted by `dsh-web-app` rather than as profile
   /// bundles. They remain App-owned and should still be visible in inventory.
   private static let embeddedManagedBundleNames = Set([
-    "@deepseek-ai/dsh-client-ui-plugin-library",
-    "@deepseek-ai/dsh-client-ui-skill-library",
+    "@deepseek-ai/dsh-client-ui-deepseek-files",
     "@deepseek-ai/dsh-external-tools",
+    "@deepseek-ai/dsh-file-recognizer-office",
   ])
   private struct CatalogCacheKey: Hashable {
     let page: Int
@@ -225,7 +221,7 @@ final class PluginManager: @unchecked Sendable {
   ) {
     queue.async {
       do {
-        let profile = self.dshHome.appendingPathComponent("profiles/web", isDirectory: true)
+        let profile = self.dshHome.appendingPathComponent("profiles/desktop-lite", isDirectory: true)
         try FileManager.default.createDirectory(at: profile, withIntermediateDirectories: true)
         let manifestURL = profile.appendingPathComponent("package.json")
         var root: [String: Any]
@@ -239,11 +235,19 @@ final class PluginManager: @unchecked Sendable {
         }
         var dsh = (root["dsh"] as? [String: Any]) ?? [:]
         var profileConfig = (dsh["profile"] as? [String: Any]) ?? [:]
-        var bundles = (profileConfig["bundles"] as? [String]) ?? ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app"]
+        var bundles = (profileConfig["bundles"] as? [String]) ?? [
+          "@deepseek-ai/dsh-base",
+          "@deepseek-ai/dsh-web-app",
+          "@deepseek-ai/dsh-desktop-lite",
+        ]
         // Client-only packages are roster rows in dsh-web-app, not profile
         // bundles. Keeping them here makes the host loader reject the profile
         // because they intentionally have no `dsh.bundle` declaration.
-        let clientOnly = ["@deepseek-ai/dsh-client-ui-plugin-library", "@deepseek-ai/dsh-client-ui-skill-library"]
+        let clientOnly = [
+          "@deepseek-ai/dsh-client-ui-deepseek-files",
+          "@deepseek-ai/dsh-external-tools",
+          "@deepseek-ai/dsh-file-recognizer-office",
+        ]
         let bundleCountBeforeCleanup = bundles.count
         bundles.removeAll { clientOnly.contains($0) }
         let removedClientOnly = bundleCountBeforeCleanup != bundles.count
@@ -290,7 +294,7 @@ final class PluginManager: @unchecked Sendable {
   ) {
     queue.async {
       do {
-        let manifest = self.dshHome.appendingPathComponent("profiles/web/package.json")
+        let manifest = self.dshHome.appendingPathComponent("profiles/desktop-lite/package.json")
         let data = try Data(contentsOf: manifest)
         guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
           throw DesktopError.message("Web profile 的插件清单格式无效。")
@@ -520,7 +524,7 @@ final class PluginManager: @unchecked Sendable {
           ).filter { !$0.lastPathComponent.hasPrefix(".") && Self.skillName(at: $0) == name }
         }
         guard candidates.count == 1, let target = candidates.first else {
-          throw DesktopError.message("未找到唯一匹配的 Skill：(name)")
+          throw DesktopError.message("未找到唯一匹配的 Skill：\(name)")
         }
         try FileManager.default.removeItem(at: target)
         self.appendAudit(action: "skill-remove", subject: name, status: "success", message: "Skill 已从 Application Support 移除。")
@@ -596,7 +600,7 @@ final class PluginManager: @unchecked Sendable {
         guard Self.isPackageName(package) else {
           throw DesktopError.message("插件包名格式无效。")
         }
-        let manifest = self.dshHome.appendingPathComponent("profiles/web/package.json")
+        let manifest = self.dshHome.appendingPathComponent("profiles/desktop-lite/package.json")
         let data = try Data(contentsOf: manifest)
         guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let dependencies = root["dependencies"] as? [String: String],
@@ -937,7 +941,7 @@ final class PluginManager: @unchecked Sendable {
     }
     let result = try CommandRunner.run(
       executable: toolchain.node,
-      arguments: [cli.path, "plugin", "--profile", "web"] + arguments,
+      arguments: [cli.path, "plugin", "--profile", "desktop-lite"] + arguments,
       directory: sourceRoot,
       environment: toolchain.environment(
         overrides: ["DSH_HOME": dshHome.path],
@@ -955,7 +959,7 @@ final class PluginManager: @unchecked Sendable {
     guard Self.isPackageName(package) else { return nil }
     let profiles = dshHome.appendingPathComponent("profiles", isDirectory: true)
     try removeStaleRecoveryDirectories(in: profiles)
-    let web = profiles.appendingPathComponent("web", isDirectory: true)
+    let web = profiles.appendingPathComponent("desktop-lite", isDirectory: true)
     let manifestURL = web.appendingPathComponent("package.json")
     let data = try Data(contentsOf: manifestURL)
     guard var root = try JSONSerialization.jsonObject(with: data) as? [String: Any],

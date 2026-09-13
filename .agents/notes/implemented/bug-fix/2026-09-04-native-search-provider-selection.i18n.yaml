@@ -3,4 +3,4 @@
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-04-native-search-provider-selection.md
 2026-09-04-native-search-provider-selection.md: 119c686c11f068b88a9fba195438671bf4e107bd
-2026-09-04-native-search-provider-selection.zh.md: 95a581bd20335a84e9ec56d3d4a7c720c5fa03ac
+2026-09-04-native-search-provider-selection.zh.md: 5a232dfad1ceb99279a6b4c08d7b2c76dff07c85

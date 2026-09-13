@@ -38,7 +38,7 @@ final class LogStore: @unchecked Sendable {
 
   private init() {
     let root = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-      .appendingPathComponent("DeepSeek Harness Desktop", isDirectory: true)
+      .appendingPathComponent("DeepSeek Harness Lite", isDirectory: true)
       .appendingPathComponent("logs", isDirectory: true)
     try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     fileURL = root.appendingPathComponent("desktop.log")

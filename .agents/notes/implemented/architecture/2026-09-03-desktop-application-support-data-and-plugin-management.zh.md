@@ -1,10 +1,10 @@
-# Agent Note：桌面 Application Support 数据与插件管理
+# Agent Note: 桌面 Application Support 数据与插件管理
 
-状态：已实现
+Status: implemented
 
 [English](2026-09-03-desktop-application-support-data-and-plugin-management.md) | 中文
 
-## 问题
+## Problem
 
 macOS 桌面壳使用 Application Support 下的 Harness home，而早期桌面运行把持久数据写在 `~/.dsh`。插件库此前只读取 profile 依赖，因此即使内置插件和技能库已经加载，已安装数量仍不会显示它们。
 

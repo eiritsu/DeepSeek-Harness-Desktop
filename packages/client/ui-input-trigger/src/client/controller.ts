@@ -10,7 +10,7 @@
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type {
-  ArbitrateKey, ArbitrateOutcome, PickOutcome,
+  ArbitrateKey, ArbitrateOutcome, PickOutcome, ReferenceInsert,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { detectTrigger } from '../core/detect.ts'
@@ -61,7 +61,7 @@ export class InputTriggerController {
     createSnapshotStore<ReadonlyMap<string, readonly InputTriggerCrumb[]>>(new Map())
   /**
    * Aggregated hot reference lexicon, grouped by trigger (plain-text-reference decision;
-   * see .agents/notes/implemented/architecture/2026-07-25-web-input-machine-and-slash-pipeline.md):
+   * see .agents/notes/archived/architecture/2026-07-25-web-input-machine-and-slash-pipeline.md):
    * sources implementing the lexicon hook are polled with the session
    * projection; undefined answers (roll not hot yet) are skipped; multiple
    * sources on one trigger concatenate in registration order. A snapshot
@@ -160,35 +160,6 @@ export class InputTriggerController {
     this.reduce({ type: 'hit', hit })
     this.refreshHeaders(hit, [match])
     this.fetchCandidates(hit, [match])
-  }
-
-  /**
-   * Open the launcher with every source bound to a trigger. The composer uses
-   * this for its plus menu so attachments, commands, and other contributions
-   * share one native menu surface.
-   * @param trigger - trigger whose sources should be displayed.
-   * @param hit - synthetic hit carrying position and pick-time draft CAS.
-   */
-  toggleSources(trigger: TriggerChar, hit: TriggerHit): void {
-    if (this.disposed) return
-    if (this.launcher.getSnapshot() === 'command' && this.menu.getSnapshot().open) {
-      this.dismiss()
-      return
-    }
-    const roster = this.deps.roster.sources(trigger)
-    if (roster.length === 0) {
-      this.dismiss()
-      return
-    }
-    this.stopFetch()
-    this.hit = hit
-    // Keep the existing launcher key: the composer only needs to know that
-    // its plus menu is expanded, while the menu itself contains all groups.
-    this.launcher.set('command')
-    this.menu.set(seedGroups(this.menu.getSnapshot(), roster))
-    this.reduce({ type: 'hit', hit })
-    this.refreshHeaders(hit, roster)
-    this.fetchCandidates(hit, roster)
   }
 
   /**
@@ -335,6 +306,27 @@ export class InputTriggerController {
   }
 
   /**
+   * Route a chip to its owner or an editable token to its current lexicon owner.
+   * @param source - chip source name; undefined for editable text.
+   * @param reference - source-owned id and optional chip glyph.
+   * @returns whether an owner accepted the preview, possibly awaiting its catalog.
+   */
+  openReference(source: string | undefined, reference: Pick<ReferenceInsert, 'ref' | 'appearance'>): boolean {
+    if (this.disposed) return false
+    const session = this.project()
+    for (const owner of this.deps.roster.all()) {
+      const matches = source === undefined
+        ? reference.ref.startsWith(owner.trigger) && owner.lexicon?.(session)?.includes(reference.ref.slice(1))
+        : owner.name === source
+      if (matches && owner.openReference?.(session, reference)) {
+        this.dismiss()
+        return true
+      }
+    }
+    return false
+  }
+
+  /**
    * Enter last adjudication: polls sources' matchEnter in registration
    * order, first non-undefined wins. The outcome returns to the caller (the
    * input machine applies it inside the same submit attempt — no event).
@@ -391,6 +383,16 @@ export class InputTriggerController {
     if (this.disposed) return
     this.stopFetch()
     this.reduce({ type: 'close' })
+  }
+
+  /** Re-fetch the currently open menu without changing its hit or visible rows. */
+  refreshOpenMenu(): void {
+    if (this.disposed || !this.menu.getSnapshot().open || this.hit === null) return
+    const launched = this.launcher.getSnapshot()
+    const roster = this.deps.roster.sources(this.hit.trigger)
+      .filter(source => launched === null || source.name === launched)
+    if (roster.length === 0) return
+    this.fetchCandidates(this.hit, roster)
   }
 
   /** Scope teardown: close and abort (the service deletes the map entry). */

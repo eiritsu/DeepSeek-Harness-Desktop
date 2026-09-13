@@ -1,9 +1,6 @@
 import Darwin
 import Foundation
 
-@_silgen_name("flock")
-private func systemFlock(_ descriptor: Int32, _ operation: Int32) -> Int32
-
 enum RuntimeInstanceLockError: LocalizedError, Equatable {
   case alreadyRunning(processIdentifier: pid_t?)
   case system(operation: String, code: Int32)
@@ -20,29 +17,28 @@ enum RuntimeInstanceLockError: LocalizedError, Equatable {
 
 final class RuntimeInstanceLock {
   private var descriptor: Int32?
+  private let path: String
 
   init(supportRoot: URL) throws {
     try FileManager.default.createDirectory(at: supportRoot, withIntermediateDirectories: true)
     let path = supportRoot.appendingPathComponent("runtime.lock").path
-    let descriptor = Darwin.open(path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
-    guard descriptor >= 0 else {
-      throw RuntimeInstanceLockError.system(operation: "open", code: errno)
+    self.path = path
+    var descriptor = Darwin.open(path, O_CREAT | O_EXCL | O_RDWR | O_NOFOLLOW, S_IRUSR | S_IWUSR)
+    if descriptor < 0, errno == EEXIST, Self.removeStaleOwner(path) {
+      descriptor = Darwin.open(path, O_CREAT | O_EXCL | O_RDWR | O_NOFOLLOW, S_IRUSR | S_IWUSR)
     }
-    guard systemFlock(descriptor, LOCK_EX | LOCK_NB) == 0 else {
-      let code = errno
-      let processIdentifier = code == EWOULDBLOCK ? Self.readOwner(path) : nil
-      Darwin.close(descriptor)
-      if code == EWOULDBLOCK {
-        throw RuntimeInstanceLockError.alreadyRunning(processIdentifier: processIdentifier)
+    guard descriptor >= 0 else {
+      if errno == EEXIST {
+        throw RuntimeInstanceLockError.alreadyRunning(processIdentifier: Self.readOwner(path))
       }
-      throw RuntimeInstanceLockError.system(operation: "flock", code: code)
+      throw RuntimeInstanceLockError.system(operation: "open", code: errno)
     }
     self.descriptor = descriptor
     do {
       try Self.writeOwner(descriptor)
     } catch {
-      _ = systemFlock(descriptor, LOCK_UN)
       Darwin.close(descriptor)
+      _ = Darwin.unlink(path)
       throw error
     }
   }
@@ -54,8 +50,8 @@ final class RuntimeInstanceLock {
   func release() {
     guard let descriptor else { return }
     self.descriptor = nil
-    _ = systemFlock(descriptor, LOCK_UN)
     Darwin.close(descriptor)
+    _ = Darwin.unlink(path)
   }
 
   private static func writeOwner(_ descriptor: Int32) throws {
@@ -80,5 +76,15 @@ final class RuntimeInstanceLock {
       return nil
     }
     return processIdentifier
+  }
+
+  private static func removeStaleOwner(_ path: String) -> Bool {
+    var metadata = stat()
+    guard Darwin.lstat(path, &metadata) == 0, (metadata.st_mode & S_IFMT) == S_IFREG,
+          let owner = readOwner(path)
+    else { return false }
+    if Darwin.kill(owner, 0) == 0 || errno == EPERM { return false }
+    guard errno == ESRCH else { return false }
+    return Darwin.unlink(path) == 0
   }
 }

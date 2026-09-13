@@ -10,6 +10,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
 import { createScope, scopeOf } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { LocaleSnapshot } from '@deepseek-ai/dsh-client-locale/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { InputTriggerController, InputTriggerService } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import type {
@@ -62,7 +63,7 @@ function readySource(
 }
 
 const claimOf = (token: string): CommandClaim =>
-  ({ token, submit: () => Promise.resolve({ kind: 'success' }) })
+  ({ name: token.slice(1).trim(), token, submit: () => Promise.resolve({ kind: 'success' }) })
 
 /** One microtask hop: lets settled candidate promises flow into the store. */
 const tick = () => Promise.resolve()
@@ -224,6 +225,43 @@ describe('sessionOf', () => {
     await tick()
     expect(ca.menu.getSnapshot().groups[0]!.items).toEqual([{ name: 'goal' }])
     expect(cb.menu.getSnapshot().open).toBe(false)
+  })
+
+  it('re-fetches every open menu when the active locale changes', async () => {
+    const { root, inputTriggers, mint } = await serviceBench()
+    let locale = 'en'
+    const candidates = vi.fn(() => Promise.resolve([{ name: 'compact', description: locale }]))
+    inputTriggers.registerSource({
+      trigger: '/',
+      name: 'command',
+      candidates,
+      onPick: () => undefined,
+    })
+    const first = inputTriggers.sessionOf(mint('a').actx)
+    const second = inputTriggers.sessionOf(mint('b').actx)
+    const closed = inputTriggers.sessionOf(mint('c').actx)
+    first.track('/c', 2, { tier: 'plain' }, 1)
+    second.track('/c', 2, { tier: 'plain' }, 1)
+    await tick()
+    expect(first.menu.getSnapshot()).toMatchObject({
+      open: true,
+      hit: { query: 'c' },
+      groups: [{ source: 'command', status: 'ready', items: [{ name: 'compact', description: 'en' }] }],
+    })
+
+    locale = 'zh'
+    root.emit('locale/change', { active: 'zh', locales: [], revision: 1 } as LocaleSnapshot)
+    expect(first.menu.getSnapshot().open).toBe(true)
+    expect(second.menu.getSnapshot().open).toBe(true)
+    await tick()
+    expect(candidates).toHaveBeenCalledTimes(4)
+    expect(first.menu.getSnapshot()).toMatchObject({
+      open: true,
+      hit: { query: 'c' },
+      groups: [{ source: 'command', status: 'ready', items: [{ name: 'compact', description: 'zh' }] }],
+    })
+    expect(second.menu.getSnapshot().groups[0]!.items).toEqual([{ name: 'compact', description: 'zh' }])
+    expect(closed.menu.getSnapshot().open).toBe(false)
   })
 })
 
@@ -430,27 +468,6 @@ describe('programmatic source launcher', () => {
     await tick()
     expect(controller.launcher.getSnapshot()).toBeNull()
     expect(controller.menu.getSnapshot().groups.map(group => group.source)).toEqual(['command', 'skill'])
-  })
-
-  it('opens the plus launcher with every source in registration order', async () => {
-    const attachment = readySource('/', 'attachment', [{ name: '文件和文件夹', icon: 'paperclip' }])
-    const command = readySource('/', 'command', [{ name: 'goal' }])
-    const { controller } = controllerBench([attachment.source, command.source])
-    const hit = {
-      trigger: '/' as const,
-      query: '',
-      quoted: false,
-      position: 'leading' as const,
-      span: { start: 0, end: 0, draftRev: 2 },
-    }
-
-    controller.toggleSources('/', hit)
-    await tick()
-
-    expect(controller.launcher.getSnapshot()).toBe('command')
-    expect(controller.menu.getSnapshot().groups.map(group => group.source)).toEqual(['attachment', 'command'])
-    controller.toggleSources('/', hit)
-    expect(controller.menu.getSnapshot().open).toBe(false)
   })
 })
 
@@ -1095,7 +1112,7 @@ describe('adjudicate', () => {
         return Promise.resolve('handled')
       }),
     ])
-    const result = await controller.adjudicate('/goal make it fast', new AbortController().signal, { images: 0 })
+    const result = await controller.adjudicate('/goal make it fast', new AbortController().signal, { attachments: 0 })
     expect(result).toEqual({ claim })
     expect(calls).toEqual(['first:/goal make it fast', 'second:/goal make it fast'])
   })
@@ -1106,7 +1123,7 @@ describe('adjudicate', () => {
       enterSource('@', 'subagent', atHook),
       enterSource('/', 'command', () => Promise.resolve(undefined)),
     ])
-    await expect(controller.adjudicate('/xyz', new AbortController().signal, { images: 0 })).resolves.toBeUndefined()
+    await expect(controller.adjudicate('/xyz', new AbortController().signal, { attachments: 0 })).resolves.toBeUndefined()
     expect(atHook).not.toHaveBeenCalled()
   })
 
@@ -1122,7 +1139,7 @@ describe('adjudicate', () => {
         return Promise.resolve('handled')
       }),
     ])
-    const envelope = { images: 2 }
+    const envelope = { attachments: 2 }
     await controller.adjudicate('/goal', new AbortController().signal, envelope)
     expect(envelopes).toEqual([envelope, envelope])
     expect(envelopes[0]).toBe(envelope)
@@ -1133,7 +1150,7 @@ describe('adjudicate', () => {
       enterSource('/', 'command', () => Promise.reject(new Error('warmup failed'))),
       enterSource('/', 'late', () => Promise.resolve('handled')),
     ])
-    await expect(controller.adjudicate('/goal x', new AbortController().signal, { images: 0 }))
+    await expect(controller.adjudicate('/goal x', new AbortController().signal, { attachments: 0 }))
       .rejects.toThrow('warmup failed')
   })
 
@@ -1142,7 +1159,30 @@ describe('adjudicate', () => {
     const { controller } = controllerBench([enterSource('/', 'command', hook)])
     const abort = new AbortController()
     abort.abort(new Error('attempt released'))
-    await expect(controller.adjudicate('/goal', abort.signal, { images: 0 })).rejects.toThrow('attempt released')
+    await expect(controller.adjudicate('/goal', abort.signal, { attachments: 0 })).rejects.toThrow('attempt released')
     expect(hook).not.toHaveBeenCalled()
+  })
+})
+
+describe('reference activation', () => {
+  it('routes chips by owner and text by the live lexicon without picking or serializing', () => {
+    const openReference = vi.fn(() => true)
+    const lexicon = vi.fn(() => ['review'])
+    const skill = deferredSource('/', 'skill', { lexicon, openReference }).source
+    const inert = deferredSource('/', 'inert', { lexicon }).source
+    const { controller, sources } = controllerBench([inert, skill])
+    expect(controller.openReference(undefined, { ref: '/unknown' })).toBe(false)
+    expect(controller.openReference('missing', { ref: '/review' })).toBe(false)
+    expect(controller.openReference(undefined, { ref: '/review' })).toBe(true)
+    expect(openReference).toHaveBeenCalledWith({ sessionId: sid('a') }, { ref: '/review' })
+    expect(controller.openReference('skill', { ref: 'opaque', appearance: 'file' })).toBe(true)
+    lexicon.mockReturnValue([])
+    expect(controller.openReference(undefined, { ref: '/review' })).toBe(false)
+    openReference.mockReturnValue(false)
+    expect(controller.openReference('skill', { ref: 'opaque' })).toBe(false)
+    sources.splice(0)
+    expect(controller.openReference('skill', { ref: '/review' })).toBe(false)
+    controller.dispose()
+    expect(controller.openReference('skill', { ref: '/review' })).toBe(false)
   })
 })

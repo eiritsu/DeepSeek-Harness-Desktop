@@ -8,7 +8,7 @@
 - id: llm-deepseek
   disabled: true
 
-- id: llm-dsh-ai
+- id: llm-pi-ai
   config:
     providers:
       deepseek:

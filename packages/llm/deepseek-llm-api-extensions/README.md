@@ -29,7 +29,7 @@ Provider-specific registry for additive top-level fields on official DeepSeek LL
 
 Each provider sees the exact serialized base body, the request `AbortSignal`, plus optional `sessionId` and auxiliary-call `purpose`. It must stop its own work promptly after cancellation and returns `undefined` when its field does not apply to that request. A prepared operation retains the providers it captured even if HMR removes their registrations before HTTP acceptance.
 
-The registry owns addition and lifecycle, not field semantics. `@deepseek-ai/dsh-session-log-deepseek` owns `dsh_session_log`; `@deepseek-ai/dsh-plugin-package-inventory-deepseek` owns `dsh_plugin_packages`. The provider-neutral LLM seam and `llm-dsh-ai` do not consume this registry.
+The registry owns addition and lifecycle, not field semantics. `@deepseek-ai/dsh-session-log-deepseek` owns `dsh_session_log`; `@deepseek-ai/dsh-plugin-package-inventory-deepseek` owns `dsh_plugin_packages`. The provider-neutral LLM seam and `llm-pi-ai` do not consume this registry.
 
 <a id="model-experience"></a>
 ## Model Experience
@@ -57,3 +57,5 @@ None; registry fields are model-hidden provider metadata and do not alter the se
 None.
 
 </details>
+
+**Runtime invariant:** No companion is published. Duplicate ownership, detached output, and one acceptance settlement are enforced inside the registry operation that owns each decision.

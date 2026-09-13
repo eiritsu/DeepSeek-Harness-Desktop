@@ -1,10 +1,10 @@
-# Agent Note：凭据门控的外部工具
+# Agent Note: 凭据门控的外部工具
 
 Status: implemented
 
 [English](2026-09-04-external-tools-credential-gating.md) | 中文
 
-## 问题
+## Problem
 
 用户需要填写提供方 API Key 后启用工具的 Hermes 式体验，同时 DSH 必须避免把密钥写入普通设置、插件目录或会话日志。
 

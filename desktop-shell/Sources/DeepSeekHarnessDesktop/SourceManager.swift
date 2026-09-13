@@ -30,12 +30,11 @@ final class SourceManager: @unchecked Sendable {
     "packages/llm/llm",
     "packages/attachment/attachment",
     "packages/extensions/tool-cordis",
-    "packages/client/ui-plugin-library",
-    "packages/client/ui-skill-library",
     "packages/client/ui-deepseek-files",
+    "packages/client/ui-skill-library",
     "packages/attachment/file-recognizer-office",
-    "packages/lark/lark",
-    "packages/llm/model-catalog",
+    "packages/extensions/external-tools",
+    "packages/bundle/desktop-lite",
     "apps/cli/package.json",
   ]
 
@@ -63,13 +62,14 @@ final class SourceManager: @unchecked Sendable {
     sourceRepository: String = Bundle.main.object(forInfoDictionaryKey: "DSHSourceRepository") as? String
       ?? "https://github.com/deepseek-ai/deepseek-harness.git",
     sourceBranch: String = Bundle.main.object(forInfoDictionaryKey: "DSHSourceBranch") as? String ?? "master",
+    dshHome: URL? = nil,
     legacyHome: URL? = nil,
     allowsExternalSourceRoot: Bool? = nil
   ) {
     let resolvedSupportRoot = supportRoot ?? FileManager.default.urls(
       for: .applicationSupportDirectory,
       in: .userDomainMask
-    )[0].appendingPathComponent("DeepSeek Harness Desktop", isDirectory: true)
+    )[0].appendingPathComponent("DeepSeek Harness Lite", isDirectory: true)
     self.defaults = defaults
     self.bootstrapArchive = bootstrapArchive
     self.bootstrapVersion = bootstrapVersion
@@ -77,11 +77,14 @@ final class SourceManager: @unchecked Sendable {
     self.sourceBranch = sourceBranch
     self.supportRoot = resolvedSupportRoot
     self.legacyHome = legacyHome ?? (supportRoot == nil
-      ? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".dsh", isDirectory: true)
+      ? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("DeepSeek Harness Desktop/data", isDirectory: true)
       : nil)
     self.allowsExternalSourceRoot = allowsExternalSourceRoot
       ?? (Bundle.main.object(forInfoDictionaryKey: "DSHSourceRoot") != nil || bootstrapArchive == nil)
-    dshHome = self.supportRoot.appendingPathComponent("data", isDirectory: true)
+    self.dshHome = dshHome ?? (supportRoot == nil
+      ? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".dsh", isDirectory: true)
+      : self.supportRoot.appendingPathComponent("data", isDirectory: true))
     probeHome = self.supportRoot.appendingPathComponent("probe-data", isDirectory: true)
   }
 

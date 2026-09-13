@@ -113,14 +113,15 @@ describe('WebRuntime execution resolution', () => {
     await expect(web.search({ query: 'q' })).resolves.toMatchObject({ content: 'perplexity' })
   })
 
-  it('lets a composed plugin temporarily select one provider', async () => {
-    const { web } = await mountWeb()
+  it('lets an owning composition override and later restore provider selection', async () => {
+    const { web } = await mountWeb({ searchProvider: 'perplexity' })
     web.registerSearchProvider(makeSearchProvider('exa', available, () => Promise.resolve(searchResult('exa'))))
     web.registerSearchProvider(makeSearchProvider('perplexity', available, () => Promise.resolve(searchResult('perplexity'))))
-    web.setSearchProviderOverride('perplexity')
-    await expect(web.search({ query: 'q' })).resolves.toMatchObject({ content: 'perplexity' })
+
+    web.setSearchProviderOverride('exa')
+    await expect(web.search({ query: 'q' })).resolves.toMatchObject({ content: 'exa' })
     web.setSearchProviderOverride(undefined)
-    await expect(web.search({ query: 'q' })).rejects.toThrow(expect.objectContaining({ code: 'WEB_PROVIDER_AMBIGUOUS' }))
+    await expect(web.search({ query: 'q' })).resolves.toMatchObject({ content: 'perplexity' })
   })
 
   it('ignores unusable providers when auto-selecting', async () => {

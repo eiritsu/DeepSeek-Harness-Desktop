@@ -196,8 +196,8 @@ function searchTool(
 ) {
   return defineTool({
     name: entry.toolName as string,
-    description: `${entry.description}。调用前需要在设置 → 工具与连接中配置 ${entry.displayName}。`,
-    parameters: { query: { type: 'string', required: true, description: '搜索问题或关键词' }, maxResults: { type: 'number', description: '返回结果数量，默认 5' } },
+    description: `${entry.description} Configure ${entry.displayName} under Settings > Tools & connections before calling it.`,
+    parameters: { query: { type: 'string', required: true, description: 'Search question or keywords.' }, maxResults: { type: 'number', description: 'Maximum results; defaults to 5.' } },
     output: { schema: { type: 'json' }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }] },
     execute: async (raw, exec) => call(await keyFor(ctx, entry), raw as SearchArgs, exec.signal),
   })
@@ -218,7 +218,7 @@ export function toolForProvider(ctx: Context, entry: ExternalToolCatalogEntry): 
     case 'tavily': return searchTool(ctx, entry, async (key, args, signal) => readJson(await fetch(new URL('/search', entry.baseURL), { method: 'POST', redirect: 'error', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ api_key: key, query: args.query, max_results: args.maxResults ?? 5 }), signal })))
     case 'exa': return searchTool(ctx, entry, async (key, args, signal) => readJson(await fetch(new URL('/search', entry.baseURL), { method: 'POST', redirect: 'error', headers: { accept: 'application/json', 'content-type': 'application/json', authorization: `Bearer ${key}` }, body: JSON.stringify({ query: args.query, numResults: args.maxResults ?? 5, contents: { highlights: {} } }), signal })))
     case 'github': return searchTool(ctx, entry, async (key, args, signal) => { const url = new URL('/search/code', entry.baseURL); url.searchParams.set('q', args.query); return readJson(await fetch(url, { redirect: 'error', headers: { accept: 'application/json', authorization: `Bearer ${key}`, 'X-GitHub-Api-Version': '2022-11-28' }, signal })) })
-    case 'firecrawl': return defineTool({ name: entry.toolName as string, description: `${entry.description}。调用前需要在设置 → 工具与连接中配置 ${entry.displayName}。`, parameters: { url: { type: 'string', required: true, description: '要提取的网页 URL' } }, output: { schema: { type: 'json' }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }] }, execute: async (raw, exec) => readJson(await fetch(new URL('/v1/scrape', entry.baseURL), { method: 'POST', redirect: 'error', headers: { accept: 'application/json', 'content-type': 'application/json', authorization: `Bearer ${await keyFor(ctx, entry)}` }, body: JSON.stringify({ url: (raw as { readonly url: string }).url, formats: ['markdown'] }), signal: exec.signal })) })
+    case 'firecrawl': return defineTool({ name: entry.toolName as string, description: `${entry.description} Configure ${entry.displayName} under Settings > Tools & connections before calling it.`, parameters: { url: { type: 'string', required: true, description: 'Web URL to extract.' } }, output: { schema: { type: 'json' }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }] }, execute: async (raw, exec) => readJson(await fetch(new URL('/v1/scrape', entry.baseURL), { method: 'POST', redirect: 'error', headers: { accept: 'application/json', 'content-type': 'application/json', authorization: `Bearer ${await keyFor(ctx, entry)}` }, body: JSON.stringify({ url: (raw as { readonly url: string }).url, formats: ['markdown'] }), signal: exec.signal })) })
     default: return undefined
   }
 }

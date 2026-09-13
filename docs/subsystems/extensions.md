@@ -289,6 +289,50 @@ publish(topic: string, payload: InspectorJsonValue, monotonicMs?: number): void
 
 Source: [`packages/experimental/inspector/src/index.ts`](../../packages/experimental/inspector/src/index.ts)
 
+<a id="ctxlarkmanagement--larkmanagementgateway"></a>
+
+### `ctx.larkManagement` — `LarkManagementGateway`
+
+Remote service and model-facing tool backed by the official Lark CLI.
+
+```ts cordis-catalog
+/**
+ * Read credentials, application scopes, and bot/user identity without exposing secret values.
+ * @returns the complete secret-free management status.
+ */
+@Remote('status') async status(): Promise<LarkManagementStatus>
+
+/**
+ * Store the application id/brand and optionally replace the write-only secret.
+ * @param input - Application identity, deployment, and optional replacement secret.
+ */
+@Remote('saveApplication') async saveApplication(input: LarkApplicationInput): Promise<void>
+
+/** Remove the provider-managed application secret. */
+@Remote('clearSecret') async clearSecret(): Promise<void>
+
+/**
+ * Start the official PersonalAgent app-registration flow without requesting a manual secret.
+ * @param brand - Lark deployment on which to create the managed application.
+ * @returns the opaque browser verification request.
+ */
+@Remote('beginManagedRegistration') async beginManagedRegistration(brand: 'feishu' | 'lark'): Promise<LarkManagedRegistrationRequest>
+
+/** Finish a managed app registration after the user approves the official browser prompt. */
+@Remote('completeManagedRegistration') async completeManagedRegistration(): Promise<void>
+
+/**
+ * Start user OAuth for the capability scopes represented by the management page.
+ * @returns the opaque browser authorization request.
+ */
+@Remote('beginUserAuth') async beginUserAuth(): Promise<LarkUserAuthRequest>
+
+/** Complete the persisted user OAuth request after the user authorizes it. */
+@Remote('completeUserAuth') async completeUserAuth(): Promise<void>
+```
+
+Source: [`packages/lark/lark/src/index.ts`](../../packages/lark/lark/src/index.ts)
+
 <a id="cordis-events"></a>
 
 ### `cordis/*` events

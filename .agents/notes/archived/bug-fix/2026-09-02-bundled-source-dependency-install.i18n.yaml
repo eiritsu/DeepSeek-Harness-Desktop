@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-02-bundled-source-dependency-install.md
+2026-09-02-bundled-source-dependency-install.md: c36a853ef33a24efc529dd8c65f2522135eb37e8
+2026-09-02-bundled-source-dependency-install.zh.md: 1720ae25a2a14eff9d7e6fd3041aba66ff28414d

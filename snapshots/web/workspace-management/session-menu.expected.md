@@ -1,0 +1,16 @@
+- menu:
+  - menuitem "Rename":
+    - img
+    - text: Rename
+  - menuitem "Fork session":
+    - img
+    - text: Fork session
+  - menuitem "Archive session":
+    - img
+    - text: Archive session
+  - menuitem "Add to workspace":
+    - img
+    - text: Add to workspace
+  - menuitem "Delete session":
+    - img
+    - text: Delete session

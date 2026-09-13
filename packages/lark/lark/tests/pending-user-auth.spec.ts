@@ -16,8 +16,13 @@ describe('Lark pending current-user authorization', () => {
 
   it('rejects malformed and legacy pending values', () => {
     expect(decodePendingUserAuthorization('device-code', [])).toBeUndefined()
+    expect(decodePendingUserAuthorization('null', [])).toBeUndefined()
+    expect(decodePendingUserAuthorization('[]', [])).toBeUndefined()
+    expect(decodePendingUserAuthorization('{"deviceCode":1,"scopes":[]}', [])).toBeUndefined()
     expect(decodePendingUserAuthorization('{"deviceCode":"","scopes":[]}', [])).toBeUndefined()
     expect(decodePendingUserAuthorization('{"deviceCode":"code","scopes":[1]}', [])).toBeUndefined()
+    expect(decodePendingUserAuthorization('{"deviceCode":"code","scopes":["old"]}', ['new']))
+      .toBeUndefined()
     expect(() => encodePendingUserAuthorization('', [])).toThrow(/must not be empty/)
   })
 })

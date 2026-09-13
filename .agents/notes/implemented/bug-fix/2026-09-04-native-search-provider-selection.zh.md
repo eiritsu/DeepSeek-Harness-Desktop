@@ -1,10 +1,10 @@
-# Agent Note：原生搜索提供方按凭据与优先级选择
+# Agent Note: 原生搜索提供方按凭据与优先级选择
 
-状态：已实现
+Status: implemented
 
 [English](2026-09-04-native-search-provider-selection.md) | 中文
 
-## 问题
+## Problem
 
 桌面组合同时挂载了 DeepSeek 原生搜索提供方和 external-tools 注册表。DeepSeek 适配器把异步解析器存在当成可用，因此添加 Tavily Key 后可能有多个原生搜索提供方同时可用。external-tools 注册表只把 Tavily、Brave Search 与 Exa 暴露为各自的模型工具。兼容 OpenAI 的网关还可能在 Responses `function_call_arguments.done` 事件中省略 `arguments`，导致解析器在任何 web 提供方执行前解引用 `undefined` 并崩溃。
 

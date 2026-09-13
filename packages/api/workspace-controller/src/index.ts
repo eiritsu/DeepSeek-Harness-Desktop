@@ -113,8 +113,8 @@ export class WorkspaceController extends TypertRemoteService {
 
   /**
    * Add one known Session to a Workspace.
-   * @param request - Workspace and Session identities.
-   * @returns the updated Workspace projection.
+   * @param request - Workspace and Session identities to associate.
+   * @returns the changed Workspace projection.
    */
   @Remote('attachSession')
   attachSession(request: WorkspaceAttachSessionRequest): Promise<WorkspaceAttachSessionValue> {

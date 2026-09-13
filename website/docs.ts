@@ -131,6 +131,14 @@ const homeAndGuide = pairedPages([
     order: 2,
   },
   {
+    source: 'docs/user/guide/network-proxy.md',
+    route: 'guide/network-proxy.md',
+    label: { root: '网络代理', en: 'Network proxy' },
+    sidebar: { root: 'zh-guide', en: 'en-guide' },
+    section: { root: '入门', en: 'Guide' },
+    order: 3,
+  },
+  {
     source: 'docs/user/guide/python-sdk.md',
     route: 'guide/python-sdk.md',
     label: { root: 'Python', en: 'Python' },
@@ -248,14 +256,6 @@ const develop = pairedPages([
     section: { root: '实战', en: 'Practice' },
     order: 3,
   },
-  {
-    source: 'docs/user/develop/practice/plugin-standard.md',
-    route: 'develop/practice/plugin-standard.md',
-    label: { root: '插件开发标准', en: 'Plugin development standard' },
-    sidebar: { root: 'zh-develop', en: 'en-develop' },
-    section: { root: '实战', en: 'Practice' },
-    order: 4,
-  },
 ])
 
 const cordisTutorial = pairedPages(([
@@ -347,6 +347,8 @@ const subsystemGroups = [
     ['web-client.md', 'Web Client 架构', 'Web Client architecture'],
     ['client-modules.md', '客户端模块', 'Client modules'],
     ['slots.md', '客户端 Slots', 'Client slots'],
+    ['client-resources.md', '客户端资源', 'Client resources'],
+    ['sidebar-right.md', '右侧 Sidebar', 'Right Sidebar'],
     ['conversation.md', 'Conversation 组装', 'Conversation assembly'],
     ['typert.md', 'Typert', 'Typert'],
     ['storage.md', '存储', 'Storage'],

@@ -4,7 +4,7 @@ import PackageDescription
 
 let package = Package(
   name: "DeepSeekHarnessDesktop",
-  platforms: [.macOS(.v13)],
+  platforms: [.macOS(.v11)],
   targets: [
     .executableTarget(
       name: "DeepSeekHarnessDesktop",

@@ -1,6 +1,6 @@
 # Agent Note: Generic file compatibility
 
-状态：已实现
+Status: implemented
 
 [English](2026-08-29-generic-file-compatibility.md) | 中文
 

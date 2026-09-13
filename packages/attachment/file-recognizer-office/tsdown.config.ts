@@ -1,7 +1,7 @@
 import { isBuiltin } from 'node:module'
 
 const library = {
-  entry: ['lib/types/index.js', 'lib/types/invariant.js'], outDir: 'lib', format: ['esm'],
+  entry: ['lib/types/index.js'], outDir: 'lib', format: ['esm'],
   platform: 'node', target: 'es2024', fixedExtension: false, dts: false, clean: false,
   deps: { neverBundle: (specifier: string) => isBuiltin(specifier) || !specifier.startsWith('.') },
 }

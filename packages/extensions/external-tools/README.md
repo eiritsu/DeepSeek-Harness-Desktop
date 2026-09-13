@@ -61,3 +61,5 @@ Changing enabled providers changes the tool prefix from the first changed schema
 
 - Provider connection tests, OAuth flows, and the catalogued media/browser providers are not implemented yet.
 - The first release exposes API-key credentials and HTTP search/extraction tools; provider-specific quotas and advanced parameters remain provider-owned work.
+
+No runtime invariant companion is published; registry lifecycle and provider selection are private state covered by focused lifecycle tests.

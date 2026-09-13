@@ -10,14 +10,15 @@ import type {
   FileAttachmentRef,
   ImageAttachmentRef,
   ImageMediaType,
+  SaveFileAttachment,
   SaveImageAttachment,
 } from '@deepseek-ai/dsh-attachment'
-import { UNKNOWN_FILE_MEDIA_TYPE } from '@deepseek-ai/dsh-attachment'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { AssistantMessage, ContentBlock } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
+import type {} from '@deepseek-ai/dsh-session-query'
 import * as timeContext from '@deepseek-ai/dsh-time-context'
 import type { Workspace } from '@deepseek-ai/dsh-workspace'
 import type { LarkChannel, NormalizedMessage, ResourceDescriptor } from '@larksuite/channel'
@@ -47,7 +48,7 @@ interface PendingTurnResponse {
 
 interface PreparedResource {
   readonly descriptor: ResourceDescriptor
-  readonly input: SaveImageAttachment | { data: Uint8Array; mediaType: string; name?: string }
+  readonly input: SaveImageAttachment | SaveFileAttachment
   readonly kind: 'image' | 'file'
 }
 
@@ -109,7 +110,12 @@ function imageMediaType(contentType: string | undefined, name: string | undefine
   }
 }
 
-/** Derive a stable opaque DSH identity without retaining the Lark chat id in filenames. */
+/**
+ * Derive a stable opaque DSH identity without retaining the Lark chat id in filenames.
+ * @param appId - Lark application identity that owns the conversation.
+ * @param chatId - Provider chat identity to hash.
+ * @returns a stable opaque Session identity.
+ */
 export function larkSessionId(appId: string, chatId: string): SessionId {
   const digest = createHash('sha256')
     .update(LARK_SESSION_KEY_VERSION).update('\0')
@@ -163,7 +169,7 @@ export class LarkConversationBridge {
       }),
     ]
     try {
-      await Promise.all(this.ctx.agents.list().map(async agent => { await this.configureDiscoveredAgent(agent) }))
+      await Promise.all(this.ctx.agents.list().map(async (agent) => { await this.configureDiscoveredAgent(agent) }))
       await this.channel.connect()
       this.connected = true
     } catch (error: unknown) {
@@ -195,7 +201,7 @@ export class LarkConversationBridge {
       const agent = await this.ensureAgent(message.chatId)
       sessionId = agent.session.id
       this.activeMessages.set(sessionId, (this.activeMessages.get(sessionId) ?? 0) + 1)
-      if (this.wasAccepted(agent, message.messageId)) return
+      if (await this.wasAccepted(agent, message.messageId)) return
       const content = await this.inboundContent(message)
       if (content.length === 0) {
         await this.channel.reply(message, { text: '暂不支持这类消息内容。' })
@@ -234,8 +240,9 @@ export class LarkConversationBridge {
     }
   }
 
-  private wasAccepted(agent: Agent, messageId: string): boolean {
-    return agent.session.events.some(event => event.type === 'user/message'
+  private async wasAccepted(agent: Agent, messageId: string): Promise<boolean> {
+    using observation = await this.ctx.sessionQuery.observeSession(agent.id, { signal: this.abort.signal })
+    return observation.events.some(event => event.type === 'user/message'
       && event.data.source.kind === 'lark'
       && event.data.source.messageId === messageId)
   }
@@ -248,9 +255,9 @@ export class LarkConversationBridge {
     const imageInputs = prepared.filter(resource => resource.kind === 'image')
       .map(resource => resource.input as SaveImageAttachment)
     const imageRefs = imageInputs.length === 0 ? [] : await this.ctx.attachments.saveImages(imageInputs)
-    const fileInputs = prepared.filter(resource => resource.kind === 'file').map(resource => resource.input as { data: Uint8Array; mediaType: string; name?: string })
-    const fileStore = this.ctx.attachments as typeof this.ctx.attachments & { saveFiles?: (inputs: readonly { data: Uint8Array; mediaType: string; name?: string }[]) => Promise<readonly FileAttachmentRef[]> }
-    const fileRefs = fileInputs.length === 0 || fileStore.saveFiles === undefined ? [] : await fileStore.saveFiles(fileInputs)
+    const fileInputs = prepared.filter(resource => resource.kind === 'file')
+      .map(resource => resource.input)
+    const fileRefs = await Promise.all(fileInputs.map(async input => this.ctx.attachments.saveFile(input)))
     let imageIndex = 0
     let fileIndex = 0
     const blocks: ContentBlock[] = message.content.trim().length === 0
@@ -261,14 +268,14 @@ export class LarkConversationBridge {
         const ref = imageRefs[imageIndex++] as ImageAttachmentRef
         blocks.push({ type: 'image', attachment: ref })
       } else {
-        const input = resource.input as { data: Uint8Array; mediaType: string; name?: string }
-        const ref = fileRefs[fileIndex++] as FileAttachmentRef | undefined
-        if (ref !== undefined) {
-          const recognized = await this.ctx.attachments.recognizeFile(ref, this.abort.signal)
-          blocks.push(recognized?.text ? { type: 'file', attachment: ref, recognizedText: recognized.text } : { type: 'file', attachment: ref })
-        } else {
-          const recognized = await this.ctx.attachments.recognizeFile(input, this.abort.signal)
-          if (recognized !== undefined && recognized.text !== '') blocks.push({ type: 'text', text: `Attached file ${JSON.stringify(input.name ?? 'attachment')} content:\n${recognized.text}` })
+        const ref = fileRefs[fileIndex++] as FileAttachmentRef
+        blocks.push({ type: 'file', attachment: ref })
+        const recognized = await this.ctx.attachments.recognize(ref, this.abort.signal)
+        if (recognized !== undefined && recognized.text !== '') {
+          blocks.push({
+            type: 'text',
+            text: `[DeepSeek Files extracted text from ${JSON.stringify(ref.name)}:]\n${recognized.text}`,
+          })
         }
       }
     }
@@ -294,12 +301,13 @@ export class LarkConversationBridge {
         },
       }
     }
+    const mediaType = normalizedMediaType(contentType)
     return {
       kind: 'file',
       descriptor,
       input: {
         data: new Uint8Array(buffer),
-        mediaType: normalizedMediaType(contentType) ?? UNKNOWN_FILE_MEDIA_TYPE,
+        ...mediaType === undefined ? {} : { mediaType },
         ...descriptor.fileName === undefined ? {} : { name: descriptor.fileName },
       },
     }
@@ -314,11 +322,14 @@ export class LarkConversationBridge {
       let latest: AssistantMessage | undefined
       let settled = false
       const finish = (result?: TurnResponse, error?: unknown): void => {
+        /* v8 ignore next -- first settlement removes both deterministic test triggers. */
         if (settled) return
         settled = true
         dispose()
         signal.removeEventListener('abort', onAbort)
-        if (error !== undefined) reject(error)
+        if (error !== undefined) {
+          reject(error instanceof Error ? error : new Error('Lark conversation turn failed', { cause: error }))
+        }
         else resolve(result as TurnResponse)
       }
       const dispose = this.ctx.on('session/event', (session, event) => {
@@ -347,7 +358,7 @@ export class LarkConversationBridge {
     })
     return {
       promise,
-      cancel: reason => { cancellation.abort(reason) },
+      cancel: (reason) => { cancellation.abort(reason) },
     }
   }
 
@@ -401,8 +412,7 @@ export class LarkConversationBridge {
   }
 
   private async createOrResumeAgent(sessionId: SessionId): Promise<Agent> {
-    const stored = (await this.ctx.sessionPersistence.list(this.abort.signal))
-      .some(header => header.id === sessionId)
+    const stored = await this.ctx.sessionPersistence.stat(sessionId, { signal: this.abort.signal }) !== undefined
     const selection = this.ctx.agentDefaultModel.currentSelection()
     const setup = async (agentCtx: Context): Promise<void> => {
       installDefaultModelRoute(agentCtx, () => this.ctx.agentDefaultModel.currentSelection())
@@ -410,18 +420,18 @@ export class LarkConversationBridge {
     }
     const handle = stored
       ? await this.ctx.agents.resume({
-          resumeSessionId: sessionId,
-          agentOptions: { provider: selection.provider, model: selection.model },
-          signal: this.abort.signal,
-          setup,
-        })
+        resumeSessionId: sessionId,
+        agentOptions: { provider: selection.provider, model: selection.model },
+        signal: this.abort.signal,
+        setup,
+      })
       : await this.ctx.agents.create({
-          sessionId,
-          agentOptions: { provider: selection.provider, model: selection.model },
-          signal: this.abort.signal,
-          meta: { cwd: this.options.cwd },
-          setup,
-        })
+        sessionId,
+        agentOptions: { provider: selection.provider, model: selection.model },
+        signal: this.abort.signal,
+        meta: { cwd: this.options.cwd },
+        setup,
+      })
     const workspace = await this.resolveWorkspace(handle.agent.session.header.cwd ?? this.options.cwd)
     try {
       await workspace.attachSession(sessionId)
@@ -470,7 +480,8 @@ export class LarkConversationBridge {
 
   /** Configure a live session whose durable Lark provenance belongs to this application. */
   private async configureDiscoveredAgent(agent: Agent): Promise<void> {
-    const belongsToApp = agent.session.events.some(event => event.type === 'user/message'
+    using observation = await this.ctx.sessionQuery.observeSession(agent.id, { signal: this.abort.signal })
+    const belongsToApp = observation.events.some(event => event.type === 'user/message'
       && event.data.source.kind === 'lark'
       && event.data.source.appId === this.options.appId)
     if (!belongsToApp

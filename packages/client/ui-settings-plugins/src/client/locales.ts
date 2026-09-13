@@ -21,6 +21,9 @@ export type PluginsSettingsLocaleKey =
   | 'externalToolsKeyConfigured' | 'externalToolsKeyUnset' | 'externalToolsKeyPlaceholder'
   | 'externalToolsApiKey' | 'externalToolsEndpoint' | 'externalToolsEndpointPlaceholder'
   | 'externalToolsSave' | 'externalToolsClear' | 'externalToolsRetry' | 'externalToolsUnsupported' | 'externalToolsSearchPriority'
+  | 'externalToolsProvider.brave-search' | 'externalToolsProvider.tavily'
+  | 'externalToolsProvider.firecrawl' | 'externalToolsProvider.exa' | 'externalToolsProvider.github'
+  | 'externalToolsProvider.fal' | 'externalToolsProvider.elevenlabs' | 'externalToolsProvider.browserbase'
 
 /** English copy. */
 export const en: Record<PluginsSettingsLocaleKey, string> = {
@@ -91,6 +94,14 @@ export const en: Record<PluginsSettingsLocaleKey, string> = {
   externalToolsRetry: 'Retry',
   externalToolsUnsupported: 'Credential support is ready; tool registration is coming soon.',
   externalToolsSearchPriority: 'Native search priority',
+  'externalToolsProvider.brave-search': 'Privacy-oriented web search',
+  'externalToolsProvider.tavily': 'Agent-oriented search with summaries',
+  'externalToolsProvider.firecrawl': 'Fetch web pages as Markdown',
+  'externalToolsProvider.exa': 'Semantic search and research',
+  'externalToolsProvider.github': 'Search GitHub repositories and code',
+  'externalToolsProvider.fal': 'Generate images and media',
+  'externalToolsProvider.elevenlabs': 'Generate speech and audio',
+  'externalToolsProvider.browserbase': 'Run managed browser sessions',
 }
 
 /** Simplified Chinese copy. */
@@ -162,4 +173,12 @@ export const zh: Record<PluginsSettingsLocaleKey, string> = {
   externalToolsRetry: '重试',
   externalToolsUnsupported: '凭据配置已就绪，工具接入即将开放。',
   externalToolsSearchPriority: '原生搜索优先级',
+  'externalToolsProvider.brave-search': '注重隐私的网页搜索',
+  'externalToolsProvider.tavily': '面向 Agent 的搜索与摘要',
+  'externalToolsProvider.firecrawl': '抓取网页并提取 Markdown',
+  'externalToolsProvider.exa': '语义搜索与研究',
+  'externalToolsProvider.github': '搜索 GitHub 仓库与代码',
+  'externalToolsProvider.fal': '生成图像与媒体',
+  'externalToolsProvider.elevenlabs': '生成语音与音频',
+  'externalToolsProvider.browserbase': '运行托管浏览器会话',
 }

@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`@deepseek-ai/dsh-llm-deepseek` is the direct DeepSeek adapter for the harness LLM service: it owns the `deepseek-official` provider route and translates DeepSeek's chat-completions wire format into the harness stream-chunk protocol. With it a composition can stream DeepSeek models with configurable thinking and reasoning effort, send images to vision models, and browse an advisory model catalog. Connection facts — endpoint, catalog, key, thinking policy — resolve per request, so editing the user settings document changes the next request without a restart. It is one of two structurally different adapters for DeepSeek: the pi-ai twin serves its own route names through a library and additional providers, and both can be mounted side by side.
+Use this package to stream DeepSeek models through the `deepseek-official` route, including configurable thinking and reasoning effort, image input for vision models, and an advisory model catalog. Endpoint, credentials, catalog, and thinking policy resolve for each request, so valid user-settings changes apply to the next request without restarting the process. Choose it for DeepSeek's official API or an OpenAI-compatible gateway; it can run beside the pi-ai package because they use different route names.
 
 ## Table of Contents
 
@@ -29,7 +29,7 @@ Mount this plugin when a composition streams DeepSeek models through the harness
 
 ### When to choose it
 
-Choose this adapter when the deployment targets DeepSeek's official API, optionally behind an OpenAI-compatible gateway named by `baseURL`. Choose `dsh-llm-dsh-ai` when the same composition also routes other providers or hand-declared gateways through pi-ai's catalogs; the two adapters can be mounted together because their route names do not collide. Registering any other adapter for `deepseek-official` fails with `DUPLICATE_ADAPTER`.
+Choose this adapter when the deployment targets DeepSeek's official API, optionally behind an OpenAI-compatible gateway named by `baseURL`. Choose `dsh-llm-pi-ai` when the same composition also routes other providers or hand-declared gateways through pi-ai's catalogs; the two adapters can be mounted together because their route names do not collide. Registering any other adapter for `deepseek-official` fails with `DUPLICATE_ADAPTER`.
 
 ### Minimal configuration
 
@@ -38,7 +38,7 @@ Choose this adapter when the deployment targets DeepSeek's official API, optiona
   config:
     apiKeyEnv: DEEPSEEK_API_KEY  # credential reference, resolved per request
     baseURL: https://api.deepseek.com # optional; $DEEPSEEK_BASE_URL then this default
-    reasoningEffort: high        # optional; off | low | medium | high | xhigh | max
+    reasoningEffort: high        # optional; off | low | high | max
     maxTokens: 256000            # optional per-request output cap
     maxRequestFilesBytes: 134217728
     maxInlineRequestImageBytes: 20971520
@@ -46,17 +46,17 @@ Choose this adapter when the deployment targets DeepSeek's official API, optiona
     filesApiTimeoutMs: 60000
 ```
 
-A request selects the route with `provider: deepseek-official`; the model id passes through to the wire, so new DeepSeek models need no re-registration. Omitted `models` advertises `deepseek-v4-flash` as the fast, economical choice for focused work, `deepseek-v4-pro` as the stronger, higher-cost choice for complex or quality-critical work, and the image-capable `deepseek-v4-flash-vision-exp`; each has a 1,000,000-token context window. An explicit list replaces those defaults, and unlisted model ids still pass through as text-only routes. Clients, including model discovery tools, can read the advisory entries through `ctx.llm.listModels('deepseek-official')`. Image-capable entries may set `imagePixelBudget` to a positive integer or `low`, and may set `imageMaxBytes`.
+A request selects the route with `provider: deepseek-official`; the model id passes through to the wire, so new DeepSeek models need no re-registration. Omitted `models` advertises the text- and image-capable `deepseek-flash` and `deepseek-v4-flash-vision-exp` alongside the text-only `deepseek-v4-flash` and `deepseek-v4-pro`, each with a 1,000,000-token context window. An explicit list replaces those defaults, and unlisted model ids still pass through as text-only routes. Clients, including model discovery tools, can read the advisory entries through `ctx.llm.listModels('deepseek-official')`. Image-capable entries may set `imagePixelBudget` to a positive integer or `low`, and may set `imageMaxBytes`. An entry may declare `systemPromptUpdate: in-history` when its endpoint reads the latest `system` message at any position of `messages` as the complete effective system prompt; the adapter reports the mode on the resolved model and the prepared call, and the agent loop then appends a changed prompt after the cached history instead of rewriting the leading system message ([decision rule](../../core/agent-loop/README.md#understand-the-implementation)). The default `deepseek-flash` entry declares this mode; other models require an explicit `models` declaration, and any value other than `in-history` fails at load with `llm-deepseek: catalog model "<id>" systemPromptUpdate must be "in-history" when present`.
 
 | Field | Default | Meaning |
 |---|---|---|
 | `apiKeyEnv` | `DEEPSEEK_API_KEY` | Credential reference resolved per request through the credentials seam, then the environment |
 | `baseURL` | `https://api.deepseek.com` | Endpoint base; `$DEEPSEEK_BASE_URL` wins when set |
 | `thinking` | `enabled` | Deployment policy; `disabled` locks every request to `off` |
-| `reasoningEffort` | `high` | Default effort: `off`, `low`, `medium`, `high`, `xhigh`, or `max` |
+| `reasoningEffort` | `high` | Default effort: `off`, `low`, `high`, or `max` |
 | `maxTokens` | `256,000` | Per-request output cap; a model's own cap and explicit request values win |
 | `defaultContextWindow` | `1,000,000` | Capacity fallback for models without an exact value |
-| `models` | V4 Flash + V4 Pro + V4 Flash Vision Exp | Advisory catalog shown by discovery consumers |
+| `models` | V41 Flash + V4 Flash + V4 Pro + V4 Flash Vision Exp | Advisory catalog shown by discovery consumers |
 | `streamIdleTimeoutMs` | `300,000` | Maximum provider idle time per outstanding stream read |
 | `maxRequestFilesBytes` | `128 MiB` | High watermark for retained request-image bytes before oldest-first offload |
 | `maxInlineRequestImageBytes` | `20 MiB` | Independent base64 fallback high watermark |
@@ -80,7 +80,7 @@ The adapter normally uploads those exact request bytes through the DeepSeek File
 
 Files mode bounds retained request versions by `maxRequestFilesBytes` and `maxImagesPerRequest`; inline fallback has its own base64 budget. Both remove an oldest prefix in configured byte or count quanta. Each omitted image gets its own model-visible placeholder with its display name or attachment id and, when available, normalized dimensions, media type, and current read-only path. The stepped high-watermark policy avoids rewriting an old request prefix after every new image.
 
-`reasoningEffort` selects the advertised default. Exact-model metadata exposes ordered `off`, `low`, `medium`, `high`, `xhigh`, and `max` efforts with selection guidance when deployment policy permits thinking. Every level except `off` enables thinking and serializes as `reasoning_effort`, while adapter-owned `off` sends `thinking.type: disabled` instead. An unsupported value fails with `UNSUPPORTED_REASONING_EFFORT` before network I/O, and `thinking: disabled` rejects any non-`off` effort at plugin load. Requests with `purpose: 'session-title'` force thinking off to reserve output for visible title text.
+`reasoningEffort` selects the advertised default. Exact-model metadata exposes ordered `off`, `low`, `high`, and `max` efforts with selection guidance when deployment policy permits thinking. `low`, `high`, and `max` enable thinking and serialize as `reasoning_effort`, while adapter-owned `off` sends `thinking.type: disabled` instead. An unsupported value fails with `UNSUPPORTED_REASONING_EFFORT` before network I/O, and `thinking: disabled` rejects any non-`off` effort at plugin load. Requests with `purpose: 'session-title'` force thinking off to reserve output for visible title text.
 
 ### Dynamic configuration
 
@@ -117,7 +117,7 @@ The plugin is built on one explicit resolve step and one registration fact. `res
 | [`src/file-store.ts`](src/file-store.ts) + [`src/files-api.ts`](src/files-api.ts) | Scoped upload caching, expiry, stale-id recovery, quota cleanup, and remote file operations |
 | [`src/serialize.ts`](src/serialize.ts) | Wire serialization: thinking defaults, Files or inline image blocks, history rules |
 | [`src/sse.ts`](src/sse.ts) | `eventsource-parser` SSE framing for the direct `fetch` stream |
-| [`src/translate.ts`](src/translate.ts) | SSE payload translation into harness `StreamChunk` values |
+| [`src/translate.ts`](src/translate.ts) | SSE payload translation into harness `StreamChunk` values; tool-call `id` and `name` are identity, so a continuation delta repeating them empty or null leaves the established value alone |
 | [`src/types.ts`](src/types.ts) | Wire-level types shared by the modules above |
 
 ### Wire flow
@@ -134,7 +134,7 @@ One `stream()` call normally makes one chat request: resolve deterministic reque
 Read these pages when the package-level contract is not enough. They move from the service contract to the twin adapter, the retry executor, and the shared types.
 
 - [dsh-llm service](../llm/README.md) — the provider-neutral service this adapter registers on.
-- [llm-dsh-ai adapter](../llm-dsh-ai/README.md) — the library-backed twin serving other providers and gateways.
+- [llm-pi-ai adapter](../llm-pi-ai/README.md) — the library-backed twin serving other providers and gateways.
 - [LLM streaming subsystem](../../../docs/subsystems/llm-streaming.md) — the `StreamChunk` protocol and adapter contract.
 - [llm-retry](../llm-retry/README.md) — the retry executor that applies this adapter's `retryPolicy`.
 - [DeepSeek request extensions](../deepseek-llm-api-extensions/README.md) — lifecycle and acceptance semantics for provider-specific top-level fields.
@@ -156,11 +156,11 @@ The selected DeepSeek model receives the harness system prompt, message history,
 
 #### Token effect
 
-Provider tokenization governs exact text and image-token input. The adapter declares per-route `imageRequestPricing`: it reproduces oldest-first image offload from durable byte lengths and prices each retained image at its projected dimensions with the published v4 vision accounting (14px patch grid, 3:1 downsampling, 384-token cap, worst-case alignment pad). This lets the token meter price image pressure before a request; reported usage remains authoritative. Reasoning passback carries every reasoned turn's chain of thought into later requests, while dropping over-budget images avoids paying those tokens again. Cache-read usage is reported when available. `totalTokens` is the exact `prompt_tokens + completion_tokens` aggregate and is omitted if a supplied `total_tokens` disagrees.
+Provider tokenization governs exact text and image-token input. The adapter declares per-route `imageRequestPricing`: it reproduces oldest-first image offload from durable byte lengths and prices each retained image at its projected dimensions with the published vision accounting (14px patch grid, 3:1 downsampling, 544×544 scale-up floor, 1024-token cap). This lets the token meter price image pressure before a request; reported usage remains authoritative. Reasoning passback carries every reasoned turn's chain of thought into later requests, while dropping over-budget images avoids paying those tokens again. Cache-read usage is reported when available. `totalTokens` is the exact `prompt_tokens + completion_tokens` aggregate and is omitted if a supplied `total_tokens` disagrees.
 
 #### KV Cache effect
 
-An unchanged assembled prefix is eligible for DeepSeek cache reuse, which this adapter reports in usage. Deterministic request-image bytes do not make the full prefix immutable: a changed execution-world path rewrites historical descriptor text, a refreshed upload can replace a `file_id`, and Files-to-base64 fallback changes the image representation. Any of these, or a model-route, prompt, schema, history, or image-budget change, may prevent reuse from the first affected token; reasoning passback appends on every reasoned turn.
+An unchanged assembled prefix is eligible for DeepSeek cache reuse, which this adapter reports in usage. Deterministic request-image bytes do not make the full prefix immutable: a changed execution-world path rewrites historical descriptor text, a refreshed upload can replace a `file_id`, and Files-to-base64 fallback changes the image representation. Any of these, or a model-route, prompt, schema, history, or image-budget change, may prevent reuse from the first affected token; reasoning passback appends on every reasoned turn. On a catalog entry declaring `systemPromptUpdate: in-history`, a system prompt change inside a continuing request series is appended after the cached history, so the prefix through that history stays reusable; a tool-schema change still prevents reuse from the first altered token.
 
 ### DeepSeek response
 
@@ -188,6 +188,9 @@ These limits define where the adapter stops and future work begins. They are cur
 - **Requests use raw `fetch`, not `@cordisjs/plugin-http`** — no shared proxy or interception configuration.
 - **Plugin-added content block types are skipped** — core text and supported image blocks are serialized, and empty tool output crosses the wire as the literal `(no output)`.
 - **Images are input-only durable attachments** — direct external URLs and assistant image output are not supported; DeepSeek input normally uses the Files API and uses inline base64 only for per-request recovery.
+- The default catalog pre-registers `deepseek-flash` and its text/image and in-history capabilities without probing gateway availability. Requests can fail with `INVALID_REQUEST` until the gateway enables the id. With `DEEPSEEK_API_KEY` and a supporting gateway configured, `DEEPSEEK_FLASH_E2E=1` enables the Chat Completions check in [this package's e2e suite](tests/adapter.e2e.ts).
+
+- The default request-image projection caps total pixels at 640,000, below the provider's roughly 1300×1300 processing budget, so it can discard usable detail. Each model's `imagePixelBudget` can override this default; changing the default affects request content and needs separate snapshot verification ([decision](../../../.agents/notes/implemented/bug-fix/2026-09-10-deepseek-image-token-calculator-v41.md)).
 
 <a id="dev-note"></a>
 ### Dev Note
@@ -201,3 +204,5 @@ This Dev Note is non-authoritative working context: undecided directions and not
 - The `off` reasoning effort never crosses the wire as `reasoning_effort: 'off'`; it serializes as `thinking: { type: 'disabled' }` and omits the field, which keeps the wire spelling valid for gateways that reject unknown effort values.
 
 </details>
+
+**Runtime invariant:** No companion is published. This package exposes no independent event sequence or mutable data relation beyond contracts enforced at its owning seam.

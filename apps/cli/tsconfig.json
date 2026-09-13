@@ -27,6 +27,9 @@
       "path": "../../packages/bundle/base"
     },
     {
+      "path": "../../packages/bundle/desktop-lite"
+    },
+    {
       "path": "../../packages/bundle/headless"
     },
     {

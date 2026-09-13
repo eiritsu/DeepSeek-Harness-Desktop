@@ -17,5 +17,12 @@ export interface SkillHubBridge {
 }
 
 declare global {
-  interface Window { dshDesktopPluginBridge?: SkillHubBridge }
+  interface DshDesktopApplicationBridge {
+    readonly skills?: SkillHubBridge
+  }
+  interface DshDesktopPluginBridge extends SkillHubBridge {}
+  interface Window {
+    dshDesktop?: DshDesktopApplicationBridge
+    dshDesktopPluginBridge?: DshDesktopPluginBridge
+  }
 }

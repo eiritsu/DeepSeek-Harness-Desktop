@@ -46,12 +46,10 @@ flowchart LR
   cfg --> plugin_dsh_base_settings
   plugin_dsh_base_credentials["credentials<br/>@deepseek-ai/dsh-credentials-local"]
   cfg --> plugin_dsh_base_credentials
-  plugin_dsh_base_external_tools["external-tools<br/>@deepseek-ai/dsh-external-tools"]
-  cfg --> plugin_dsh_base_external_tools
-  plugin_dsh_base_llm_dsh_ai["llm-dsh-ai<br/>@deepseek-ai/dsh-llm-dsh-ai"]
-  cfg --> plugin_dsh_base_llm_dsh_ai
-  plugin_dsh_base_session_persistence_sqlite["session-persistence-sqlite<br/>@deepseek-ai/dsh-session-persistence-sqlite"]
-  cfg --> plugin_dsh_base_session_persistence_sqlite
+  plugin_dsh_base_llm_pi_ai["llm-pi-ai<br/>@deepseek-ai/dsh-llm-pi-ai"]
+  cfg --> plugin_dsh_base_llm_pi_ai
+  plugin_dsh_base_session_persistence_jsonl["session-persistence-jsonl<br/>@deepseek-ai/dsh-session-persistence-jsonl"]
+  cfg --> plugin_dsh_base_session_persistence_jsonl
   plugin_dsh_base_attachment_local["attachment-local<br/>@deepseek-ai/dsh-attachment-local"]
   cfg --> plugin_dsh_base_attachment_local
   plugin_dsh_base_session_query_sqlite["session-query-sqlite<br/>@deepseek-ai/dsh-session-query-sqlite"]
@@ -60,8 +58,8 @@ flowchart LR
   cfg --> plugin_dsh_base_session_projection
   plugin_dsh_base_storage["storage<br/>@deepseek-ai/dsh-storage"]
   cfg --> plugin_dsh_base_storage
-  plugin_dsh_base_storage_sqlite["storage-sqlite<br/>@deepseek-ai/dsh-storage-sqlite"]
-  cfg --> plugin_dsh_base_storage_sqlite
+  plugin_dsh_base_storage_json["storage-json<br/>@deepseek-ai/dsh-storage-json"]
+  cfg --> plugin_dsh_base_storage_json
   plugin_dsh_base_storage_domain["storage-domain<br/>@deepseek-ai/dsh-storage-domain"]
   cfg --> plugin_dsh_base_storage_domain
   plugin_dsh_base_session_projection_cache["session-projection-cache<br/>@deepseek-ai/dsh-session-projection-cache"]
@@ -138,8 +136,6 @@ flowchart LR
   cfg --> plugin_dsh_base_tool_subagent
   plugin_dsh_base_tool_subagent_fork["tool-subagent-fork<br/>@deepseek-ai/dsh-tool-subagent"]
   cfg --> plugin_dsh_base_tool_subagent_fork
-  plugin_dsh_base_tool_subagent_report["tool-subagent-report<br/>@deepseek-ai/dsh-tool-subagent-report"]
-  cfg --> plugin_dsh_base_tool_subagent_report
   plugin_dsh_base_workflow_worker_thread["workflow-worker-thread<br/>@deepseek-ai/dsh-workflow-worker-thread"]
   cfg --> plugin_dsh_base_workflow_worker_thread
   plugin_dsh_base_tool_workflow["tool-workflow<br/>@deepseek-ai/dsh-tool-workflow"]
@@ -160,8 +156,6 @@ flowchart LR
   cfg --> plugin_dsh_base_tool_goal
   plugin_dsh_base_tool_ralph["tool-ralph<br/>@deepseek-ai/dsh-tool-ralph"]
   cfg --> plugin_dsh_base_tool_ralph
-  plugin_dsh_base_tool_str_replace_editor["tool-str-replace-editor<br/>@deepseek-ai/dsh-tool-str-replace-editor"]
-  cfg --> plugin_dsh_base_tool_str_replace_editor
   plugin_dsh_base_repeat_tool_reminder["repeat-tool-reminder<br/>@deepseek-ai/dsh-repeat-tool-reminder"]
   cfg --> plugin_dsh_base_repeat_tool_reminder
   plugin_dsh_base_web["web<br/>@deepseek-ai/dsh-web"]
@@ -205,14 +199,13 @@ flowchart LR
 | `llm-retry` | `@deepseek-ai/dsh-llm-retry` |
 | `settings` | `@deepseek-ai/dsh-settings-file` |
 | `credentials` | `@deepseek-ai/dsh-credentials-local` |
-| `external-tools` | `@deepseek-ai/dsh-external-tools` |
-| `llm-dsh-ai` | `@deepseek-ai/dsh-llm-dsh-ai` |
-| `session-persistence-sqlite` | `@deepseek-ai/dsh-session-persistence-sqlite` |
+| `llm-pi-ai` | `@deepseek-ai/dsh-llm-pi-ai` |
+| `session-persistence-jsonl` | `@deepseek-ai/dsh-session-persistence-jsonl` |
 | `attachment-local` | `@deepseek-ai/dsh-attachment-local` |
 | `session-query-sqlite` | `@deepseek-ai/dsh-session-query-sqlite` |
 | `session-projection` | `@deepseek-ai/dsh-session-projection` |
 | `storage` | `@deepseek-ai/dsh-storage` |
-| `storage-sqlite` | `@deepseek-ai/dsh-storage-sqlite` |
+| `storage-json` | `@deepseek-ai/dsh-storage-json` |
 | `storage-domain` | `@deepseek-ai/dsh-storage-domain` |
 | `session-projection-cache` | `@deepseek-ai/dsh-session-projection-cache` |
 | `session-telemetry-otel` | `@deepseek-ai/dsh-session-telemetry-otel` |
@@ -251,7 +244,6 @@ flowchart LR
 | `tool-subagent-list-agents` | `@deepseek-ai/dsh-tool-subagent-control/list-agents` |
 | `tool-subagent` | `@deepseek-ai/dsh-tool-subagent` |
 | `tool-subagent-fork` | `@deepseek-ai/dsh-tool-subagent` |
-| `tool-subagent-report` | `@deepseek-ai/dsh-tool-subagent-report` |
 | `workflow-worker-thread` | `@deepseek-ai/dsh-workflow-worker-thread` |
 | `tool-workflow` | `@deepseek-ai/dsh-tool-workflow` |
 | `timeout-policy` | `@deepseek-ai/dsh-tool-call-timeout-policy` |
@@ -262,7 +254,6 @@ flowchart LR
 | `tool-todo` | `@deepseek-ai/dsh-tool-todo` |
 | `tool-goal` | `@deepseek-ai/dsh-tool-goal` |
 | `tool-ralph` | `@deepseek-ai/dsh-tool-ralph` |
-| `tool-str-replace-editor` | `@deepseek-ai/dsh-tool-str-replace-editor` |
 | `repeat-tool-reminder` | `@deepseek-ai/dsh-repeat-tool-reminder` |
 | `web` | `@deepseek-ai/dsh-web` |
 | `web-search-deepseek` | `@deepseek-ai/dsh-web-search-deepseek` |

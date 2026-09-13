@@ -8,7 +8,7 @@ import z from '@deepseek-ai/schemastery'
 import { createLarkChannel, registerApp, type RegisterAppResult } from '@larksuite/channel'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
-import { settingsNamespace, type SettingsScope } from '@deepseek-ai/dsh-settings'
+import type { SettingsScope } from '@deepseek-ai/dsh-settings'
 import type { SubprocessHandle } from '@deepseek-ai/dsh-subprocess'
 import { defineTool, type PreToolDecision } from '@deepseek-ai/dsh-tools'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
@@ -28,7 +28,15 @@ import {
   requestedTenantScopes,
   requestedUserScopes,
 } from './permissions.ts'
-import type { LarkCapabilityId } from './permissions.ts'
+import type {
+  LarkApplicationInput,
+  LarkCapabilityStatus,
+  LarkConversationStatus,
+  LarkIdentityStatus,
+  LarkManagedRegistrationRequest,
+  LarkManagementStatus,
+  LarkUserAuthRequest,
+} from './types.ts'
 import {
   decodePendingUserAuthorization,
   encodePendingUserAuthorization,
@@ -37,13 +45,22 @@ import {
 
 export type { LarkCapabilityDefinition, LarkCapabilityId } from './permissions.ts'
 export { applicationScopeSets, LARK_CAPABILITIES, permissionImportTemplate, requestedTenantScopes, requestedUserScopes } from './permissions.ts'
+export type {
+  LarkApplicationInput,
+  LarkCapabilityStatus,
+  LarkConversationStatus,
+  LarkIdentityStatus,
+  LarkManagedRegistrationRequest,
+  LarkManagementStatus,
+  LarkUserAuthRequest,
+} from './types.ts'
 
 /** Credential reference managed by the Lark Settings page. */
 export const LARK_APP_SECRET_REF = credentialRef('LARKSUITE_CLI_APP_SECRET')
 /** Credential reference for an unfinished current-user device authorization. */
 export const LARK_PENDING_USER_AUTH_REF = credentialRef('LARKSUITE_CLI_PENDING_USER_AUTH_DEVICE_CODE')
 /** Settings namespace bound by the browser plugin. */
-export const LARK_SETTINGS_NAMESPACE = settingsNamespace('lark')
+export const LARK_SETTINGS_NAMESPACE = 'lark' as const
 
 const CLI_RUNNER = fileURLToPath(new URL('../vendor/larksuite-cli/scripts/run.cjs', import.meta.url))
 /** Lark integration configuration and user-editable settings. */
@@ -95,90 +112,6 @@ export const Config: z<Config> = z.object({
   conversationCwd: z.string().default(''),
   conversationTimeZone: z.string().default('Asia/Shanghai'),
 })
-
-/** Application values accepted from the management page. */
-export interface LarkApplicationInput {
-  /** Self-built application id. */
-  readonly appId: string
-  /** Product endpoint family. */
-  readonly brand: 'feishu' | 'lark'
-  /** Optional replacement secret; omission preserves the current secret. */
-  readonly appSecret?: string
-}
-
-/** One identity reported by the official CLI. */
-export interface LarkIdentityStatus {
-  /** CLI identity state. */
-  readonly status: string
-  /** Whether the identity can currently be used. */
-  readonly available: boolean
-  /** Server verification result, when verification ran. */
-  readonly verified?: boolean
-}
-
-/** Runtime state of the private-chat transport. */
-export interface LarkConversationStatus {
-  /** Current connection phase. */
-  readonly status: 'disabled' | 'waiting' | 'connecting' | 'ready' | 'error'
-  /** Non-secret explanation when the transport is not ready. */
-  readonly diagnostic?: string
-}
-
-/** Permission outcome for one management-page capability row. */
-export interface LarkCapabilityStatus {
-  /** Stable capability id. */
-  readonly id: LarkCapabilityId
-  /** Chinese label. */
-  readonly label: string
-  /** Whether every required tenant and user scope is enabled for the application. */
-  readonly state: 'granted' | 'missing' | 'unknown'
-  /** Required scopes not reported by the application. */
-  readonly missingScopes: readonly string[]
-}
-
-/** Complete safe-to-display Lark management snapshot. */
-export interface LarkManagementStatus {
-  /** Configured application id. */
-  readonly appId: string
-  /** Product endpoint family. */
-  readonly brand: 'feishu' | 'lark'
-  /** Source of the application credentials used by the official CLI. */
-  readonly credentialMode: 'none' | 'managed' | 'self-built'
-  /** Whether the application secret resolves. */
-  readonly secretConfigured: boolean
-  /** Whether the current credential source accepts a replacement. */
-  readonly secretWritable: boolean
-  /** Whether current-user device authorization is waiting for browser consent. */
-  readonly userAuthorizationPending: boolean
-  /** Whether the official CLI produced a status response. */
-  readonly cliAvailable: boolean
-  /** Bot/tenant identity state. */
-  readonly bot: LarkIdentityStatus
-  /** User OAuth identity state. */
-  readonly user: LarkIdentityStatus
-  /** Required scopes absent from the current user OAuth token. */
-  readonly userAuthorizationMissingScopes: readonly string[]
-  /** Private-chat transport state. */
-  readonly conversation: LarkConversationStatus
-  /** Permission rows in product order. */
-  readonly capabilities: readonly LarkCapabilityStatus[]
-  /** Batch-import JSON copied by the page without rendering it. */
-  readonly permissionTemplate: string
-  /** Non-secret diagnostic from the latest inspection failure. */
-  readonly diagnostic?: string
-}
-
-/** Browser handoff for current-user device authorization. */
-export interface LarkUserAuthRequest {
-  /** Opaque verification URL opened by the browser. */
-  readonly verificationUrl: string
-}
-
-/** Browser handoff for official managed PersonalAgent registration. */
-export interface LarkManagedRegistrationRequest {
-  /** Opaque official registration URL opened by the browser. */
-  readonly verificationUrl: string
-}
 
 /** Canonical result of one official CLI invocation. */
 export interface LarkCliResult {
@@ -242,7 +175,7 @@ function message(error: unknown): string {
 export default class LarkManagementGateway extends TypertRemoteService {
   static inject = [
     'agents', 'agentDefaultModel', 'attachments', 'credentials', 'sessionPersistence',
-    'settings', 'subprocess', 'tools', 'workspaceRegistry',
+    'sessionQuery', 'settings', 'subprocess', 'tools', 'workspaceRegistry',
   ]
   private readonly settings: SettingsScope<Config>
   private readonly readOnlyCommandCache = new Map<string, boolean>()
@@ -276,7 +209,10 @@ export default class LarkManagementGateway extends TypertRemoteService {
     })
   }
 
-  /** Read credentials, application scopes, and bot/user identity without exposing secret values. */
+  /**
+   * Read credentials, application scopes, and bot/user identity without exposing secret values.
+   * @returns the complete secret-free management status.
+   */
   @Remote('status')
   async status(): Promise<LarkManagementStatus> {
     const config = this.resolvedConfig()
@@ -317,9 +253,9 @@ export default class LarkManagementGateway extends TypertRemoteService {
       appId.length === 0
         ? Promise.reject(new Error('Lark CLI did not report an App ID for permission inspection'))
         : this.runJson([
-            'api', 'GET', `/open-apis/application/v6/applications/${encodeURIComponent(appId)}`,
-            '--params', '{"lang":"zh_cn"}', '--as', 'bot', '--json',
-          ]),
+          'api', 'GET', `/open-apis/application/v6/applications/${encodeURIComponent(appId)}`,
+          '--params', '{"lang":"zh_cn"}', '--as', 'bot', '--json',
+        ]),
     ])
     const identities = record(auth?.identities)
     const enabledScopes = scopesResult.status === 'fulfilled'
@@ -340,7 +276,10 @@ export default class LarkManagementGateway extends TypertRemoteService {
     }
   }
 
-  /** Store the application id/brand and optionally replace the write-only secret. */
+  /**
+   * Store the application id/brand and optionally replace the write-only secret.
+   * @param input - Application identity, deployment, and optional replacement secret.
+   */
   @Remote('saveApplication')
   async saveApplication(input: LarkApplicationInput): Promise<void> {
     const appId = input.appId.trim()
@@ -389,7 +328,11 @@ export default class LarkManagementGateway extends TypertRemoteService {
     ])
   }
 
-  /** Start the official PersonalAgent app-registration flow without requesting a manual secret. */
+  /**
+   * Start the official PersonalAgent app-registration flow without requesting a manual secret.
+   * @param brand - Lark deployment on which to create the managed application.
+   * @returns the opaque browser verification request.
+   */
   @Remote('beginManagedRegistration')
   async beginManagedRegistration(brand: 'feishu' | 'lark'): Promise<LarkManagedRegistrationRequest> {
     if (this.pendingRegistration !== undefined) {
@@ -418,7 +361,7 @@ export default class LarkManagementGateway extends TypertRemoteService {
         scopes: { tenant: requestedTenantScopes(), user: requestedUserScopes() },
         events: { items: { tenant: [...LARK_CONVERSATION_EVENTS] } },
       },
-      onQRCodeReady: info => { resolveUrl(info.url) },
+      onQRCodeReady: (info) => { resolveUrl(info.url) },
     })
     void result.catch((error: unknown) => { rejectUrl(error) })
     const pending = { controller, verificationUrl, result, brand, completion: undefined } satisfies PendingManagedRegistration
@@ -496,7 +439,10 @@ export default class LarkManagementGateway extends TypertRemoteService {
     await this.refreshConversation()
   }
 
-  /** Start user OAuth for the capability scopes represented by the management page. */
+  /**
+   * Start user OAuth for the capability scopes represented by the management page.
+   * @returns the opaque browser authorization request.
+   */
   @Remote('beginUserAuth')
   async beginUserAuth(): Promise<LarkUserAuthRequest> {
     const output = record(await this.runJson([
@@ -620,6 +566,8 @@ export default class LarkManagementGateway extends TypertRemoteService {
     })
     try {
       await bridge.connect()
+      // Disposal can run while the connection promise is pending.
+      // oxlint-disable-next-line typescript/no-unnecessary-condition
       if (this.disposed) {
         await bridge.dispose()
         return
@@ -649,13 +597,13 @@ export default class LarkManagementGateway extends TypertRemoteService {
     tenant: ReadonlySet<string> | undefined,
     user: ReadonlySet<string> | undefined,
   ): LarkCapabilityStatus[] {
-    return LARK_CAPABILITIES.map(capability => {
+    return LARK_CAPABILITIES.map((capability) => {
       const missingScopes = tenant === undefined || user === undefined
         ? [...new Set([...capability.tenant, ...capability.user])]
         : [...new Set([
-            ...capability.tenant.filter(scope => !tenant.has(scope)),
-            ...capability.user.filter(scope => !user.has(scope)),
-          ])]
+          ...capability.tenant.filter(scope => !tenant.has(scope)),
+          ...capability.user.filter(scope => !user.has(scope)),
+        ])]
       return {
         id: capability.id,
         label: capability.label,

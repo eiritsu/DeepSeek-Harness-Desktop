@@ -16,7 +16,7 @@ Both values belong only on the official DeepSeek adapter path. Adding them to `G
 
 `@deepseek-ai/dsh-deepseek-llm-api-extensions` registers `ctx.deepseekLlmApiExtensions`, an additive registry of top-level fields for `deepseek-official` request bodies. A contributor claims one declaration-merged field with `register()`. The adapter invokes `prepare()` after serializing the exact wire messages, passes the request cancellation signal, rejects preparation or base-field collision before HTTP, merges the detached fields, and calls the captured `accept()` transaction after HTTP 2xx. The registry stops awaiting preparation after cancellation even if a contributor ignores the signal. Acceptance failures remain request failures under `REQUEST_EXTENSION`; transport and non-2xx failures never accept a contribution. A composition without the registry retains the reusable base adapter. Shipped compositions mount the registry and both contributors: package metadata is enabled by default, while Session-log upload is disabled by default and requires `session-log-deepseek.enabled: true`. Keyless `deepseek-official` replay invokes preparation with a synthetic empty base body and the same acceptance transaction before its first recorded chunk, preserving post-2xx extension side effects rather than field bytes.
 
-The provider-neutral `llm` package and `llm-dsh-ai` contain no extension type, service lookup, field merge, or acceptance call.
+The provider-neutral `llm` package and `llm-pi-ai` contain no extension type, service lookup, field merge, or acceptance call.
 
 ## Incremental session-log field
 
@@ -73,7 +73,7 @@ The receiver would also need to traverse the tagged tree, resolve paths into the
 
 ### Why not omit assistant chunks or overlapping event data?
 
-About 98% of the measured real-session events were `assistant/chunk`. Omitting chunks after reference encoding reduced the complete identity JSON by another 84.79% for late enable and 6.49% for steady state, but it prevents lossless canonical-log reconstruction and leaves `assistant/message.sourceEventSeqs` pointing to absent events. Fuzzy or normalized substitutions have the same reconstruction defect.
+About 98% of the measured v1 real-session events were `assistant/chunk`. Omitting them after reference encoding reduced the complete identity JSON by another 84.79% for late enable and 6.49% for steady state, but prevented lossless reconstruction and left message provenance dangling. V2 embeds compact streams in attempt settlements; `dsh_session_log` still sends every current canonical event whole and does not omit those embedded records. Fuzzy or normalized substitutions have the same reconstruction defect.
 
 **Keep the upload cursor only in memory.** Rejected because a normal process restart would resend the entire Session. A canonical acceptance event makes restart recovery best-effort durable without another storage backend; the remaining crash window produces allowed duplicates.
 

@@ -448,7 +448,7 @@ describe('workspace browser rows', () => {
     }
   })
 
-  it('session row menu opens without opening the session and dispatches all session actions', () => {
+  it('session row menu dispatches rename, fork, archive, attach, and delete without opening', () => {
     const onOpen = vi.fn()
     const onRename = vi.fn()
     const onFork = vi.fn()
@@ -460,7 +460,8 @@ describe('workspace browser rows', () => {
       runningSubagentCount: 0, completed: false, hasActiveSchedule: false, updatedAt: 0,
     }
     render(<SessionNodeItem node={node} currentId={undefined} now={0} onOpen={onOpen}
-      onRename={onRename} onFork={onFork} onArchive={onArchive} onAttach={onAttach} onDelete={onDelete} t={t} />)
+      onRename={onRename} onFork={onFork} onArchive={onArchive}
+      onAttach={onAttach} onDelete={onDelete} t={t} />)
     fireEvent.click(screen.getByRole('button', { name: '会话“One”的操作' }))
     expect(onOpen).not.toHaveBeenCalled()
     // Archive is not destructive (log and accounting slot remain): no danger styling.

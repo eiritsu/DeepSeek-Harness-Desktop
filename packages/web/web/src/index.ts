@@ -87,7 +87,6 @@ export class WebRuntime extends Service {
   private readonly searchProviderId: string | undefined
   private readonly fetchProviderId: string | undefined
   private searchProviderOverride: string | undefined
-  private hasSearchProviderOverride = false
 
   constructor(ctx: Context, config: WebRuntimeConfig = {}) {
     super(ctx, 'web')
@@ -118,15 +117,10 @@ export class WebRuntime extends Service {
   }
 
   /**
-   * Override search-provider selection for a composed runtime.
-   *
-   * The override is intentionally volatile: callers must restore it when
-   * their composition is disposed. Passing `undefined` returns selection to
-   * the configured provider or normal auto-selection.
-   * @param providerId - provider id to select, or `undefined` to restore defaults.
+   * Select one registered search provider until the owning composition clears it.
+   * @param providerId - provider id, or `undefined` to restore configured/automatic selection.
    */
   setSearchProviderOverride(providerId: string | undefined): void {
-    this.hasSearchProviderOverride = providerId !== undefined
     this.searchProviderOverride = providerId
   }
 
@@ -155,9 +149,9 @@ export class WebRuntime extends Service {
   async search(request: WebSearchRequest, signal?: AbortSignal): Promise<WebSearchResult> {
     const provider = resolveProvider({
       providers: this.searchProviders,
-      ...(this.hasSearchProviderOverride
-        ? this.searchProviderOverride === undefined ? {} : { configuredId: this.searchProviderOverride }
-        : this.searchProviderId !== undefined ? { configuredId: this.searchProviderId } : {}),
+      ...this.searchProviderOverride !== undefined
+        ? { configuredId: this.searchProviderOverride }
+        : this.searchProviderId !== undefined ? { configuredId: this.searchProviderId } : {},
     })
     const result = await provider.search(request, signal)
     return capSources(result, request.maxResults)

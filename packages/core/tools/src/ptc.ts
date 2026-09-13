@@ -42,10 +42,10 @@ interface RunCodeFlavor {
  */
 const TYPESCRIPT_FLAVOR: RunCodeFlavor = {
   description:
-    'Execute a TypeScript program against the available tools. Takes a required `code` '
-    + 'argument, the BODY of an async function (erasable syntax only; top-level `await` '
-    + 'and `return` work), and an optional `description`, a short summary of what the '
-    + 'program does (defaults to "Run code"). Call tools as `await tools.name(args)` per the system '
+    'Execute a TypeScript program against the available tools. Takes two required '
+    + 'arguments: `code`, the BODY of an async function (erasable syntax only; top-level '
+    + '`await` and `return` work), and `description`, a short summary of what the program '
+    + 'does. Call tools as `await tools.name(args)` per the declarations in the system '
     + 'prompt. Only what you print or return is program output — curate it. Image-bearing '
     + 'subtool results are attached after the run.',
   codeDescription: 'The program: the body of an async TypeScript function.',
@@ -58,10 +58,9 @@ const TYPESCRIPT_FLAVOR: RunCodeFlavor = {
  */
 const PYTHON_FLAVOR: RunCodeFlavor = {
   description:
-    'Execute a Python program against the available tools. Takes a required `code` '
-    + 'argument, the BODY of an async function (top-level `await` and `return` work), and '
-    + 'an optional `description`, a short summary of what the program does (defaults '
-    + 'to "Run code"). Call tools as '
+    'Execute a Python program against the available tools. Takes two required '
+    + 'arguments: `code`, the BODY of an async function (top-level `await` and `return` '
+    + 'work), and `description`, a short summary of what the program does. Call tools as '
     + '`await tools.name(args)` per the declarations in the system prompt. Use '
     + '`print(...)` and/or `return <value>` for program output — curate it. Image-bearing '
     + 'subtool results are attached after the run.',
@@ -281,7 +280,7 @@ export interface RunCodeBridgeOptions {
 }
 
 /**
- * Build the `run_code` {@link ToolDefinition}: required `code` and optional
+ * Build the `run_code` {@link ToolDefinition}: required `code` and
  * `description` parameters, executed through the dispatch bridge described
  * above. The
  * registry reserves it as presentation infrastructure under non-native modes,
@@ -300,11 +299,15 @@ export function createRunCodeTool(registry: ToolRuntime, options: RunCodeBridgeO
     // loaded runtime's flavor at schema-emission time so the schema the MODEL
     // sees matches the SDK section's language. Argument VALIDATION still keys
     // off this static spec (defineTool closes over it), which is language-
-    // independent (one required string `code` and one optional display string).
+    // independent (one required string `code`).
     description: TYPESCRIPT_FLAVOR.description,
     parameters: {
       code: { type: 'string', required: true, description: TYPESCRIPT_FLAVOR.codeDescription },
-      description: { type: 'string', description: RUN_CODE_DESCRIPTION_PARAM_DESCRIPTION },
+      description: {
+        type: 'string',
+        required: true,
+        description: RUN_CODE_DESCRIPTION_PARAM_DESCRIPTION,
+      },
     },
     output: {
       schema: {
@@ -322,8 +325,7 @@ export function createRunCodeTool(registry: ToolRuntime, options: RunCodeBridgeO
       },
     },
     async execute(args, exec): Promise<RunCodeOutput> {
-      const description = args.description ?? 'Run code'
-      if (description.trim().length === 0) {
+      if (args.description.trim().length === 0) {
         throw new Error('invalid description: expected a non-empty string')
       }
       const runtime = requireRuntime()
@@ -464,7 +466,7 @@ export function createRunCodeTool(registry: ToolRuntime, options: RunCodeBridgeO
         }
         const normalized = jsonNormalizeArgs(rawArgs)
         const n = ++dispatches
-        const subCallId = brandString<ToolCallId>(`${String(exec.callId)}:code:${n}`)
+        const subCallId = brandString<ToolCallId>(`${String(exec.callId)}:ptc:${n}`)
         const input = {
           callId: subCallId,
           rootCallId: exec.rootCallId,
@@ -504,7 +506,7 @@ export function createRunCodeTool(registry: ToolRuntime, options: RunCodeBridgeO
                 // the log stays detached.
                 content: result.content,
               })
-              agent.session.append('tool/code-dispatch', {
+              agent.session.append('tool/ptc-dispatch', {
                 rootCallId: exec.rootCallId,
                 parentCallId: exec.callId,
                 subCallId,
@@ -529,7 +531,7 @@ export function createRunCodeTool(registry: ToolRuntime, options: RunCodeBridgeO
               reject(new Error(`run_code run is over (${String(runController.signal.reason)}); ${name} tool call abandoned`))
             },
             async start(): Promise<void> {
-              exec.agent?.session.append('tool/code-dispatch-start', {
+              exec.agent?.session.append('tool/ptc-dispatch-start', {
                 rootCallId: exec.rootCallId,
                 parentCallId: exec.callId,
                 subCallId,
@@ -559,7 +561,7 @@ export function createRunCodeTool(registry: ToolRuntime, options: RunCodeBridgeO
               if (!result.isError && result.content.some(block => block.type === 'image')) {
                 exec.deferContext(createUserMessage({
                   content: result.content,
-                  source: { kind: 'plugin', plugin: 'tools-code-mode' },
+                  source: { kind: 'plugin', plugin: 'tools-ptc' },
                 }))
               }
               for (const context of result.additionalContexts ?? []) {
@@ -647,7 +649,7 @@ export function createRunCodeTool(registry: ToolRuntime, options: RunCodeBridgeO
     // (the bash `description` precedent); the program itself rides rawInput.
     presentCall: args => ({
       card: 'generic',
-      title: args.description ?? 'Run code',
+      title: args.description,
       kind: 'execute',
       rawInput: args.code,
     }),
@@ -669,7 +671,7 @@ export function createRunCodeTool(registry: ToolRuntime, options: RunCodeBridgeO
     // the emitted schema always matches the validated specification.
     get: () => parameterSchemaSpecToJsonSchema({
       code: { type: 'string', required: true, description: resolveFlavor(peekRuntime).codeDescription },
-      description: { type: 'string', description: RUN_CODE_DESCRIPTION_PARAM_DESCRIPTION },
+      description: { type: 'string', required: true, description: RUN_CODE_DESCRIPTION_PARAM_DESCRIPTION },
     }) as unknown as Record<string, unknown>,
   })
   return definition

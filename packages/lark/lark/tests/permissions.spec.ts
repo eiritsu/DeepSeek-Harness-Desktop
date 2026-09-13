@@ -156,4 +156,27 @@ describe('Lark permission import template', () => {
     expect([...scopes.user]).toEqual(['im:message', 'calendar:calendar'])
     expect(() => applicationScopeSets({ ok: true, data: {} })).toThrow(/scopes array/)
   })
+
+  it('ignores malformed scope rows and rejects malformed envelopes', () => {
+    const scopes = applicationScopeSets({
+      data: {
+        app: {
+          scopes: [
+            null,
+            'im:message',
+            { scope: 1, token_types: ['tenant'] },
+            { scope: 'im:message', token_types: 'tenant' },
+            { scope: 'tenant-only', token_types: ['tenant'] },
+            { scope: 'user-only', token_types: ['user'] },
+            { scope: 'neither', token_types: [] },
+          ],
+        },
+      },
+    })
+    expect([...scopes.tenant]).toEqual(['tenant-only'])
+    expect([...scopes.user]).toEqual(['user-only'])
+    expect(() => applicationScopeSets(null)).toThrow(/scopes array/)
+    expect(() => applicationScopeSets({ data: null })).toThrow(/scopes array/)
+    expect(() => applicationScopeSets({ data: { app: null } })).toThrow(/scopes array/)
+  })
 })
