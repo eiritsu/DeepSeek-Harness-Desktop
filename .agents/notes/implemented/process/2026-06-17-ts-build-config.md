@@ -30,7 +30,7 @@ Concrete constraints:
 
 In-package relative imports use explicit `.ts` specifiers.
 
-`pnpm run build` orders Host lib, Client lib, and Web; each lib phase keeps tsc emission before tsdown bundling:
+`pnpm run build` orders Host lib, Client lib, and Web; each lib phase keeps tsc emission before tsdown bundling. The Host phase first runs a source-driven Typert prepass that emits Host reflection and Remote Client declarations into their package `lib/` roots. This prepass lets a clean checkout typecheck aggregate tests and Client imports that consume `/remote`; Host tsdown regenerates the artifacts after tsc verifies the workspace.
 
 - Host tsc runs `tsc -b` against `tsconfig.host.json`, emitting per-module `.js`, `.d.ts`, `.js.map`, and `.d.ts.map` into `lib/types` for each package in the Host graph; Host tsdown then reads that JavaScript, produces published entries, and runs Host Typert.
 - Client tsc runs `tsc -b` against `tsconfig.client.json` after Host Typert has generated the Remote Client declarations; Client tsdown then reads the JavaScript emitted by the Client graph and produces the Client packages' Node loader entries and browser bundles.
@@ -46,6 +46,7 @@ The command orchestration shape is:
 
 ```sh
 pnpm run build:
+tsx scripts/bootstrap-typert.ts
 tsc -b tsconfig.host.json
 tsdown --env.DSH_BUILD_FACE host
 tsc -b tsconfig.client.json
@@ -70,6 +71,7 @@ The source-mode demos run through their declared TypeScript launchers and the ro
 - **Keep `tsdown`/oxc as the TypeScript transformer** — oxc's transform is not `tsc` behavior (decorator transform differs, bundled JS differs from per-file emit), and its bundled `.d.ts` conflicts with Cordis' internal relative module augmentation shape.
 - **One root strict program over packages, vendor, examples, tests, and scripts** — vendor source triggers type errors outside this project's ownership under the root strict flags; project references with per-project strictness are the boundary that works.
 - **Clean before every build** — this would discard the incremental state owned by `tsc` and the bundler even when the workspace layout is unchanged.
+- **Require a previous Host build to provide Remote declarations** — this makes a clean checkout fail before Host tsdown can generate its first artifacts and lets stale ignored output conceal broken build ordering.
 - **Remove every package-level `node_modules`** — valid package dependency links do not cause the workspace-discovery failure, and deleting them would turn build cleanup into dependency reinstallation.
 
 ## Consequences
@@ -77,7 +79,7 @@ The source-mode demos run through their declared TypeScript launchers and the ro
 Build responsibilities are clearer:
 
 - Each ordinary module under `packages/<group>/<pkg>` and `vendor/*` has one local tsconfig for build, typecheck, and tools that run source directly, such as the `dsh` source loader, `tsx`, and `vitest`. `api/remotes` is the sole exception: generated-contract ordering requires one solution and two mutually exclusive emitting projects.
-- The `build` command runs the Host and Client Project Reference graphs in order. In each phase, `tsc -b` owns the publishable per-module `.js` and `.d.ts` output, while the bundler owns only the published runtime bundles.
+- The `build` command runs the Host and Client Project Reference graphs in order. The Host Typert prepass owns only generated reflection and Remote declarations needed to start that graph; in each phase, `tsc -b` owns the publishable per-module `.js` and `.d.ts` output, while the bundler owns only the published runtime bundles.
     - `lib/types/*.d.ts` is the publish declaration output; `.d.ts.map` remains only as a local compilation artifact.
     - `lib/types/*.d.ts` uses explicit `.ts` relative specifiers, which TypeScript's NodeNext/Node16 resolver maps to sibling `.d.ts` files.
     - `lib/types/*.js` is normally only a bundler input. It is published only when an explicit runtime export points into the emitted tree.

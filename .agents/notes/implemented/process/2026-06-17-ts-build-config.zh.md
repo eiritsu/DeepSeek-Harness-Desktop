@@ -30,7 +30,7 @@ Status: implemented
 
 包内相对导入使用显式 `.ts` 说明符。
 
-`pnpm run build` 依次执行 Host lib、Client lib 和 Web；每个 lib 阶段都保持 tsc 先发射、tsdown 后打包：
+`pnpm run build` 依次执行 Host lib、Client lib 和 Web；每个 lib 阶段都保持 tsc 先发射、tsdown 后打包。Host 阶段首先执行由源码驱动的 Typert 预生成，把 Host reflection 与 Remote Client 声明写入各包的 `lib/` 根目录。该预生成使干净 checkout 可以类型检查会消费 `/remote` 的 aggregate tests 与 Client imports；tsc 校验工作区后，Host tsdown 会重新生成这些产物。
 
 - Host tsc 对 `tsconfig.host.json` 执行 `tsc -b`，把逐模块 `.js`、`.d.ts`、`.js.map` 与 `.d.ts.map` 输出到 Host 图各包的 `lib/types`；Host tsdown 随后读取这些 JS，生成发布入口并运行 Host Typert。
 - Client tsc 在 Host Typert 已生成 Remote Client 声明后对 `tsconfig.client.json` 执行 `tsc -b`；Client tsdown 再读取 Client 图发射的 JS，生成 Client 包的 Node loader 入口与 browser bundle。
@@ -46,6 +46,7 @@ Status: implemented
 
 ```sh
 pnpm run build:
+tsx scripts/bootstrap-typert.ts
 tsc -b tsconfig.host.json
 tsdown --env.DSH_BUILD_FACE host
 tsc -b tsconfig.client.json
@@ -70,6 +71,7 @@ tsx scripts/clean.ts
 - **继续使用 `tsdown`/oxc 作为 TypeScript 转换器**：oxc 的转换行为与 `tsc` 不同（装饰器转换有差异、打包 JS 与逐文件输出不同），且其打包 `.d.ts` 与 Cordis 内部的相对模块增强结构冲突。
 - **用一个根目录严格程序覆盖包、vendor、示例、测试和脚本**：vendor 源码在根目录严格标志下会触发不属于本项目所有权范围的类型错误；带有逐项目严格度的 project references 才是可行的边界。
 - **每次构建前都执行清理**：即使工作区布局没有变化，这也会丢弃 `tsc` 和打包器拥有的增量状态。
+- **要求先前的 Host 构建提供 Remote 声明**：这会让干净 checkout 在 Host tsdown 首次生成产物前就失败，并使过期的 ignored output 掩盖错误的构建顺序。
 - **删除所有包级 `node_modules`**：有效的包依赖链接不会导致工作区发现失败，而删除这些链接会使构建清理变成重新安装依赖。
 
 ## 后果
@@ -77,7 +79,7 @@ tsx scripts/clean.ts
 构建职责更加清晰：
 
 - `packages/<group>/<pkg>` 和 `vendor/*` 下的每个普通模块有一份本地 tsconfig，同时服务于构建、类型检查和直接运行源码的工具（如 `dsh` 源码 loader、`tsx` 和 `vitest`）。`api/remotes` 因生成约定顺序使用一个 solution 和两个互斥的 emitting project，是唯一例外。
-- `build` 命令依次运行 Host 和 Client 的 Project Reference 图。每个阶段都由 `tsc -b` 负责可发布的逐模块 `.js` 和 `.d.ts` 输出，打包器仅负责发布 runtime bundle。
+- `build` 命令依次运行 Host 和 Client 的 Project Reference 图。Host Typert 预生成只负责启动该图所需的 reflection 与 Remote 声明；每个阶段都由 `tsc -b` 负责可发布的逐模块 `.js` 和 `.d.ts` 输出，打包器仅负责发布 runtime bundle。
     - `lib/types/*.d.ts` 是发布用的声明输出；`.d.ts.map` 只作为本地编译产物保留。
     - `lib/types/*.d.ts` 使用显式 `.ts` 相对说明符，TypeScript 的 NodeNext/Node16 解析器会将其映射到同级的 `.d.ts` 文件。
     - `lib/types/*.js` 通常仅作为打包器输入。只有显式运行时 export 指向该输出树时，才会发布这些文件。

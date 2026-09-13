@@ -153,7 +153,7 @@ Changing only a Remote method's implementation body without changing its contrac
 pnpm run build:lib
 ```
 
-The running Client watcher consumes these generated files when it rebundles. If `pnpm run build:lib:host` has already refreshed the Host contract, `pnpm run build:lib:client` can complete the Client side; a clean worktree cannot skip the Host phase. Recompiling only the frontend source cannot infer new types from Host decorators. `pnpm run typecheck` runs the Host lib phase before Client tsc, and CI and release builds use the same order.
+The Host phase begins with a source-driven Typert prepass so a clean checkout has the Remote Client declarations that the aggregate TypeScript program imports; Host tsdown regenerates the same artifacts after tsc has verified the workspace. The running Client watcher consumes these generated files when it rebundles. If `pnpm run build:lib:host` has already refreshed the Host contract, `pnpm run build:lib:client` can complete the Client side; a clean worktree cannot skip the Host phase. Recompiling only the frontend source cannot infer new types from Host decorators. `pnpm run typecheck` runs the Host lib phase before Client tsc, and CI and release builds use the same order.
 
 ## Boundaries
 

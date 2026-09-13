@@ -153,7 +153,7 @@ pnpm run dev:web
 pnpm run build:lib
 ```
 
-运行中的 Client watcher 会在重新打包时消费这些生成文件。若已单独运行 `pnpm run build:lib:host` 刷新 Host 约定，也可再运行 `pnpm run build:lib:client` 完成 Client 侧；干净工作树不能跳过 Host 阶段。仅重新编译前端源码不能从 Host decorator 推导新类型。`pnpm run typecheck` 会执行 Host lib 阶段后再运行 Client tsc，CI 与发布构建也使用同一顺序。
+Host 阶段首先执行由源码驱动的 Typert 预生成，使干净 checkout 在 aggregate TypeScript program 导入 Remote Client 声明前已具备这些文件；tsc 校验工作区后，Host tsdown 会重新生成相同产物。运行中的 Client watcher 会在重新打包时消费这些生成文件。若已单独运行 `pnpm run build:lib:host` 刷新 Host 约定，也可再运行 `pnpm run build:lib:client` 完成 Client 侧；干净工作树不能跳过 Host 阶段。仅重新编译前端源码不能从 Host decorator 推导新类型。`pnpm run typecheck` 会执行 Host lib 阶段后再运行 Client tsc，CI 与发布构建也使用同一顺序。
 
 ## 边界
 
