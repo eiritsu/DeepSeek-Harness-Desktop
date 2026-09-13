@@ -27,6 +27,8 @@ The production Lite shell uses `~/.dsh` as `DSH_HOME`, matching Electron and the
 
 The Swift shell keeps its source/update audit catalog under `~/Library/Application Support/DeepSeek Harness Lite`; that auxiliary database is not Session authority. First launch can migrate data from the previous `~/Library/Application Support/DeepSeek Harness Desktop/data` location without deleting the old directory.
 
+The `dsh web:` startup line is the shell's readiness signal: the Web profile emits it only after plugin loading has settled and the local server is available. Lite navigates once after that signal instead of probing a private plugin route. When legacy migration copies `.credentials.yaml`, Lite narrows its permissions to `0600`; malformed credential files still fail startup, but the failure screen identifies the file and recovery action without displaying credential values.
+
 Configuration export is desensitized: credentials, Session transcripts, attachment bytes, logs, and machine identity are excluded. Import and reset stop the Node runtime before replacing data. Packaging must enforce a single active desktop writer before both shells are distributed together.
 
 ## Develop
