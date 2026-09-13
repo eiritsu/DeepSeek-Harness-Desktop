@@ -4,6 +4,8 @@ English | [中文](README.zh.md)
 
 The desktop application is an Electron shell around the dsh Web UI. It opens no listening port: a bundled upstream Node.js child boots the installed dsh project, versioned framed byte pipes carry Fetch requests and streaming responses without an outer Base64 envelope, Node IPC carries lifecycle control, and `dsh-app://` serves the matching client assets.
 
+Electron 44 sets the practical macOS floor. The macOS packages explicitly target macOS 13 through macOS 26 and provide arm64 and x64 artifacts. Apple-silicon users who prioritize lower memory use can build the separate native [`../../desktop-shell/README.md`](../../desktop-shell/README.md) application, which targets macOS 11 through macOS 26 while sharing the same Node host and product data.
+
 ## Key technical decisions
 
 | Decision | Why | Direct consequence |
@@ -24,6 +26,10 @@ The [Electron packaging and update Agent Note](../../.agents/notes/implemented/a
 Electron owns `$DSH_HOME/profiles/desktop`. Its `dependencies` contains only installed external plugins at exact versions; `dsh.profile.bundles` contains the built-in bundles followed by enabled plugins. The signed application supplies dsh, the private Desktop Host, and their production packages from `resources/dsh`. Shared package links resolve to those actual directories. Both host and plugins execute in the same bundled upstream Node process, with normal realpath resolution; Desktop does not enable `--preserve-symlinks`. The CLI cannot boot or mutate this profile.
 
 The local startup page exposes startup status and available recovery actions; the loaded dsh renderer receives only the desktop protocol marker. The separate plugin window receives structured list, install, remove, update, and update-check operations; neither renderer receives filesystem access, raw Electron IPC, a shell, or arbitrary pnpm arguments.
+
+The loaded application receives three narrow operations for the authoritative Session SQLite database: export, validated import, and reset. Export and import use native file dialogs; every operation stops the Node Host before copying or replacing the database, validates schema and required tables, applies owner-only file permissions, and restarts the Host.
+
+The application also receives a typed SkillHub request bridge. Catalog responses and archives have byte limits; archive installation rejects invalid identifiers, symbolic links, excessive entries, missing `SKILL.md`, and existing destinations. Install and exact-name removal stop the Host before changing `$DSH_HOME/skills`. No general filesystem, arbitrary URL, raw IPC, shell, or package-manager capability is exposed to the Web client. The built-in Desktop composition also mounts the shared DeepSeek Files, external-tools, SkillHub, and Lark packages.
 
 Electron chooses typed English or Chinese shell copy from its application locale and falls back to English. Menus, native dialogs, the startup page, and the plugin-management renderer use the same locale payload; the repository Client UI i18n gate checks these desktop sources.
 

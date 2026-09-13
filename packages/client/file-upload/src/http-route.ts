@@ -33,6 +33,7 @@ export async function handleFileUploadHttp(service: FileUploads, request: Reques
     return new Response('sessionId is required', { status: 400 })
   }
   const name = url.searchParams.get('name') ?? undefined
+  const declaredMediaType = url.searchParams.get('mediaType') ?? undefined
   let result: FileUploadHttpResult
   try {
     result = {
@@ -42,6 +43,7 @@ export async function handleFileUploadHttp(service: FileUploads, request: Reques
         data: requestBodyChunks(request.body),
         signal: request.signal,
         ...(name === undefined ? {} : { name }),
+        ...(declaredMediaType === undefined ? {} : { mediaType: declaredMediaType }),
       }),
     }
   } catch (error) {

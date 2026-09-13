@@ -33,6 +33,10 @@ class PersistenceProbe extends SessionPersistence {
   // Appends are durable on resolution here; nothing buffers, so the service-wide flush is a no-op.
   override async flush(): Promise<void> {}
 
+  override async delete(id: SessionId): Promise<void> {
+    if (!this.stored.delete(id)) throw new SessionPersistenceNotFoundError(id)
+  }
+
   override async open(id: SessionId, access: SessionAccess): Promise<SessionHandle> {
     const entry = this.stored.get(id)
     if (entry === undefined) throw new SessionPersistenceNotFoundError(id)

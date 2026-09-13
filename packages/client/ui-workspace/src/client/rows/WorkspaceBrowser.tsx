@@ -264,6 +264,10 @@ type SessionTreeProps = Pick<
   onSessionRename: (sessionId: SessionNode['id'], currentTitle: string) => void
   /** Archive a session (row menu action; the row disappears on the state echo). */
   onSessionArchive: (sessionId: SessionNode['id']) => void
+  /** Open the browser-owned Workspace selector for a Session. */
+  onSessionAttach: (sessionId: SessionNode['id'], currentTitle: string) => void
+  /** Open permanent-deletion confirmation for a Session. */
+  onSessionDelete: (sessionId: SessionNode['id'], currentTitle: string) => void
   /** Session order behavior: fixed after edits, or additionally promoted by user activity. */
   orderBy: SessionOrderBy
   /** One Session chosen from search that must be exposed and scrolled into view. */
@@ -276,7 +280,7 @@ type SessionTreeProps = Pick<
 function SessionTree({
   useSessions, useSessionPendingInteraction, startSession, open, forkSession, workspaces, archivedSessionIds,
   workspaceReady, usePanelInfo,
-  onRenameRequest, onDeleteRequest, onSessionRename, onSessionArchive,
+  onRenameRequest, onDeleteRequest, onSessionRename, onSessionArchive, onSessionAttach, onSessionDelete,
   insertWorkspaceBefore, insertSessionBefore, orderBy,
   groupExpansion, setGroupExpanded,
   sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder, home, t,
@@ -588,6 +592,8 @@ function SessionTree({
                     onRename={onSessionRename}
                     onFork={forkSession}
                     onArchive={onSessionArchive}
+                    onAttach={onSessionAttach}
+                    onDelete={onSessionDelete}
                     onReveal={node.id === revealSessionId && group.key === revealGroup
                       ? () => { onSessionRevealed(node.id) }
                       : undefined}
@@ -620,6 +626,7 @@ function SessionTree({
 /** The flat "In one list" body: every session is one draggable top-level row. */
 function FlatList({
   useSessions, useSessionPendingInteraction, open, forkSession, onSessionRename, onSessionArchive,
+  onSessionAttach, onSessionDelete,
   archivedSessionIds, usePanelInfo,
   orderBy, sessionOrderByAccount, sessionUpdatedAtByAccount, syncSessionOrderAccount, setSessionOrder,
   revealSessionId, onSessionRevealed, t,
@@ -631,6 +638,8 @@ function FlatList({
   | 'forkSession'
   | 'onSessionRename'
   | 'onSessionArchive'
+  | 'onSessionAttach'
+  | 'onSessionDelete'
   | 'archivedSessionIds'
   | 'usePanelInfo'
   | 'orderBy'
@@ -715,6 +724,8 @@ function FlatList({
               onRename={onSessionRename}
               onFork={forkSession}
               onArchive={onSessionArchive}
+              onAttach={onSessionAttach}
+              onDelete={onSessionDelete}
               onReveal={node.id === revealSessionId
                 ? () => { onSessionRevealed(node.id) }
                 : undefined}
@@ -849,10 +860,12 @@ export function WorkspaceBrowser({
   open,
   renameSession,
   forkSession,
+  attachSession,
   renameWorkspace,
   deleteWorkspace,
   insertWorkspaceBefore,
   archiveSession,
+  deleteSession,
   insertSessionBefore,
   createWorkspace,
   searchSessions,
@@ -1085,6 +1098,56 @@ export function WorkspaceBrowser({
     })
   }
 
+  const [sessionAttachTarget, setSessionAttachTarget] = useState<{ sessionId: SessionNode['id']; title: string } | null>(null)
+  const [sessionAttaching, setSessionAttaching] = useState(false)
+  const [sessionAttachError, setSessionAttachError] = useState<string | null>(null)
+  const closeSessionAttach = () => {
+    if (sessionAttaching) return
+    setSessionAttachTarget(null)
+    setSessionAttachError(null)
+  }
+  const confirmSessionAttach = (workspaceId: WorkspaceId) => {
+    if (sessionAttaching || sessionAttachTarget === null) return
+    setSessionAttaching(true)
+    setSessionAttachError(null)
+    attachSession(workspaceId, sessionAttachTarget.sessionId).then(() => {
+      setSessionAttaching(false)
+      setSessionAttachTarget(null)
+    }).catch((reason: unknown) => {
+      setSessionAttaching(false)
+      setSessionAttachError(reason instanceof Error ? reason.message : String(reason))
+    })
+  }
+  const onSessionAttach = (sessionId: SessionNode['id'], title: string) => {
+    setSessionAttachTarget({ sessionId, title })
+    setSessionAttachError(null)
+  }
+
+  const [sessionDeleteTarget, setSessionDeleteTarget] = useState<{ sessionId: SessionNode['id']; title: string } | null>(null)
+  const [sessionDeleting, setSessionDeleting] = useState(false)
+  const [sessionDeleteError, setSessionDeleteError] = useState<string | null>(null)
+  const closeSessionDelete = () => {
+    if (sessionDeleting) return
+    setSessionDeleteTarget(null)
+    setSessionDeleteError(null)
+  }
+  const confirmSessionDelete = () => {
+    if (sessionDeleting || sessionDeleteTarget === null) return
+    setSessionDeleting(true)
+    setSessionDeleteError(null)
+    deleteSession(sessionDeleteTarget.sessionId).then(() => {
+      setSessionDeleting(false)
+      setSessionDeleteTarget(null)
+    }).catch((reason: unknown) => {
+      setSessionDeleting(false)
+      setSessionDeleteError(reason instanceof Error ? reason.message : String(reason))
+    })
+  }
+  const onSessionDelete = (sessionId: SessionNode['id'], title: string) => {
+    setSessionDeleteTarget({ sessionId, title })
+    setSessionDeleteError(null)
+  }
+
   // Delete dialog is separate from the row so a successful removal can
   // unmount that row without tearing down the in-flight confirmation state.
   const [deleteTarget, setDeleteTarget] = useState<{ workspaceId: WorkspaceId; title: string } | null>(null)
@@ -1276,6 +1339,7 @@ export function WorkspaceBrowser({
                 useSessions={useSessions} useSessionPendingInteraction={useSessionPendingInteraction}
                 open={open} forkSession={forkSession}
                 onSessionRename={onSessionRename} onSessionArchive={onSessionArchive}
+                onSessionAttach={onSessionAttach} onSessionDelete={onSessionDelete}
                 archivedSessionIds={archivedSessionIds}
                 orderBy={orderBy}
                 sessionOrderByAccount={sessionOrderByAccount}
@@ -1294,6 +1358,8 @@ export function WorkspaceBrowser({
                 useSessionPendingInteraction={useSessionPendingInteraction}
                 onSessionRename={onSessionRename}
                 onSessionArchive={onSessionArchive}
+                onSessionAttach={onSessionAttach}
+                onSessionDelete={onSessionDelete}
                 forkSession={forkSession}
                 workspaces={workspaces}
                 workspaceReady={workspacePhase === 'ready' && workspaceStreamState !== 'loading'}
@@ -1391,6 +1457,58 @@ export function WorkspaceBrowser({
           }}
         />
         {sessionRenameError !== null && <div className={css.renameError} role="alert">{sessionRenameError}</div>}
+      </Modal>
+      <Modal
+        open={sessionAttachTarget !== null}
+        onClose={closeSessionAttach}
+        closeLabel={t('close')}
+        title={t('attach.sessionTitle')}
+        {...sessionAttachTarget === null
+          ? {}
+          : { description: t('attach.sessionDesc', { name: sessionAttachTarget.title }) }}
+        footer={<Button variant="outline" disabled={sessionAttaching} onClick={closeSessionAttach}>{t('cancel')}</Button>}
+      >
+        <div className={css.attachWorkspaceList}>
+          {workspaces.length === 0 && <div className={css.deleteStatus}>{t('attach.noWorkspaces')}</div>}
+          {workspaces.map(workspace => (
+            <Button
+              key={workspace.workspaceId}
+              variant="outline"
+              disabled={sessionAttaching || sessionAttachTarget?.sessionId === undefined
+                || workspace.sessionIds.includes(sessionAttachTarget.sessionId)}
+              onClick={() => { confirmSessionAttach(workspace.workspaceId) }}
+            >
+              {workspace.title}
+            </Button>
+          ))}
+        </div>
+        {sessionAttaching && <div className={css.deleteStatus} role="status">{t('attach.pending')}</div>}
+        {sessionAttachError !== null && <div className={css.renameError} role="alert">{sessionAttachError}</div>}
+      </Modal>
+      <Modal
+        open={sessionDeleteTarget !== null}
+        onClose={closeSessionDelete}
+        closeLabel={t('close')}
+        title={t('menu.deleteSession')}
+        {...sessionDeleteTarget === null
+          ? {}
+          : { description: t('delete.sessionDesc', { name: sessionDeleteTarget.title }) }}
+        footer={(
+          <>
+            <Button variant="outline" disabled={sessionDeleting} onClick={closeSessionDelete}>{t('cancel')}</Button>
+            <Button
+              variant="outline"
+              className={css.deleteAction}
+              disabled={sessionDeleting}
+              onClick={confirmSessionDelete}
+            >
+              {t('menu.deleteSession')}
+            </Button>
+          </>
+        )}
+      >
+        {sessionDeleting && <div className={css.deleteStatus} role="status">{t('delete.sessionPending')}</div>}
+        {sessionDeleteError !== null && <div className={css.renameError} role="alert">{sessionDeleteError}</div>}
       </Modal>
       <Modal
         open={deleteTarget !== null}

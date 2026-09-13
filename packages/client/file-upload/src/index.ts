@@ -108,6 +108,7 @@ export class FileUploads extends TypertRemoteService {
     return this.commit(agent, async () => this.ctx.attachments.admitEncodedFile({
       data: request.data,
       ...(request.name === undefined ? {} : { name: request.name }),
+      ...(request.mediaType === undefined ? {} : { mediaType: request.mediaType }),
     }))
   }
 
@@ -121,12 +122,14 @@ export class FileUploads extends TypertRemoteService {
     readonly data: AsyncIterable<Uint8Array>
     readonly signal?: AbortSignal
     readonly name?: string
+    readonly mediaType?: string
   }): Promise<FileUploadValue> {
     const agent = await this.resolveAgent(request.sessionId)
     return this.commit(agent, async () => this.ctx.attachments.saveFileStream({
       data: request.data,
       ...(request.signal === undefined ? {} : { signal: request.signal }),
       ...(request.name === undefined ? {} : { name: request.name }),
+      ...(request.mediaType === undefined ? {} : { mediaType: request.mediaType }),
     }))
   }
 

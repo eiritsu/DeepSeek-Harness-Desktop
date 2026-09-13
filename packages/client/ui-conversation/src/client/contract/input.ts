@@ -297,6 +297,12 @@ export interface ComposerKeyboard {
    * @returns the unbind disposer.
    */
   bindFilePicker(picker: { available(): boolean; open(): void }): () => void
+  /**
+   * Bind the mounted composer's recursive folder action and live intake availability.
+   * @param picker - availability query and native folder-dialog opener.
+   * @returns the unbind disposer.
+   */
+  bindFolderPicker(picker: { available(): boolean; open(): void }): () => void
 }
 
 /** One independently addressable row projected from the transient queue snapshot. */

@@ -31,6 +31,7 @@ const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/workspace-man
 const SEED = fileURLToPath(new URL('../../../snapshots/web/seeded-history/session.v3.jsonl', import.meta.url))
 const MODE = webSnapshotMode()
 const BROWSER_EXPECTED = join(SNAPSHOT_DIR, 'directory-browser.expected.md')
+const SESSION_MENU_EXPECTED = join(SNAPSHOT_DIR, 'session-menu.expected.md')
 const SEED_ID = 'workspace-management-web-e2e'
 // Both waits exceed ui-primitives' 200ms POINTER_GRACE_MS. Keep them above
 // that value if the shared setting changes.
@@ -585,6 +586,8 @@ describe('web e2e: workspace management (create / rename / flat view / hover aff
     await item.hover()
     await page.waitForTimeout(POINTER_HOLD_MS)
     expect(await page.getByRole('menuitem', { name: 'Rename' }).count()).toBe(1)
+    const snapshot = await captureStableAria(page, '[role="menu"]', scaffold.workspaceCwd)
+    await compareOrRefreshGolden(SESSION_MENU_EXPECTED, snapshot, MODE)
     // Pointer-leave dismissal still applies once the pointer genuinely leaves.
     await page.getByRole('button', { name: 'Settings' }).hover()
     await expect.poll(() => page.getByRole('menuitem', { name: 'Rename' }).count(), { timeout: 5_000 }).toBe(0)
@@ -666,6 +669,6 @@ describe('web e2e: workspace management (create / rename / flat view / hover aff
     expect(tripwire.warnings).toEqual([])
     // The directory-browser aria golden is this spec's one owned artifact;
     // the seed it reuses is owned (and inventory-guarded) by seeded-history.
-    await assertFixtureInventory(SNAPSHOT_DIR, ['.gitkeep', 'directory-browser.expected.md'])
+    await assertFixtureInventory(SNAPSHOT_DIR, ['.gitkeep', 'directory-browser.expected.md', 'session-menu.expected.md'])
   })
 })

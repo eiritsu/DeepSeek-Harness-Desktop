@@ -377,7 +377,7 @@ export function SearchResultItem({ result, currentId, onOpen, t }: {
  * @returns the session row.
  */
 export function SessionNodeItem({
-  node, currentId, now, onOpen, onRename, onFork, onArchive, onReveal, drag, flat = false, t,
+  node, currentId, now, onOpen, onRename, onFork, onArchive, onAttach, onDelete, onReveal, drag, flat = false, t,
 }: {
   node: SessionNode
   currentId: string | undefined
@@ -389,6 +389,10 @@ export function SessionNodeItem({
   onFork: (id: SessionNode['id']) => void
   /** Archive this session (row menu action; commits without a dialog). */
   onArchive: (id: SessionNode['id']) => void
+  /** Open Workspace selection for this session. */
+  onAttach?: (id: SessionNode['id'], currentTitle: string) => void
+  /** Permanently delete this session after browser-owned confirmation. */
+  onDelete?: (id: SessionNode['id'], currentTitle: string) => void
   /** Scroll this row into view after search navigation, then acknowledge it. */
   onReveal?: (() => void) | undefined
   /** Present only on draggable rows (workspace-group sessions outside search). */
@@ -418,6 +422,8 @@ export function SessionNodeItem({
     { id: 'fork', label: t('menu.fork'), icon: <IconBranchOutline16 /> },
     // 20-native glyph in the menu's 16px icon slot (Menu.module.css .itemIcon).
     { id: 'archive', label: t('menu.archiveSession'), icon: <IconArchiveOutline20 size={16} /> },
+    ...(onAttach === undefined ? [] : [{ id: 'attach', label: t('menu.attachSession'), icon: <IconFolderClose16 /> }]),
+    ...(onDelete === undefined ? [] : [{ id: 'delete', label: t('menu.deleteSession'), icon: <IconTrashOutline16 />, danger: true }]),
   ]
   // Figma session cell: pad 8, status slot 16, then a 4px title gap.
   const ownRow = (
@@ -482,6 +488,8 @@ export function SessionNodeItem({
               if (id === 'rename') onRename(node.id, row.title)
               if (id === 'fork') onFork(node.id)
               if (id === 'archive') onArchive(node.id)
+              if (id === 'attach') onAttach?.(node.id, title)
+              if (id === 'delete') onDelete?.(node.id, title)
             }}
             portal
             closeOnPointerLeave

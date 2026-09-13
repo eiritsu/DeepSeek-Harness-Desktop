@@ -1,0 +1,68 @@
+import { existsSync, readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { describe, expect, it } from 'vitest'
+
+describe('Lark generated Remote artifacts', () => {
+  it('publishes matching strict Host and Client descriptor sets', async () => {
+    const host = await import('../lib/typert.host.js') as { TYPERT: { invocations: readonly unknown[] } }
+    const remote = await import('../lib/typert.remote-client.js') as { TYPERT_REMOTE: { descriptors: readonly unknown[] } }
+    expect(host.TYPERT.invocations).toHaveLength(7)
+    const identity = (value: readonly unknown[]) => value.map((entry) => {
+      const descriptor = entry as { id: string; service: string; namespace: string; method: string }
+      return {
+        id: descriptor.id,
+        service: descriptor.service,
+        namespace: descriptor.namespace,
+        method: descriptor.method,
+      }
+    })
+    expect(identity(remote.TYPERT_REMOTE.descriptors)).toEqual(identity(host.TYPERT.invocations))
+  })
+
+  it('retains private-chat state through the strict status schema', async () => {
+    const host = await import('../lib/typert.host.js') as {
+      TYPERT: {
+        invocations: Array<{
+          method: string
+          result: { schema: { parse(value: unknown): unknown } }
+        }>
+      }
+    }
+    const invocation = host.TYPERT.invocations.find(candidate => candidate.method === 'status')
+    const value = {
+      appId: 'cli_test',
+      brand: 'feishu',
+      credentialMode: 'managed',
+      secretConfigured: true,
+      secretWritable: false,
+      userAuthorizationPending: false,
+      cliAvailable: true,
+      bot: { status: 'ready', available: true },
+      user: { status: 'ready', available: true },
+      userAuthorizationMissingScopes: [],
+      conversation: { status: 'waiting', diagnostic: 'authorization required' },
+      capabilities: [],
+      permissionTemplate: '{}',
+    }
+    expect(invocation?.result.schema.parse(value)).toEqual(value)
+  })
+
+  it('publishes the private-chat runtime imported by the Host entry', async () => {
+    const root = resolve(import.meta.dirname, '..')
+    const manifest = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as { files: string[] }
+    expect(manifest.files).toContain('lib/auth-status.js')
+    expect(manifest.files).toContain('lib/conversation.js')
+    expect(existsSync(resolve(root, 'lib/auth-status.js'))).toBe(true)
+    expect(existsSync(resolve(root, 'lib/conversation.js'))).toBe(true)
+    expect(readFileSync(resolve(root, 'lib/index.js'), 'utf8')).toContain('from "./auth-status.js"')
+    expect(readFileSync(resolve(root, 'lib/index.js'), 'utf8')).toContain('from "./conversation.js"')
+  })
+
+  it('passes App Secret through stdin instead of environment or argv', () => {
+    const host = readFileSync(resolve(import.meta.dirname, '../src/index.ts'), 'utf8')
+    expect(host).toContain("'--app-secret-stdin'")
+    expect(host).toContain('`${appSecret}\\n`')
+    expect(host).toContain("LARKSUITE_CLI_BIN_DIR: join(resolveDshHome(), 'lark-cli-bin', 'v1.0.90')")
+    expect(host).not.toContain('LARKSUITE_CLI_APP_SECRET:')
+  })
+})

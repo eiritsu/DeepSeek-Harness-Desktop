@@ -321,6 +321,9 @@ describe('WorkspaceController', () => {
       sessionIds: ['session'],
     })
     await expect(controller.archiveSession(sid('session'))).resolves.toBeUndefined()
+    await expect(controller.attachSession(wid('one'), sid('session'))).resolves.toMatchObject({
+      sessionIds: ['session'],
+    })
     await expect(controller.delete(wid('one'))).resolves.toBeUndefined()
     // Each command crosses the wire as one positional request object.
     expect(mock.log.requests('workspace/create')).toEqual([{ path: '/work/created' }])
@@ -328,6 +331,7 @@ describe('WorkspaceController', () => {
     expect(mock.log.requests('workspace/insertBefore')).toEqual([{ workspaceId: 'one' }])
     expect(mock.log.requests('workspace/insertSessionBefore')).toEqual([{ workspaceId: 'one', sessionId: 'session' }])
     expect(mock.log.requests('workspace/archiveSession')).toEqual([{ sessionId: 'session' }])
+    expect(mock.log.requests('workspace/attachSession')).toEqual([{ workspaceId: 'one', sessionId: 'session' }])
     expect(mock.log.requests('workspace/delete')).toEqual([{ workspaceId: 'one' }])
   })
 

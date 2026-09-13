@@ -1,0 +1,16 @@
+.root { display: flex; flex-direction: column; gap: 10px; }
+.hint, .muted { margin: 0; color: var(--dsw-alias-label-tertiary); font-size: 13px; line-height: 20px; }
+.card { border: 1px solid var(--dsw-alias-border-l2); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
+.header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.header h3 { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
+.header p { margin: 0; color: var(--dsw-alias-label-tertiary); font-size: 12px; }
+.toggle { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 12px; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field label { font-size: 12px; color: var(--dsw-alias-label-secondary); }
+.inputRow { display: flex; gap: 6px; }
+.inputRow input { flex: 1; min-width: 0; border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; padding: 7px 9px; background: var(--dsw-alias-fill-white); color: var(--dsw-alias-label-primary); }
+.inputRow button { border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; padding: 0 10px; background: transparent; color: var(--dsw-alias-label-primary); cursor: pointer; }
+.inputRow button:disabled { opacity: .45; cursor: default; }
+.ok { color: var(--dsw-alias-state-success); font-size: 12px; }
+.error { margin: 0; color: var(--dsw-alias-state-error); font-size: 13px; }
+.retry { align-self: flex-start; border: 1px solid var(--dsw-alias-border-l2); border-radius: 6px; padding: 6px 12px; background: transparent; color: var(--dsw-alias-label-primary); cursor: pointer; }

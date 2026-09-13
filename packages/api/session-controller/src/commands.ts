@@ -6,7 +6,7 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import type { Agent, ModelSelection as AgentModelSelection } from '@deepseek-ai/dsh-agent'
 import { AttachmentError } from '@deepseek-ai/dsh-attachment'
 import type {
-  AttachmentAdmissionPart, FileAttachmentRef, ImageAttachmentRef,
+  AdmittedPromptContentPart, AttachmentAdmissionPart, FileAttachmentRef, ImageAttachmentRef,
 } from '@deepseek-ai/dsh-attachment'
 import type { FileUploadReceiptId } from '@deepseek-ai/dsh-client-file-upload/types'
 import type {} from '@deepseek-ai/dsh-client-file-upload'
@@ -26,6 +26,7 @@ import {
   ApiSessionAgentController,
   ApiSessionCwdConflict,
   ApiSessionNotFound,
+  ApiSessionRunning,
   ApiSessionPresetConflict,
   ApiSessionSubagentOwnership,
   apiSessionSubagentOwnershipError,
@@ -39,6 +40,8 @@ import type {
   SessionCancelValue,
   SessionCreateRequest,
   SessionCreateValue,
+  SessionDeleteRequest,
+  SessionDeleteValue,
   SessionForkRequest,
   SessionForkValue,
   SessionPromptRequest,
@@ -64,6 +67,41 @@ type PromptContentCandidate =
 
 function hasPromptContent(content: readonly PromptContentCandidate[]): boolean {
   return content.some(part => part.type !== 'text' || part.text.trim().length > 0)
+}
+
+function recognizedText(part: Exclude<AdmittedPromptContentPart, { type: 'text' }>, text: string): string {
+  const name = part.attachment.name ?? String(part.attachment.attachmentId)
+  return `[DeepSeek Files extracted text from ${JSON.stringify(name)}:]\n${text}`
+}
+
+async function recognizePromptAttachments(
+  ctx: Context,
+  content: readonly AdmittedPromptContentPart[],
+  recognizeImages: boolean,
+): Promise<AdmittedPromptContentPart[]> {
+  const groups = await Promise.all(content.map(async (part): Promise<AdmittedPromptContentPart[]> => {
+    if (part.type === 'text' || (part.type === 'image' && !recognizeImages)) return [part]
+    let recognized
+    try {
+      recognized = await ctx.attachments.recognize(part.attachment)
+    } catch (error) {
+      throw new RemoteError(
+        'session/attachment-invalid',
+        `DeepSeek Files recognition failed for ${JSON.stringify(part.attachment.name ?? String(part.attachment.attachmentId))}: ${String(error)}`,
+        { reason: 'RECOGNITION_FAILED' },
+      )
+    }
+    if (recognized === undefined) {
+      if (part.type === 'file') return [part]
+      throw new RemoteError(
+        'session/attachment-invalid',
+        'The selected model does not support image input and no DeepSeek Files OCR route accepted the image.',
+        { reason: 'MODEL_DOES_NOT_SUPPORT_IMAGES' },
+      )
+    }
+    return [part, { type: 'text', text: recognizedText(part, recognized.text) }]
+  }))
+  return groups.flat()
 }
 
 /** Implements Session business commands delegated by the Session Controller Remote service. */
@@ -258,7 +296,7 @@ export class SessionCommandController {
     const composition = await this.agents.composeAgent(this.agents.presetForObservation(source))
     try {
       const { provider, model } = this.ctx.agentDefaultModel.currentSelection()
-      await this.ctx.agents.create({
+      await this.agents.createFork({
         sessionId: childId,
         seed: source.events.slice(0, cut),
         inheritedEventCount: cut,
@@ -292,6 +330,75 @@ export class SessionCommandController {
       }
     }
     return { sessionId: childId }
+  }
+
+  /**
+   * Permanently delete one Session and, when requested, its durable descendants.
+   * @param request - root identity and recursive-deletion policy.
+   * @returns deleted identities in child-before-parent order.
+   */
+  async delete(request: SessionDeleteRequest): Promise<SessionDeleteValue> {
+    const headers = new Map<SessionId, SessionHeader>()
+    for (const snapshot of await this.ctx.sessionPersistence.list()) {
+      headers.set(snapshot.header.id, snapshot.header)
+    }
+    for (const session of this.ctx.sessions.list()) headers.set(session.id, session.header)
+    if (!headers.has(request.sessionId)) {
+      throw new RemoteError('session/not-found', `session "${request.sessionId}" not found`, {
+        sessionId: request.sessionId,
+      })
+    }
+    const children = new Map<SessionId, SessionId[]>()
+    for (const header of headers.values()) {
+      if (header.parentSession === undefined) continue
+      const current = children.get(header.parentSession) ?? []
+      current.push(header.id)
+      children.set(header.parentSession, current)
+    }
+    const direct = children.get(request.sessionId) ?? []
+    if (direct.length > 0 && request.recursive !== true) {
+      throw new RemoteError(
+        'session/has-children',
+        `session "${request.sessionId}" has durable descendants`,
+        { sessionId: request.sessionId, childSessionIds: direct },
+      )
+    }
+    const ordered: SessionId[] = []
+    const visiting = new Set<SessionId>()
+    const visited = new Set<SessionId>()
+    const visit = (id: SessionId): void => {
+      if (visited.has(id)) return
+      if (visiting.has(id)) {
+        throw new RemoteError('gateway/internal', `session ancestry contains a cycle at "${id}"`, {})
+      }
+      visiting.add(id)
+      for (const child of children.get(id) ?? []) visit(child)
+      visiting.delete(id)
+      visited.add(id)
+      ordered.push(id)
+    }
+    visit(request.sessionId)
+    try {
+      for (const id of ordered) this.agents.assertDeletable(id)
+      for (const id of ordered) {
+        await this.agents.disposeForDeletion(id)
+        await this.ctx.sessionPersistence.delete(id)
+        for (const workspace of this.ctx.workspaceRegistry.list()) {
+          if (workspace.sessionIds.includes(id)) await workspace.detachSession(id)
+        }
+        this.ctx.emit('api-session/removed', id)
+      }
+    } catch (error: unknown) {
+      if (error instanceof ApiSessionRunning) {
+        throw new RemoteError('session/running', error.message, { sessionId: error.sessionId })
+      }
+      if (error instanceof ApiSessionSubagentOwnership) {
+        throw apiSessionSubagentOwnershipError(error.sessionId)
+      }
+      if (remoteErrorOf(error) !== undefined) throw error
+      throw new RemoteError('gateway/internal', `failed to delete session "${request.sessionId}": ${String(error)}`, {})
+    }
+    return { deletedSessionIds: ordered }
   }
 
   /**
@@ -335,22 +442,18 @@ export class SessionCommandController {
     const hasImage = request.content.some(part => part.type === 'image')
     const admit = async (): Promise<SessionPromptValue> => {
       try {
+        let recognizeImages = false
         if (hasImage) {
           const current = this.agents.selectionFor(agent).current
           const model = await this.ctx.llm.resolveModelInfo(current.provider, current.model)
-          if (model.inputModalities !== undefined && !model.inputModalities.includes('image')) {
-            throw new RemoteError(
-              'session/attachment-invalid',
-              `Model "${current.model}" does not support image input.`,
-              { reason: 'MODEL_DOES_NOT_SUPPORT_IMAGES' },
-            )
-          }
+          recognizeImages = model.inputModalities !== undefined && !model.inputModalities.includes('image')
         }
         const admission = resolvePromptFileReceipts(
           request.content,
           receiptId => this.ctx.fileUploads.resolve(agent, receiptId),
         )
-        const content = await this.ctx.attachments.admitPromptContent(admission.content)
+        const admitted = await this.ctx.attachments.admitPromptContent(admission.content)
+        const content = await recognizePromptAttachments(this.ctx, admitted, recognizeImages)
         const message: UserMessage = createUserMessage({ content, source })
         if (this.ctx.agents.get(agent.id) !== agent) {
           throw new RemoteError(

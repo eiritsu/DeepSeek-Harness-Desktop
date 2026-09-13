@@ -198,7 +198,7 @@ export class TestSessions implements ISessions {
   /** Calls observed on the service-level face, newest last. */
   readonly calls: {
     method: 'create' | 'open' | 'openSubagent' | 'setSubagentCatalogOpen' | 'refreshSubagents'
-      | 'clear' | 'refresh' | 'search' | 'fork'
+      | 'clear' | 'refresh' | 'search' | 'fork' | 'delete'
     args: unknown[]
   }[] = []
 
@@ -426,6 +426,17 @@ export class TestSessions implements ISessions {
     const id = await this.createStub(opts)
     this.require(id)
     return id
+  }
+
+  /**
+   * Permanently remove a fixture through the production service face.
+   * @param id - Fixture Session identity to remove.
+   * @returns the removed identity list.
+   */
+  async delete(id: SessionId): Promise<readonly SessionId[]> {
+    this.calls.push({ method: 'delete', args: [id] })
+    await this.remove(id)
+    return [id]
   }
 
   /**

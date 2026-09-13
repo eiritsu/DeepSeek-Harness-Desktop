@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { DESKTOP_IPC, type DshDesktopStartupApi } from '../src/ipc.ts'
+import { DESKTOP_IPC, type DshDesktopApplicationApi, type DshDesktopStartupApi } from '../src/ipc.ts'
 
 const electron = vi.hoisted(() => ({
   contextBridge: { exposeInMainWorld: vi.fn() },
@@ -9,7 +9,25 @@ vi.mock('electron', () => electron)
 
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); vi.resetModules() })
 
-it.each(['dsh-app://app/index.html', 'https://shell/startup.html'])('exposes only the carrier marker to %s', async (url) => {
+it('exposes Session data and Skill maintenance only to the owned application document', async () => {
+  vi.stubGlobal('location', new URL('dsh-app://app/index.html'))
+  await import('../src/preload-app.ts')
+  const api = electron.contextBridge.exposeInMainWorld.mock.calls[0]?.[1] as DshDesktopApplicationApi
+  await api.data.exportBackup()
+  await api.data.importBackup()
+  await api.data.reset()
+  await api.skills.request({ action: 'listSkills' })
+  expect(electron.ipcRenderer.invoke.mock.calls).toEqual([
+    [DESKTOP_IPC.sessionBackupExport],
+    [DESKTOP_IPC.sessionBackupImport],
+    [DESKTOP_IPC.sessionDataReset],
+    [DESKTOP_IPC.skillLibraryRequest, { action: 'listSkills' }],
+  ])
+  expect(api).not.toHaveProperty('plugins')
+})
+
+it('exposes only the carrier marker to an unowned document', async () => {
+  const url = 'https://shell/startup.html'
   vi.stubGlobal('location', new URL(url))
   await import('../src/preload-app.ts')
   expect(electron.contextBridge.exposeInMainWorld).toHaveBeenCalledWith('dshDesktop', { protocolVersion: 1 })

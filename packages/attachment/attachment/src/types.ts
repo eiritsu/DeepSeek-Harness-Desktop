@@ -43,6 +43,46 @@ export interface FileAttachmentRef {
   name: string
   /** Exact byte length. */
   bytes: number
+  /** Browser-declared media type, when supplied and accepted at upload. */
+  mediaType?: string
+}
+
+/** One durable attachment accepted by semantic-recognition providers. */
+export type RecognizableAttachmentRef = FileAttachmentRef | ImageAttachmentRef
+
+/** Verified attachment bytes supplied to one semantic-recognition provider. */
+export interface StoredRecognizableAttachment {
+  /** Durable identity and display metadata for the verified bytes. */
+  ref: RecognizableAttachmentRef
+  /** Exact stored bytes. */
+  data: Uint8Array
+  /** Verified image media type or accepted browser-declared file media type. */
+  mediaType?: string
+  /** Display name copied from the durable reference when present. */
+  name?: string
+}
+
+/** Bounded semantic text extracted from one durable attachment. */
+export interface AttachmentRecognitionResult {
+  /** Plain text safe to record beside the durable attachment in a user message. */
+  text: string
+}
+
+/** Effect-scoped semantic recognizer contributed by a trusted attachment plugin. */
+export interface AttachmentRecognizer {
+  /** Stable registration identity. */
+  id: string
+  /** Higher values run first; equal priorities are ordered by id. */
+  priority?: number
+  /** Maximum file bytes this recognizer will buffer for one invocation. */
+  maxInputBytes: number
+  /** Whether this recognizer owns the durable attachment format. */
+  supports(input: RecognizableAttachmentRef): boolean
+  /** Extract bounded semantic text without changing the stored attachment. */
+  recognize(
+    input: StoredRecognizableAttachment,
+    signal?: AbortSignal,
+  ): Promise<AttachmentRecognitionResult | undefined>
 }
 
 /** Base64-encoded file upload accompanying one wire request. */
@@ -51,6 +91,8 @@ export interface EncodedFileAttachment {
   data: string
   /** Optional display name; it is never interpreted as a path. */
   name?: string
+  /** Optional browser-declared media type used only for recognition routing. */
+  mediaType?: string
 }
 
 /** Request to durably commit one file verbatim. */
@@ -58,6 +100,8 @@ export interface SaveFileAttachment {
   data: Uint8Array
   /** Optional browser/provider display name; it is never interpreted as a path. */
   name?: string
+  /** Optional browser-declared media type used only for recognition routing. */
+  mediaType?: string
 }
 
 /** Request to durably commit one file from bounded byte chunks. */
@@ -68,6 +112,8 @@ export interface SaveFileStreamAttachment {
   signal?: AbortSignal
   /** Optional browser/provider display name; it is never interpreted as a path. */
   name?: string
+  /** Optional browser-declared media type used only for recognition routing. */
+  mediaType?: string
 }
 
 /** Deployment-resolved limits used by upload admission and request buffering. */

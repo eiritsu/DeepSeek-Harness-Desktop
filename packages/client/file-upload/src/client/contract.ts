@@ -23,6 +23,7 @@ export interface FileUploadService {
    * @param name - optional display name.
    * @param signal - optional cancellation for the active upload.
    * @param onProgress - optional byte-progress observer for background bodies.
+   * @param mediaType - optional browser-declared media type for semantic routing.
    * @returns the staged receipt and durable file reference, or a business error.
    */
   upload(
@@ -31,5 +32,6 @@ export interface FileUploadService {
     name?: string,
     signal?: AbortSignal,
     onProgress?: (progress: FileUploadProgress) => void,
+    mediaType?: string,
   ): Promise<RemoteResult<FileUploadValue>>
 }

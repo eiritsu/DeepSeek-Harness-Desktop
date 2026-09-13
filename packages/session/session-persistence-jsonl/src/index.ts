@@ -26,6 +26,7 @@ import {
   type SessionAccess, type SessionHandle,
   type SessionHandleReadResult,
   type SessionLocation, type SessionPersistenceCreateOptions,
+  type SessionPersistenceDeleteOptions,
   type SessionPersistenceListOptions, type SessionPersistenceOpenOptions,
   type SessionPersistenceSnapshot, type SessionPersistenceStatOptions,
   type SessionPersistenceRevision as PersistenceRevision,
@@ -487,6 +488,37 @@ class JsonlSessionPersistence extends SessionPersistence {
     }
     signal?.throwIfAborted()
     return snapshots
+  }
+
+  /**
+   * Permanently remove every released generation while retaining the stable
+   * lock inode that arbitrates future recreation of the same identity.
+   */
+  async delete(id: SessionId, options?: SessionPersistenceDeleteOptions): Promise<void> {
+    options?.signal?.throwIfAborted()
+    await this.ensureRootEncoding()
+    this.tracker.claimWrite(id)
+    let lease: SessionWriteLease | undefined
+    try {
+      const selected = await this.findLog(id, options?.signal)
+      if (selected === undefined) throw new SessionPersistenceNotFoundError(id)
+      const dir = dirname(selected.currentPath)
+      lease = await this.acquireLease(id, undefined, dir)
+      options?.signal?.throwIfAborted()
+      const entries = await readdir(dir, { withFileTypes: true })
+      for (const entry of entries) {
+        const generation = parseGenerationLogFilename(entry.name, this.compression)
+          ?? parseGenerationLogFilename(entry.name, this.oppositeCompression())
+        if (generation === undefined) continue
+        if (!entry.isFile()) throw new Error(`session "${id}" generation "${entry.name}" is not a regular file`)
+        await rm(join(dir, entry.name))
+      }
+      this.coldLogMemo.delete(id)
+      this.migrationPreparations.delete(id)
+    } finally {
+      await lease?.release()
+      this.tracker.releaseClaim(id)
+    }
   }
 
   // --- handle-facing storage internals (package-private via the handle class below) ---

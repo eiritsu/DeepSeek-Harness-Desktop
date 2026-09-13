@@ -7,6 +7,7 @@ import AttachmentStore, {
   isAttachmentError,
   isImageAdmissionError,
   type ImageAttachmentRef,
+  type AttachmentRecognizer,
   type ImageMediaType,
   type ImageRequestPolicy,
   type RequestImageAttachment,
@@ -100,6 +101,17 @@ class RecordingFileStore extends RecordingStore {
       name: input.name ?? 'unnamed',
       bytes: input.data.byteLength,
     })
+  }
+}
+
+class RecognitionStore extends RecordingStore {
+  override readImage(ref: ImageAttachmentRef): Promise<StoredImageAttachment> {
+    return Promise.resolve({ ref, data: Uint8Array.of(9) })
+  }
+
+  override async *readFileStream(): AsyncIterable<Uint8Array> {
+    yield Uint8Array.of(1)
+    yield Uint8Array.of(2)
   }
 }
 
@@ -203,6 +215,74 @@ describe('AttachmentStore file admission', () => {
     expect(store.fileInput).toEqual({ data: Uint8Array.of(1, 2, 3), name: 'notes.bin' })
     expect(store.isAttachmentError(new AttachmentError('disk failed', 'ATTACHMENT_WRITE_FAILED'))).toBe(true)
     expect(store.isAttachmentError(new Error('unknown failure'))).toBe(false)
+  })
+})
+
+describe('AttachmentStore semantic recognition', () => {
+  it('routes verified bytes by priority and releases registrations', async () => {
+    const store = new RecognitionStore(new Context())
+    const calls: string[] = []
+    const recognizer = (id: string, priority: number): AttachmentRecognizer => ({
+      id,
+      priority,
+      maxInputBytes: 2,
+      supports: () => true,
+      recognize: async (input) => {
+        calls.push(`${id}:${[...input.data].join(',')}`)
+        return { text: id }
+      },
+    })
+    const removeLow = store.registerRecognizer(recognizer('low', 1))
+    const removeHigh = store.registerRecognizer(recognizer('high', 2))
+    const file = {
+      attachmentId: AttachmentId(`sha256:${'ab'.repeat(32)}`),
+      name: 'notes.txt',
+      bytes: 2,
+      mediaType: 'text/plain',
+    }
+
+    await expect(store.recognize(file)).resolves.toEqual({ text: 'high' })
+    expect(calls).toEqual(['high:1,2'])
+    removeHigh()
+    await expect(store.recognize(file)).resolves.toEqual({ text: 'low' })
+    removeLow()
+    await expect(store.recognize(file)).resolves.toBeUndefined()
+  })
+
+  it('does not read oversized files and verifies images through their provider', async () => {
+    const store = new RecognitionStore(new Context())
+    const seen: number[][] = []
+    store.registerRecognizer({
+      id: 'bounded',
+      maxInputBytes: 2,
+      supports: () => true,
+      recognize: async (input) => {
+        seen.push([...input.data])
+        return { text: 'recognized' }
+      },
+    })
+    await expect(store.recognize({
+      attachmentId: AttachmentId(`sha256:${'cd'.repeat(32)}`),
+      name: 'large.bin',
+      bytes: 3,
+    })).resolves.toBeUndefined()
+    const imageRef = await store.saveImage(image(1))
+    await expect(store.recognize(imageRef)).resolves.toEqual({ text: 'recognized' })
+    expect(seen).toEqual([[9]])
+  })
+
+  it('rejects invalid limits and duplicate recognizer identities', () => {
+    const store = new RecognitionStore(new Context())
+    const recognizer: AttachmentRecognizer = {
+      id: 'same',
+      maxInputBytes: 1,
+      supports: () => false,
+      recognize: () => Promise.resolve(undefined),
+    }
+    store.registerRecognizer(recognizer)
+    expect(() => store.registerRecognizer(recognizer)).toThrow(/already registered/)
+    expect(() => store.registerRecognizer({ ...recognizer, id: 'invalid', maxInputBytes: 0 }))
+      .toThrow(/invalid maxInputBytes/)
   })
 })
 

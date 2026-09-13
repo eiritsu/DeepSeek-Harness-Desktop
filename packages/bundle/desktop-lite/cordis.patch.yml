@@ -1,0 +1,27 @@
+# The native macOS Lite shell embeds the Web surface in WKWebView. It keeps
+# the browser transport, while replacing JSONL Session persistence with the
+# same authoritative SQLite database used by the Electron shell.
+
+- id: session-persistence-jsonl
+  name: '@deepseek-ai/dsh-session-persistence-sqlite'
+  config:
+    path: !!js dshHomePath('desktop', 'dsh-desktop.sqlite')
+
+- insert:
+    - id: external-tools
+      name: '@deepseek-ai/dsh-external-tools'
+
+    - id: file-recognizer-office
+      name: '@deepseek-ai/dsh-file-recognizer-office'
+
+    - id: ui-deepseek-files
+      name: '@deepseek-ai/dsh-client-ui-deepseek-files'
+
+    - id: ui-skill-library
+      name: '@deepseek-ai/dsh-client-ui-skill-library'
+
+    - id: lark
+      name: '@deepseek-ai/dsh-lark'
+
+    - id: ui-lark
+      name: '@deepseek-ai/dsh-client-ui-lark'

@@ -99,6 +99,20 @@ const GROUP_ORDER = [
 
 const SERVICE_ROLES: ServiceRole[] = [
   {
+    key: 'externalTools',
+    pkg: 'external-tools',
+    title: 'Credential-gated external tool registry',
+    mode: 'core',
+    note: 'Reconciles provider tools and the native Web search override from validated Settings and credential references.',
+  },
+  {
+    key: 'larkManagement',
+    pkg: 'lark',
+    title: 'Lark and Feishu management gateway',
+    mode: 'core',
+    note: 'Owns secret-free management status, official CLI dispatch, OAuth progress, and private-chat Session admission.',
+  },
+  {
     key: 'attachments',
     pkg: 'attachment',
     title: 'Durable binary attachment storage',

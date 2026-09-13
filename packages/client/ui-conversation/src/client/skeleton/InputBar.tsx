@@ -255,6 +255,7 @@ export const InputBar = memo(function InputBar({
   const canAcceptDrop = subagent === null && !locked && !machineBusy && addFiles !== undefined
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const folderInputRef = useRef<HTMLInputElement | null>(null)
   const onPickFiles = (e: ChangeEvent<HTMLInputElement>): void => {
     const picked = e.target.files === null ? [] : [...e.target.files]
     // Reset so picking the same file again re-fires the change event.
@@ -278,6 +279,14 @@ export const InputBar = memo(function InputBar({
     return keyboard.bindFilePicker({
       available: () => gate.current.canAcceptDrop && fileInputRef.current !== null,
       open: () => { fileInputRef.current?.click() },
+    })
+  }, [keyboard])
+
+  useEffect(() => {
+    if (keyboard === undefined) return
+    return keyboard.bindFolderPicker({
+      available: () => gate.current.canAcceptDrop && folderInputRef.current !== null,
+      open: () => { folderInputRef.current?.click() },
     })
   }, [keyboard])
 
@@ -502,6 +511,17 @@ export const InputBar = memo(function InputBar({
             </Tooltip>
             <input
               ref={fileInputRef}
+              type="file"
+              multiple
+              disabled={subagent !== null}
+              hidden
+              onChange={onPickFiles}
+            />
+            <input
+              ref={(element) => {
+                folderInputRef.current = element
+                if (element !== null) element.webkitdirectory = true
+              }}
               type="file"
               multiple
               disabled={subagent !== null}

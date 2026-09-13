@@ -49,6 +49,11 @@ export const en = {
   refreshing: 'Refreshing…',
   refreshed: 'Plugin list refreshed.',
   loadingPlugins: 'Reading Desktop plugins…',
+  sessionBackupExportTitle: 'Export Session database',
+  sessionBackupImportTitle: 'Import Session database',
+  sessionDataResetTitle: 'Clear local Sessions?',
+  sessionDataResetMessage: 'This permanently removes the Desktop Session database. Export a backup first if you may need these tasks again.',
+  sessionDataResetConfirm: 'Clear Sessions',
 } as const
 
 /** Every Desktop locale supplies the complete English key set. */
@@ -103,6 +108,11 @@ export const zh = {
   refreshing: '正在刷新…',
   refreshed: '插件列表已刷新。',
   loadingPlugins: '正在读取桌面插件…',
+  sessionBackupExportTitle: '导出 Session 数据库',
+  sessionBackupImportTitle: '导入 Session 数据库',
+  sessionDataResetTitle: '清空本地 Session？',
+  sessionDataResetMessage: '这会永久删除桌面端 Session 数据库。如需保留这些任务，请先导出备份。',
+  sessionDataResetConfirm: '清空 Session',
 } as const satisfies DesktopMessages
 
 /** Locale payload exposed to the Desktop-owned renderer. */

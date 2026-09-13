@@ -790,6 +790,13 @@ workspaceDesktop(): { name: string; available: boolean; fileManager: 'finder' | 
 @Remote('fork') fork(request: SessionForkRequest): Promise<SessionForkValue>
 
 /**
+ * Permanently delete one Session and, when requested, its durable descendants.
+ * @param request - root identity and recursive-deletion policy.
+ * @returns deleted identities in child-before-parent order.
+ */
+@Remote('delete') delete(request: SessionDeleteRequest): Promise<SessionDeleteValue>
+
+/**
  * Admit one prompt after explicitly resuming its Session.
  * @param request - Session identity, prompt content, source metadata, and delivery mode.
  * @param signal - caller cancellation before prompt admission begins.

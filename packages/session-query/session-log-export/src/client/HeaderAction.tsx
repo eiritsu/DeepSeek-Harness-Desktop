@@ -1,11 +1,17 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import { IconDownloadOutline16, IconEllipsisOutline16, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
+import {
+  IconCopyOutline16,
+  IconDownloadOutline16,
+  IconEllipsisOutline16,
+  Menu,
+  writeClipboard,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import { SessionLogDownloadDialog, type SessionLogDownloadDialogProps } from './Dialog.tsx'
 import css from './HeaderAction.module.css'
 
 /**
- * Render the Session Header more-actions icon button, its download menu, and the shared result dialog.
+ * Render the Session Header more-actions icon button, its Session-id/export menu, and the shared result dialog.
  * @param props - Session runtime, download controller, and localized copy.
  * @returns the persistent Header action and Session-scoped dialog.
  */
@@ -22,10 +28,17 @@ export function SessionLogDownloadHeaderAction(props: SessionLogDownloadDialogPr
         align="end"
         dense
         onClose={() => { setOpen(false) }}
-        items={[{ id: 'download', label: t('menu.download'), icon: <IconDownloadOutline16 />, disabled: busy }]}
-        onSelect={() => {
+        items={[
+          { id: 'copy-id', label: t('menu.copyId'), icon: <IconCopyOutline16 /> },
+          { id: 'download', label: t('menu.download'), icon: <IconDownloadOutline16 />, disabled: busy },
+        ]}
+        onSelect={(id) => {
           setOpen(false)
-          void request(sessionId)
+          if (id === 'copy-id') {
+            void writeClipboard(String(sessionId))
+          } else {
+            void request(sessionId)
+          }
         }}
         anchor={(
           <button

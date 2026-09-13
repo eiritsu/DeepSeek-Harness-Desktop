@@ -188,6 +188,7 @@ export class FileUploadRuntime extends Service implements FileUploadService {
    * @param name - optional display name.
    * @param signal - optional cancellation for the active upload.
    * @param onProgress - optional byte-progress observer for background bodies.
+   * @param mediaType - optional browser-declared media type for semantic routing.
    * @returns the staged receipt and durable file reference, or a business error.
    */
   async upload(
@@ -196,10 +197,12 @@ export class FileUploadRuntime extends Service implements FileUploadService {
     name?: string,
     signal?: AbortSignal,
     onProgress?: (progress: { readonly loaded: number; readonly total?: number }) => void,
+    mediaType?: string,
   ): Promise<RemoteResult<FileUploadValue>> {
     if (!(data instanceof Uint8Array) && this.available) {
       const query = new URLSearchParams({ sessionId })
       if (name !== undefined) query.set('name', name)
+      if (mediaType !== undefined && mediaType !== '') query.set('mediaType', mediaType)
       const response = await this.post({
         path: `${FILE_UPLOAD_PATH}?${query.toString()}`,
         body: data,
@@ -221,6 +224,7 @@ export class FileUploadRuntime extends Service implements FileUploadService {
       {
         data: bytesToBase64(bytes),
         ...(name === undefined ? {} : { name }),
+        ...(mediaType === undefined || mediaType === '' ? {} : { mediaType }),
       },
       signal,
     )

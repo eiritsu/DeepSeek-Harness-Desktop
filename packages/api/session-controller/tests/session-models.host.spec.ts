@@ -665,6 +665,7 @@ describe('Web session model selection', () => {
     const savedRef = {
       attachmentId: 'saved-image', mediaType: 'image/png' as const, bytes: 1, width: 1, height: 1,
     }
+    const recognize = vi.fn<() => Promise<{ text: string } | undefined>>(() => Promise.resolve(undefined))
     ctx.provide('attachments', Object.setPrototypeOf({
       saveImages: () => {
         if (saveMode === 'error') return Promise.reject(new Error('image store offline'))
@@ -673,6 +674,7 @@ describe('Web session model selection', () => {
         }
         return Promise.resolve([savedRef])
       },
+      recognize,
     }, AttachmentStore.prototype) as never)
     const followup = vi.fn()
     Object.assign(agent, { followup })
@@ -691,6 +693,17 @@ describe('Web session model selection', () => {
       ok: false,
       error: { code: 'session/attachment-invalid', details: { reason: 'MODEL_DOES_NOT_SUPPORT_IMAGES' } },
     })
+    recognize.mockResolvedValueOnce({ text: 'recognized image text' })
+    expectValue(await remote.prompt(promptRequest({
+      sessionId,
+      mode: 'queue',
+      content: [image],
+    })))
+    expect((followup.mock.calls[0]?.[0] as UserMessage).content).toEqual([
+      { type: 'image', attachment: savedRef },
+      { type: 'text', text: '[DeepSeek Files extracted text from "saved-image":]\nrecognized image text' },
+    ])
+    followup.mockClear()
 
     expectValue(await remote.selectModel(request({
       sessionId, provider: 'image-capable', model: 'vision',

@@ -140,6 +140,7 @@ class FakeWorkspaces implements IWorkspaces {
   declare readonly delete: IWorkspaces['delete']
   declare readonly insertBefore: IWorkspaces['insertBefore']
   declare readonly insertSessionBefore: IWorkspaces['insertSessionBefore']
+  declare readonly attachSession: IWorkspaces['attachSession']
 
   constructor(initial: WorkspaceSnapshot) {
     this.list = new MutableSource(initial)

@@ -195,7 +195,14 @@ describe('WorkspaceController commands', () => {
     })
     const workspace = ctx.workspaceRegistry.get(first.workspace.workspaceId)
     if (workspace === undefined) throw new Error('fixture Workspace disappeared')
-    await workspace.attachSession(session.id)
+    await expect(controller.attachSession({
+      workspaceId: first.workspace.workspaceId,
+      sessionId: session.id,
+    })).resolves.toMatchObject({ workspace: { sessionIds: [session.id] } })
+    await expect(controller.attachSession({
+      workspaceId: first.workspace.workspaceId,
+      sessionId: SessionId('missing-session'),
+    })).rejects.toMatchObject({ code: 'session/not-found' })
     await expect(controller.insertSessionBefore({
       workspaceId: first.workspace.workspaceId,
       sessionId: session.id,

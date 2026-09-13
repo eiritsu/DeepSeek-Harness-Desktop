@@ -17,6 +17,10 @@ export const DESKTOP_IPC = {
   backendRetry: 'dsh-desktop:backend-retry',
   applicationRestart: 'dsh-desktop:application-restart',
   configurationReset: 'dsh-desktop:configuration-reset',
+  sessionBackupExport: 'dsh-desktop:session-backup-export',
+  sessionBackupImport: 'dsh-desktop:session-backup-import',
+  sessionDataReset: 'dsh-desktop:session-data-reset',
+  skillLibraryRequest: 'dsh-desktop:skill-library-request',
   backendState: 'dsh-desktop:backend-state',
   updatesCheck: 'dsh-desktop:updates-check',
   updatesInstall: 'dsh-desktop:updates-install',
@@ -51,6 +55,19 @@ export interface DshDesktopApi {
     check(): Promise<DesktopUpdateState>
     install(): Promise<void>
     subscribe(listener: (state: DesktopUpdateState) => void): () => void
+  }
+}
+
+/** Backend-application bridge; package management remains isolated to shell documents. */
+export interface DshDesktopApplicationApi {
+  readonly protocolVersion: 1
+  readonly data: {
+    exportBackup(): Promise<{ path?: string }>
+    importBackup(): Promise<{ imported: boolean }>
+    reset(): Promise<{ reset: boolean }>
+  }
+  readonly skills: {
+    request(request: import('./skill-library.ts').DesktopSkillRequest): Promise<unknown>
   }
 }
 

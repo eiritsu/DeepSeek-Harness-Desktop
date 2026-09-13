@@ -72,6 +72,7 @@ export function createElectronBuilderConfig(
     ],
     mac: {
       category: 'public.app-category.developer-tools',
+      minimumSystemVersion: '13.0.0',
       identity: macOSSigning?.signingIdentity,
       forceCodeSigning: true,
       hardenedRuntime: true,

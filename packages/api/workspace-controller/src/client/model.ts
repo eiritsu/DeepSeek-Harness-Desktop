@@ -7,6 +7,8 @@ import type { RemoteFailure, RemoteResult, TypertClientRemote } from '@deepseek-
 import type {
   WorkspaceArchiveSessionRequest,
   WorkspaceArchiveValue,
+  WorkspaceAttachSessionRequest,
+  WorkspaceAttachSessionValue,
   WorkspaceBaseline,
   WorkspaceCreateRequest,
   WorkspaceCreateValue,
@@ -167,6 +169,21 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
   ): Promise<RemoteResult<WorkspaceArchiveValue>> {
     const result = await this.remote.archiveSession({ sessionId })
     if (result.ok) this.installArchived(result.value.archivedSessionIds)
+    return result
+  }
+
+  /**
+   * Add a Session to a Workspace and merge the returned row.
+   * @param workspaceId - Workspace that should account for the Session.
+   * @param sessionId - Known Session to attach.
+   * @returns the Remote result containing the changed Workspace.
+   */
+  async attachSession(
+    workspaceId: WorkspaceAttachSessionRequest['workspaceId'],
+    sessionId: WorkspaceAttachSessionRequest['sessionId'],
+  ): Promise<RemoteResult<WorkspaceAttachSessionValue>> {
+    const result = await this.remote.attachSession({ workspaceId, sessionId })
+    if (result.ok) this.upsert(result.value.workspace)
     return result
   }
 

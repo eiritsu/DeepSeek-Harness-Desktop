@@ -137,6 +137,10 @@ class TestPersistence extends SessionPersistence {
   // Appends are durable on resolution here; nothing buffers, so the service-wide flush is a no-op.
   async flush(): Promise<void> {}
 
+  async delete(id: SessionIdType): Promise<void> {
+    if (!TestPersistence.entries.delete(id)) throw new SessionPersistenceNotFoundError(id)
+  }
+
   open(id: SessionIdType, access: SessionAccess): Promise<SessionHandle> {
     const entry = TestPersistence.entries.get(id)
     if (entry === undefined) return Promise.reject(new SessionPersistenceNotFoundError(id))

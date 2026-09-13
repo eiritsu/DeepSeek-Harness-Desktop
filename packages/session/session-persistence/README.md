@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This package lets applications persist and resume session event logs through a backend-independent API. Readers can create, open, inspect, list, append to, read, flush, and close stored sessions while preserving contiguous append-only history. A completed flush is the durability barrier; readers never receive torn tails or invalid records, and only one writer per session is allowed within a backend instance. Use the shipped [JSONL backend](../session-persistence-jsonl/README.md) for one compressed log per session, or implement another backend with the same observable guarantees.
+This package lets applications persist and resume session event logs through a backend-independent API. Readers can create, open, inspect, list, append to, read, flush, and close stored sessions while preserving contiguous append-only history. A completed flush is the durability barrier; readers never receive torn tails or invalid records, and only one writer per session is allowed within a backend instance. Use [JSONL](../session-persistence-jsonl/README.md) for one compressed log per Session or [SQLite](../session-persistence-sqlite/README.md) for one desktop database.
 
 ## Table of Contents
 
@@ -29,7 +29,7 @@ Mount one persistence backend to make sessions durable. The backend registers it
 
 ### Choosing a backend
 
-The seam ships the [JSONL](../session-persistence-jsonl/README.md) backend: one append-only `.jsonl.zstd` log per session. A third-party backend may implement the service directly; the [backend contract](#understand-the-implementation) below is what it must honor.
+The seam ships two providers: [JSONL](../session-persistence-jsonl/README.md) stores one append-only `.jsonl.zstd` log per Session, while [SQLite](../session-persistence-sqlite/README.md) stores desktop Sessions in one transactional database. A third-party backend may implement the service directly; the [backend contract](#understand-the-implementation) below is what it must honor.
 
 ### What the service provides
 
@@ -42,6 +42,7 @@ const reader = await ctx.sessionPersistence.open(id, 'read')   // observe withou
 const snap = await ctx.sessionPersistence.stat(id)             // header + revision (+ eventCount / sizeBytes) without a log read
 const all = await ctx.sessionPersistence.list()                // one snapshot per visible stored session
 await ctx.sessionPersistence.flush()                           // backend-wide durability barrier over every active write handle
+await ctx.sessionPersistence.delete(id)                        // refuse a writer, then remove the complete durable Session
 ```
 
 Service-level `flush()` drains every active write handle's routed events and materializes its session, exactly as each handle's own `flush` would; failures aggregate per session as an `AggregateError` without abandoning the sweep, and a handle closed mid-sweep counts as flushed because close itself drains durably.
@@ -50,7 +51,7 @@ Every log read and write flows through the returned `SessionHandle`; there are n
 
 ### Ownership and visibility
 
-`create` and `open(id, 'write')` take in-process single-writer ownership: a second write open while an owner is active rejects with `SessionAlreadyOwnedError`, `create` on an occupied id rejects with `SessionAlreadyExistsError`, and a mutation on a `read` handle rejects with `SessionReadOnlyError` — one handle type, runtime refusal. Any operation on a closed handle rejects with `SessionHandleClosedError`, and `SessionOwnershipLostError` marks a write handle whose ownership is permanently gone (close it and reopen). A created session is observable in this process from the moment `create` resolves, while the backend may defer physical materialization until the first `append` or `flush`; other processes see only materialized sessions, and a session that never materialized before a crash never existed.
+`create` and `open(id, 'write')` take in-process single-writer ownership: a second write open while an owner is active rejects with `SessionAlreadyOwnedError`, `create` on an occupied id rejects with `SessionAlreadyExistsError`, and a mutation on a `read` handle rejects with `SessionReadOnlyError` — one handle type, runtime refusal. `delete(id)` refuses while that writer exists, removes the complete durable Session, and makes subsequent discovery and open calls observe absence. Any operation on a closed handle rejects with `SessionHandleClosedError`, and `SessionOwnershipLostError` marks a write handle whose ownership is permanently gone (close it and reopen). A created session is observable in this process from the moment `create` resolves, while the backend may defer physical materialization until the first `append` or `flush`; other processes see only materialized sessions, and a session that never materialized before a crash never existed.
 
 ### The live write path and shutdown drain
 
@@ -117,6 +118,7 @@ Read these pages when the package-level contract is not enough. They move from t
 - [Session persistence subsystem](../../../docs/subsystems/persistence.md) — the full service contract, handle semantics, flush checkpoint, crash recovery, and generated Cordis API.
 - [Handle-based persistence Agent Note](../../../.agents/notes/implemented/architecture/2026-08-27-handle-based-session-persistence.md) — the seam design and its ownership model.
 - [JSONL persistence backend](../session-persistence-jsonl/README.md) — the shipped per-session-file backend.
+- [SQLite persistence backend](../session-persistence-sqlite/README.md) — the desktop single-database backend.
 - [Session checkpoint policy](../session-checkpoint-policy/README.md) — the plugin that flushes through `session/flush` at semantic boundaries.
 - [Session package map](../README.md) — adjacent persistence, projection, title, and telemetry packages.
 
@@ -149,7 +151,7 @@ These limits define where the seam's guarantees stop. They are current package c
 - **The seam guarantees write ownership only within one backend instance** — cross-process exclusion is provider-specific. The shipped JSONL provider adds a kernel-backed lease across instances and processes; another provider must document an equivalent guarantee or require deployments to prevent concurrent writers.
 - **A backend plugin reload under live sessions fails their writers loudly** — a reloaded backend cannot serve handles the old instance issued; writes fail until the sessions restart, and nothing silently re-adopts the logs.
 - **Only handle-acquired sessions persist** — `ctx.sessions.create` + `session/flush` alone stores nothing; agent-loop is the production acquisition point, and tests seed storage through `create`/`append`/`close`.
-- **No deletion or retention API** — pruning stored sessions is out-of-band backend maintenance.
+- **Deletion is explicit and exclusive** — `delete(id)` refuses an active writer and must make `stat`, `list`, and later `open` observe absence. Retention policy remains an out-of-band product concern.
 - **`list()` is unpaginated and unfiltered** — it returns every stored session's snapshot; fine for local stores, unindexed at scale.
 - **Synthetic closers are the only crash story** — resume appends `interruptedTurnClosers` through the write handle; there is no partial-turn resume that continues an interrupted turn instead of closing it.
 

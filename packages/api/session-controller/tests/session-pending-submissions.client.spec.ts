@@ -32,7 +32,7 @@ afterEach(() => {
 type AttachmentRef = ImageAttachmentRef | FileAttachmentRef
 
 function attachmentBlock(attachment: AttachmentRef) {
-  return 'mediaType' in attachment
+  return 'width' in attachment
     ? { type: 'image' as const, attachment }
     : { type: 'file' as const, attachment }
 }

@@ -9,6 +9,8 @@ export interface EncodedFileUploadRequest {
   readonly data: string
   /** Optional display name; the Host sanitizes it into the stored leaf name. */
   readonly name?: string
+  /** Optional browser-declared media type used for semantic routing. */
+  readonly mediaType?: string
 }
 
 /** Durable receipt for one staged file upload. */

@@ -157,6 +157,8 @@ export class SessionInputShell implements SessionInput {
   private mirrorFn: ((text: string) => void) | undefined
   /** The mounted composer's file-picker opener (scoped pick-files event target). */
   private filePicker: Parameters<ComposerKeyboard['bindFilePicker']>[0] | undefined
+  /** The mounted composer's recursive folder-picker opener. */
+  private folderPicker: Parameters<ComposerKeyboard['bindFolderPicker']>[0] | undefined
   /** Live lexicon subscription disposer; undefined until the controller resolves. */
   private lexiconOff: (() => void) | undefined
   /** Default sends retained until admission settles or scope disposal releases their attachments. */
@@ -625,6 +627,18 @@ export class SessionInputShell implements SessionInput {
   }
 
   /**
+   * Bind the mounted composer's recursive folder action and live intake availability.
+   * @param picker - availability query and native folder-dialog opener.
+   * @returns the unbind disposer.
+   */
+  bindFolderPicker(picker: Parameters<ComposerKeyboard['bindFolderPicker']>[0]): () => void {
+    this.folderPicker = picker
+    return () => {
+      if (this.folderPicker === picker) this.folderPicker = undefined
+    }
+  }
+
+  /**
    * Read the mounted composer's live file-intake availability.
    * @returns false when no accepting composer is mounted.
    */
@@ -639,6 +653,24 @@ export class SessionInputShell implements SessionInput {
   pickFiles(): boolean {
     if (this.filePicker === undefined || !this.filePicker.available()) return false
     this.filePicker.open()
+    return true
+  }
+
+  /**
+   * Read the mounted composer's live folder-intake availability.
+   * @returns false when no accepting composer is mounted.
+   */
+  canPickFolders(): boolean {
+    return this.folderPicker?.available() === true
+  }
+
+  /**
+   * Open the native recursive folder dialog when the mounted composer accepts files.
+   * @returns whether the opener was called.
+   */
+  pickFolder(): boolean {
+    if (this.folderPicker === undefined || !this.folderPicker.available()) return false
+    this.folderPicker.open()
     return true
   }
 

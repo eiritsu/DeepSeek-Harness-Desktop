@@ -38,15 +38,16 @@ export function WorkspaceId(id: string): WorkspaceId {
 }
 
 /**
- * An archiveSession request named a session neither live nor in session
+ * A Workspace request named a session neither live nor in Session
  * persistence — a definite miss only; storage faults propagate as themselves.
  */
 export class WorkspaceUnknownSessionError extends Error {
   /**
-   * @param sessionId - The unknown session id.
+   * @param sessionId - The unknown Session id.
+   * @param operation - Workspace operation that required the Session.
    */
-  constructor(readonly sessionId: SessionId) {
-    super(`cannot archive session '${sessionId}': live sessions and session persistence hold no such session`)
+  constructor(readonly sessionId: SessionId, operation: 'archive' | 'attach' = 'archive') {
+    super(`cannot ${operation} session '${sessionId}': live sessions and session persistence hold no such session`)
     this.name = 'WorkspaceUnknownSessionError'
   }
 }
@@ -630,7 +631,7 @@ export class WorkspaceRegistry extends Service {
     await this.indexHeaders(headers)
     const header = this.headers.get(id)
     if (header === undefined) {
-      throw new Error(`cannot validate session '${id}': session persistence holds no such session`)
+      throw new WorkspaceUnknownSessionError(id, 'attach')
     }
     return header
   }

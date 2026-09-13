@@ -43,6 +43,10 @@ const publicNativePackages = new Set([
 /** Deliberate source payloads whose exact bytes are part of the package's audit surface. */
 const publicationSourceAllowlist: Readonly<Record<string, readonly string[]>> = {
   '@deepseek-ai/node-addon-system': ['src/main.c', 'src/flock.c'],
+  '@deepseek-ai/dsh-lark': [
+    'vendor/larksuite-cli/scripts/install.cjs',
+    'vendor/larksuite-cli/scripts/run.cjs',
+  ],
 }
 const repositoryUrl = 'git+https://github.com/deepseek-harness/deepseek-harness.git'
 /**
@@ -174,6 +178,22 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
   // also shares its generated FFI code through a hashed runtime chunk.
   '@deepseek-ai/dsh-sandbox-windows-acl': ['lib/runner.js', 'lib/types-*.js'],
   '@deepseek-ai/dsh-skill-badge': ['assets'],
+  // The Lark provider installs and launches the checksum-pinned official CLI,
+  // and exposes its tool-specific Skill instructions through the bundle row.
+  '@deepseek-ai/dsh-lark': [
+    'lib/auth-status.js',
+    'lib/conversation.js',
+    'lib/command-risk.js',
+    'lib/pending-user-auth.js',
+    'lib/permissions.js',
+    'skills/**',
+    'vendor/larksuite-cli/checksums.txt',
+    'vendor/larksuite-cli/LICENSE',
+    'vendor/larksuite-cli/package.json',
+    'vendor/larksuite-cli/README.md',
+    'vendor/larksuite-cli/scripts/install.cjs',
+    'vendor/larksuite-cli/scripts/run.cjs',
+  ],
   // Ordinary native containment ships a path-loaded runner and its shared
   // runner chunk beside the existing node-pty permission repair.
   '@deepseek-ai/dsh-subprocess-local': [

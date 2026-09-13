@@ -5,6 +5,8 @@ import { admitEncodedFile as admitFileInput, admitEncodedImages } from './admiss
 import { AttachmentError, isAttachmentError as matchesAttachmentError } from './error.ts'
 import type {
   AdmittedPromptContentPart,
+  AttachmentRecognitionResult,
+  AttachmentRecognizer,
   AttachmentAdmissionPart,
   EncodedFileAttachment,
   FileAttachmentRef,
@@ -12,10 +14,12 @@ import type {
   ImageAttachmentRef,
   ImageRequestPolicy,
   RequestImageAttachment,
+  RecognizableAttachmentRef,
   SaveFileAttachment,
   SaveFileStreamAttachment,
   SaveImageAttachment,
   StoredImageAttachment,
+  StoredRecognizableAttachment,
 } from './types.ts'
 
 export { AttachmentId, ImageVariantId } from './brand.ts'
@@ -26,6 +30,8 @@ export { requestImageDimensions } from './request-projection.ts'
 export type {
   AttachmentId as AttachmentIdType,
   AdmittedPromptContentPart,
+  AttachmentRecognitionResult,
+  AttachmentRecognizer,
   AttachmentAdmissionPart,
   EncodedFileAttachment,
   EncodedImageAttachment,
@@ -36,10 +42,12 @@ export type {
   ImageMediaType,
   PromptContentPart,
   RequestImageAttachment,
+  RecognizableAttachmentRef,
   SaveFileAttachment,
   SaveFileStreamAttachment,
   SaveImageAttachment,
   StoredImageAttachment,
+  StoredRecognizableAttachment,
 } from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -50,12 +58,88 @@ declare module '@deepseek-ai/cordis' {
 
 /** Immutable binary attachment service. Implementations validate bytes before publishing a reference. */
 export abstract class AttachmentStore extends Service {
+  private readonly recognizers: AttachmentRecognizer[] = []
+
   constructor(ctx: Context) {
     super(ctx, 'attachments')
   }
 
   /** Deployment-resolved image policy used by authoritative and fast-path validation. */
   abstract readonly imageLimits: ImageAttachmentLimits
+
+  /**
+   * Register one trusted semantic recognizer in deterministic priority order.
+   * @param recognizer - effect-scoped attachment recognizer.
+   * @returns disposer removing this exact recognizer.
+   */
+  registerRecognizer(recognizer: AttachmentRecognizer): () => void {
+    if (!Number.isSafeInteger(recognizer.maxInputBytes) || recognizer.maxInputBytes < 1) {
+      throw new TypeError(`attachment recognizer "${recognizer.id}" has an invalid maxInputBytes`)
+    }
+    if (this.recognizers.some(candidate => candidate.id === recognizer.id)) {
+      throw new Error(`attachment recognizer "${recognizer.id}" is already registered`)
+    }
+    this.recognizers.push(recognizer)
+    this.recognizers.sort((left, right) =>
+      (right.priority ?? 0) - (left.priority ?? 0) || left.id.localeCompare(right.id))
+    return () => {
+      const index = this.recognizers.indexOf(recognizer)
+      if (index >= 0) this.recognizers.splice(index, 1)
+    }
+  }
+
+  /**
+   * Read and verify one durable attachment, then invoke its highest-priority recognizer.
+   * A generic file larger than the recognizer's declared buffer limit is not read.
+   * @param input - durable file or normalized-image reference.
+   * @param signal - optional cancellation for storage and recognition work.
+   * @returns bounded semantic text, or undefined when no recognizer accepts the input.
+   */
+  async recognize(
+    input: RecognizableAttachmentRef,
+    signal?: AbortSignal,
+  ): Promise<AttachmentRecognitionResult | undefined> {
+    signal?.throwIfAborted()
+    const recognizer = this.recognizers.find(candidate => candidate.supports(input))
+    if (recognizer === undefined) return undefined
+    let stored: StoredRecognizableAttachment
+    if ('width' in input) {
+      const image = await this.readImage(input, signal)
+      stored = {
+        ref: image.ref,
+        data: image.data,
+        mediaType: image.ref.mediaType,
+        ...(image.ref.name === undefined ? {} : { name: image.ref.name }),
+      }
+    } else {
+      if (input.bytes > recognizer.maxInputBytes) return undefined
+      const chunks: Uint8Array[] = []
+      let size = 0
+      for await (const chunk of this.readFileStream(input, signal)) {
+        size += chunk.byteLength
+        if (size > recognizer.maxInputBytes) {
+          throw new AttachmentError(
+            'Stored file attachment exceeds its recognition limit.',
+            'ATTACHMENT_CORRUPT',
+          )
+        }
+        chunks.push(chunk)
+      }
+      const data = new Uint8Array(size)
+      let offset = 0
+      for (const chunk of chunks) {
+        data.set(chunk, offset)
+        offset += chunk.byteLength
+      }
+      stored = {
+        ref: input,
+        data,
+        name: input.name,
+        ...(input.mediaType === undefined ? {} : { mediaType: input.mediaType }),
+      }
+    }
+    return recognizer.recognize(stored, signal)
+  }
 
   /**
    * Validate one image without persisting it.

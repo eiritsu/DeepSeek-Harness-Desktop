@@ -991,15 +991,19 @@ describe('running and lock semantics', () => {
   ])('%s keeps ordinary generic-file intake enabled', (_name, projection) => {
     const added = vi.fn(() => null)
     const { view, slotCalls, shell } = bench({ ...projection, addFiles: added })
-    expect(view.container.querySelector<HTMLInputElement>('input[type="file"]')?.disabled).toBe(false)
+    const [fileInput, folderInput] = view.container.querySelectorAll<HTMLInputElement>('input[type="file"]')
+    expect(fileInput?.disabled).toBe(false)
+    expect(folderInput?.disabled).toBe(false)
+    expect(folderInput?.webkitdirectory).toBe(true)
     expect(attachmentOwner(slotCalls).canAcceptDrop).toBe(true)
-    // The menu's File row opens the hidden input through the bound picker.
-    const click = vi.spyOn(HTMLInputElement.prototype, 'click')
-    onTestFinished(() => { click.mockRestore() })
+    const clickFile = vi.spyOn(fileInput!, 'click')
+    const clickFolder = vi.spyOn(folderInput!, 'click')
     expect(shell.canPickFiles()).toBe(true)
     expect(shell.pickFiles()).toBe(true)
-    expect(click).toHaveBeenCalledOnce()
-    click.mockRestore()
+    expect(clickFile).toHaveBeenCalledOnce()
+    expect(shell.canPickFolders()).toBe(true)
+    expect(shell.pickFolder()).toBe(true)
+    expect(clickFolder).toHaveBeenCalledOnce()
   })
 
   it.each([
@@ -1012,19 +1016,26 @@ describe('running and lock semantics', () => {
     const open = vi.spyOn(input, 'click')
     expect(shell.canPickFiles()).toBe(false)
     expect(shell.pickFiles()).toBe(false)
+    expect(shell.canPickFolders()).toBe(false)
+    expect(shell.pickFolder()).toBe(false)
     expect(open).not.toHaveBeenCalled()
   })
 
   it('file action availability follows mount and live composer state', () => {
     const { props, view, shell } = bench({ addFiles: () => null })
     expect(shell.canPickFiles()).toBe(true)
+    expect(shell.canPickFolders()).toBe(true)
     view.rerender(<InputBar {...props} disabled />)
     expect(shell.canPickFiles()).toBe(false)
+    expect(shell.canPickFolders()).toBe(false)
     view.rerender(<InputBar {...props} />)
     expect(shell.canPickFiles()).toBe(true)
+    expect(shell.canPickFolders()).toBe(true)
     view.unmount()
     expect(shell.canPickFiles()).toBe(false)
     expect(shell.pickFiles()).toBe(false)
+    expect(shell.canPickFolders()).toBe(false)
+    expect(shell.pickFolder()).toBe(false)
   })
 
   it('parent-offline running continuable locks Send but keeps independent Stop usable', () => {

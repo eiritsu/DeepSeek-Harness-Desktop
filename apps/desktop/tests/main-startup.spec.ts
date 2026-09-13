@@ -104,7 +104,8 @@ vi.mock('electron', () => ({
   Menu: { setApplicationMenu: vi.fn(), buildFromTemplate: vi.fn() },
   protocol: { registerSchemesAsPrivileged: vi.fn(), handle: vi.fn() },
 }))
-vi.mock('../src/paths.ts', () => ({ resolveDesktopPaths: () => ({ profile: 'desktop-test-profile' }) }))
+vi.mock('../src/paths.ts', () => ({ resolveDesktopPaths: () => ({ root: 'desktop-test-root', profile: 'desktop-test-profile' }) }))
+vi.mock('../src/data-lock.ts', () => ({ claimDesktopDataLock: () => ({ release: vi.fn() }) }))
 vi.mock('../src/project-manager.ts', () => ({
   DesktopProjectManager: class {
     readonly applyRelease = harness.applyRelease

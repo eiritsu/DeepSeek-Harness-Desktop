@@ -203,7 +203,7 @@ Source: [`packages/api/gateway/src/index.ts:119`](../packages/api/gateway/src/in
 
 ## `@deepseek-ai/dsh-api-session-controller`
 
-Requires: `agentDefaultModel` · `agents` · `attachments` · `fileUploads` · `llm` · `sessions` · `sessionProjections` · `sessionQuery` · `typert` · `workspaceRegistry`
+Requires: `agentDefaultModel` · `agents` · `attachments` · `fileUploads` · `llm` · `sessions` · `sessionProjections` · `sessionPersistence` · `sessionQuery` · `typert` · `workspaceRegistry`
 
 ```ts config-catalog
 /** Session Controller deployment policy. */
@@ -213,7 +213,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/api/session-controller/src/index.ts:71`](../packages/api/session-controller/src/index.ts)
+Source: [`packages/api/session-controller/src/index.ts:73`](../packages/api/session-controller/src/index.ts)
 
 <a id="deepseek-aidsh-api-settings-controller"></a>
 
@@ -735,6 +735,64 @@ export interface Config {
 
 Source: [`packages/experimental/tool-agent-team/src/index.ts:17`](../packages/experimental/tool-agent-team/src/index.ts)
 
+<a id="deepseek-aidsh-external-tools"></a>
+
+## `@deepseek-ai/dsh-external-tools`
+
+Requires: `tools` · `credentials` · `web`
+
+```ts config-catalog
+/** Host configuration for credential-gated provider registration. */
+export interface Config {
+  /** Provider ids that remain configured but do not register model tools. */
+  disabled?: string[]
+  /** Provider-specific endpoint overrides, keyed by catalog id. */
+  endpoints?: Record<string, string>
+  /** Ordered search provider ids used by the native `web_search` adapter. */
+  searchPriority?: string[]
+}
+```
+
+Source: [`packages/extensions/external-tools/src/index.ts:18`](../packages/extensions/external-tools/src/index.ts)
+
+<a id="deepseek-aidsh-file-recognizer-office"></a>
+
+## `@deepseek-ai/dsh-file-recognizer-office`
+
+Requires: `attachments`
+
+```ts config-catalog
+/** Deepseek-Files recognition plugin configuration. */
+export interface Config {
+  /** Maximum input bytes parsed by this recognizer. Default: 32 MiB. */
+  maxInputBytes?: number
+  /** Maximum extracted characters recorded in one file block. Default: 200,000. */
+  maxExtractedChars?: number
+  /** Maximum total uncompressed archive bytes. Default: 128 MiB. */
+  maxUncompressedBytes?: number
+  /** Maximum archive entries. Default: 4,000. */
+  maxZipEntries?: number
+  /** OpenAI-compatible OCR endpoint. */
+  ocr?: RecognitionEndpointConfig
+  /** OpenAI-compatible audio transcription endpoint. */
+  audioTranscription?: RecognitionEndpointConfig
+  /** OpenAI-compatible video understanding endpoint. */
+  videoUnderstanding?: RecognitionEndpointConfig
+}
+
+/** One external recognition endpoint configured from Settings. */
+export interface RecognitionEndpointConfig {
+  /** Complete request URL. */
+  endpoint?: string
+  /** Provider model identifier. */
+  model?: string
+  /** Credential reference resolved immediately before each request. */
+  apiKeyEnv?: string
+}
+```
+
+Source: [`packages/attachment/file-recognizer-office/src/index.ts:39`](../packages/attachment/file-recognizer-office/src/index.ts)
+
 <a id="deepseek-aidsh-file-reference-local"></a>
 
 ## `@deepseek-ai/dsh-file-reference-local`
@@ -1008,6 +1066,48 @@ export interface Config {
 ```
 
 Source: [`packages/jobs/jobs-local/src/index.ts:31`](../packages/jobs/jobs-local/src/index.ts)
+
+<a id="deepseek-aidsh-lark"></a>
+
+## `@deepseek-ai/dsh-lark`
+
+Requires: `agents` · `agentDefaultModel` · `attachments` · `credentials` · `sessionPersistence` · `sessionQuery` · `settings` · `subprocess` · `tools` · `workspaceRegistry`
+
+```ts config-catalog
+/** Lark integration configuration and user-editable settings. */
+export interface Config {
+  /** Self-built application id. */
+  appId?: string
+  /** Product endpoint family. */
+  brand?: 'feishu' | 'lark'
+  /** Credential reference containing the application secret. */
+  appSecretEnv?: string
+  /** Maximum duration of one CLI operation. */
+  cliTimeoutMs?: number
+  /** Per-stream in-memory CLI output limit. */
+  maxOutputBytes?: number
+  /** Private official-CLI state directory below the Harness home. */
+  cliConfigDir?: string
+  /** Credential setup mode selected by the management page. */
+  credentialMode?: 'none' | 'managed' | 'self-built'
+  /** Maximum duration of official managed-app registration. */
+  registrationTimeoutMs?: number
+  /** Whether private-chat messages should drive durable Harness sessions. */
+  conversationEnabled?: boolean
+  /** Open ID allowed to use the private-chat bridge. */
+  conversationUserOpenId?: string
+  /** Maximum duration of the Channel WebSocket handshake. */
+  conversationHandshakeTimeoutMs?: number
+  /** Maximum duration to wait for one Harness turn response. */
+  conversationResponseTimeoutMs?: number
+  /** Workspace assigned to newly created private-chat sessions; empty uses the runtime directory. */
+  conversationCwd?: string
+  /** IANA time zone used to interpret otherwise-unqualified Lark dates and times. */
+  conversationTimeZone?: string
+}
+```
+
+Source: [`packages/lark/lark/src/index.ts:67`](../packages/lark/lark/src/index.ts)
 
 <a id="deepseek-aidsh-llm-deepseek"></a>
 
@@ -1942,7 +2042,23 @@ export interface Config {
 export type JsonlCompression = 'zstd' | 'none'
 ```
 
-Source: [`packages/session/session-persistence-jsonl/src/index.ts:88`](../packages/session/session-persistence-jsonl/src/index.ts)
+Source: [`packages/session/session-persistence-jsonl/src/index.ts:89`](../packages/session/session-persistence-jsonl/src/index.ts)
+
+<a id="deepseek-aidsh-session-persistence-sqlite"></a>
+
+## `@deepseek-ai/dsh-session-persistence-sqlite`
+
+Requires: `sessions`
+
+```ts config-catalog
+/** Plugin configuration. */
+export interface Config {
+  /** Absolute or process-relative SQLite database path, or `:memory:` in tests. */
+  path: string
+}
+```
+
+Source: [`packages/session/session-persistence-sqlite/src/index.ts:56`](../packages/session/session-persistence-sqlite/src/index.ts)
 
 <a id="deepseek-aidsh-session-projection-cache"></a>
 
@@ -3459,12 +3575,14 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-client-ui-commands` ([`packages/client/ui-commands/src/index.ts`](../packages/client/ui-commands/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-conversation` ([`packages/client/ui-conversation/src/index.ts`](../packages/client/ui-conversation/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-cordis` ([`packages/extensions/ui-cordis/src/index.ts`](../packages/extensions/ui-cordis/src/index.ts))
+- `@deepseek-ai/dsh-client-ui-deepseek-files` ([`packages/client/ui-deepseek-files/src/index.ts`](../packages/client/ui-deepseek-files/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-deliverables` — requires `systemPrompt` · `connection` · `sessionQuery` · `sessionController` · `workspaceFiles` · `fs` · `sandboxPolicy` ([`packages/client/ui-deliverables/src/index.ts`](../packages/client/ui-deliverables/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-directory-picker-browse` ([`packages/client/ui-directory-picker-browse/src/index.ts`](../packages/client/ui-directory-picker-browse/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-directory-picker-native` ([`packages/client/ui-directory-picker-native/src/index.ts`](../packages/client/ui-directory-picker-native/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-goal` ([`packages/client/ui-goal/src/index.ts`](../packages/client/ui-goal/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-input-trigger` ([`packages/client/ui-input-trigger/src/index.ts`](../packages/client/ui-input-trigger/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-jobs` ([`packages/client/ui-jobs/src/index.ts`](../packages/client/ui-jobs/src/index.ts))
+- `@deepseek-ai/dsh-client-ui-lark` ([`packages/client/ui-lark/src/index.ts`](../packages/client/ui-lark/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-layout` ([`packages/client/ui-layout/src/index.ts`](../packages/client/ui-layout/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-message-feedback` ([`packages/client/ui-message-feedback/src/index.ts`](../packages/client/ui-message-feedback/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-model-selection` ([`packages/client/ui-model-selection/src/index.ts`](../packages/client/ui-model-selection/src/index.ts))
@@ -3485,6 +3603,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@deepseek-ai/dsh-client-ui-sidebar-files` ([`packages/client/ui-sidebar-files/src/index.ts`](../packages/client/ui-sidebar-files/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-sidebar-right` ([`packages/client/ui-sidebar-right/src/index.ts`](../packages/client/ui-sidebar-right/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-skill` ([`packages/client/ui-skill/src/index.ts`](../packages/client/ui-skill/src/index.ts))
+- `@deepseek-ai/dsh-client-ui-skill-library` ([`packages/client/ui-skill-library/src/index.ts`](../packages/client/ui-skill-library/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-subagent` ([`packages/client/ui-subagent/src/index.ts`](../packages/client/ui-subagent/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-theme` ([`packages/client/ui-theme/src/index.ts`](../packages/client/ui-theme/src/index.ts))
 - `@deepseek-ai/dsh-client-ui-tool` ([`packages/client/ui-tool/src/index.ts`](../packages/client/ui-tool/src/index.ts))
@@ -3566,6 +3685,7 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 - `@deepseek-ai/dsh-client-web` ([`packages/client/web/src/index.ts`](../packages/client/web/src/index.ts))
 - `@deepseek-ai/dsh-cmdline` ([`packages/boot/cmdline/src/index.ts`](../packages/boot/cmdline/src/index.ts))
 - `@deepseek-ai/dsh-deque` ([`packages/util/deque/src/index.ts`](../packages/util/deque/src/index.ts))
+- `@deepseek-ai/dsh-desktop-lite` ([`packages/bundle/desktop-lite/src/index.ts`](../packages/bundle/desktop-lite/src/index.ts))
 - `@deepseek-ai/dsh-experimental-agent-team-profile` ([`packages/experimental/agent-team-profile/src/index.ts`](../packages/experimental/agent-team-profile/src/index.ts))
 - `@deepseek-ai/dsh-experimental-agent-team-web-profile` ([`packages/experimental/agent-team-web-profile/src/index.ts`](../packages/experimental/agent-team-web-profile/src/index.ts))
 - `@deepseek-ai/dsh-experimental-webworker-packer` ([`packages/experimental/webworker-packer/src/index.ts`](../packages/experimental/webworker-packer/src/index.ts))

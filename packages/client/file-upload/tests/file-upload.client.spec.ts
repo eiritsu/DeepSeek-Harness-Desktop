@@ -419,7 +419,14 @@ describe('Session-addressed file upload', () => {
     const signal = new AbortController().signal
     const file = new Blob(['data'])
 
-    await expect(service.upload(SESSION_ID, file, 'notes & refs.pdf', signal, progress)).resolves.toEqual({
+    await expect(service.upload(
+      SESSION_ID,
+      file,
+      'notes & refs.pdf',
+      signal,
+      progress,
+      'application/pdf',
+    )).resolves.toEqual({
       ok: true,
       value: {
         receiptId: 'receipt-1',
@@ -427,7 +434,7 @@ describe('Session-addressed file upload', () => {
       },
     })
     expect(fetch).toHaveBeenCalledWith(
-      new URL('https://preview.test/api/session/uploadFileBinary?sessionId=s1&name=notes+%26+refs.pdf'),
+      new URL('https://preview.test/api/session/uploadFileBinary?sessionId=s1&name=notes+%26+refs.pdf&mediaType=application%2Fpdf'),
       expect.objectContaining({
         method: 'POST',
         headers: { 'content-type': 'application/octet-stream' },

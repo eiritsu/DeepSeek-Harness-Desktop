@@ -33,7 +33,7 @@ Choose the service when a plugin or tool must search or fetch without hard-codin
 
 ### Minimal configuration
 
-Load the service and let a single mounted backend auto-select, or pin a provider id with `searchProvider`/`fetchProvider`. The environment variables `$DSH_WEB_SEARCH_PROVIDER` and `$DSH_WEB_FETCH_PROVIDER` feed the same fields and are not a separate priority chain.
+Load the service and let a single mounted backend auto-select, or pin a provider id with `searchProvider`/`fetchProvider`. The environment variables `$DSH_WEB_SEARCH_PROVIDER` and `$DSH_WEB_FETCH_PROVIDER` feed the same fields and are not a separate priority chain. A composition that owns a live provider preference may call `setSearchProviderOverride(id)` and must clear it with `undefined` when that preference no longer applies; the explicit override wins over the static field without changing registration order.
 
 ```yaml
 - name: '@deepseek-ai/dsh-web'
@@ -64,7 +64,7 @@ Both calls accept an optional `AbortSignal` that is forwarded to the provider fo
 
 ### Provider selection
 
-Each call resolves its provider at execution time, and registration or load order never matters. A configured provider id wins when it is registered and usable; without a configured id, the service runs the single usable provider or fails clearly:
+Each call resolves its provider at execution time, and registration or load order never matters. A live composition override wins first, followed by the configured provider id; without either, the service runs the single usable provider or fails clearly:
 
 | Situation | Outcome |
 |---|---|

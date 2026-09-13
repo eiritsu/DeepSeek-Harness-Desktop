@@ -2,7 +2,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
-import { IconPaperclipOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconFolderClose16, IconPaperclipOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { createSnapshotStore, type BoundActions } from '@deepseek-ai/dsh-client-store'
 import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -94,7 +94,7 @@ interface WorkspaceNavigation {
 }
 
 /** Action registration used by the composer without importing its command-UI consumer. */
-interface FileCommandRegistry {
+interface AttachmentCommandRegistry {
   register(contribution: {
     name: string
     label(): string
@@ -210,7 +210,7 @@ export function apply(ctx: Context, config: Config = Config({})): void {
   const composerBlocks = new ComposerBlockRegistry()
 
   ctx.inject(['commandUi'], (scope) => {
-    const commands = scope.get('commandUi') as FileCommandRegistry
+    const commands = scope.get('commandUi') as AttachmentCommandRegistry
     scope.effect(() => commands.register({
       name: 'file',
       label: () => t('input.file'),
@@ -218,6 +218,13 @@ export function apply(ctx: Context, config: Config = Config({})): void {
       available: session => inputHub.canPickFiles(session.sessionId),
       ui: { kind: 'action', run: (session) => { inputHub.pickFiles(session.sessionId) } },
     }), 'ui-conversation: File action')
+    scope.effect(() => commands.register({
+      name: 'folder',
+      label: () => t('input.folder'),
+      icon: IconFolderClose16,
+      available: session => inputHub.canPickFolders(session.sessionId),
+      ui: { kind: 'action', run: (session) => { inputHub.pickFolder(session.sessionId) } },
+    }), 'ui-conversation: Folder action')
   })
 
   // Conversation assembly and input share the Session binding lifecycle. The

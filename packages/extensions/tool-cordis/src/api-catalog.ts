@@ -471,6 +471,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [],
       },
       {
+        signature: 'registerRecognizer(recognizer: AttachmentRecognizer): () => void',
+        description: 'Register one trusted semantic recognizer in deterministic priority order.',
+        parameters: [{ name: 'recognizer', description: 'effect-scoped attachment recognizer.' }],
+        returns: 'disposer removing this exact recognizer.',
+      },
+      {
+        signature: 'async recognize( input: RecognizableAttachmentRef, signal?: AbortSignal, ): Promise<AttachmentRecognitionResult | undefined>',
+        description: 'Read and verify one durable attachment, then invoke its highest-priority recognizer. A generic file larger than the recognizer\'s declared buffer limit is not read.',
+        parameters: [{ name: 'input', description: 'durable file or normalized-image reference.' }, { name: 'signal', description: 'optional cancellation for storage and recognition work.' }],
+        returns: 'bounded semantic text, or undefined when no recognizer accepts the input.',
+      },
+      {
         signature: 'abstract validateImage(input: SaveImageAttachment): Promise<void>',
         description: 'Validate one image without persisting it. Batch callers validate every member before saving any member.',
         parameters: [{ name: 'input', description: 'encoded bytes, declared media type, and optional display name.' }],
@@ -895,6 +907,19 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'externalTools',
+    summary: 'Registry that turns configured provider credentials into model tools.',
+    description: 'Registry that turns configured provider credentials into model tools.',
+    methods: [
+      {
+        signature: 'status(): ExternalToolStatus[]',
+        description: 'Secret-free provider status for future diagnostics surfaces.',
+        parameters: [],
+        returns: 'One status record for each catalog entry.',
+      },
+    ],
+  },
+  {
     key: 'fileReferences',
     summary: 'Host capability for cancellable file-reference discovery.',
     description: 'Host capability for cancellable file-reference discovery.',
@@ -925,7 +950,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the staged receipt and durable file reference.',
       },
       {
-        signature: 'async uploadStream(request: { readonly sessionId: SessionId readonly data: AsyncIterable<Uint8Array> readonly signal?: AbortSignal readonly name?: string }): Promise<FileUploadValue>',
+        signature: 'async uploadStream(request: { readonly sessionId: SessionId readonly data: AsyncIterable<Uint8Array> readonly signal?: AbortSignal readonly name?: string readonly mediaType?: string }): Promise<FileUploadValue>',
         description: 'Persist raw chunks for one Session without aggregating the upload.',
         parameters: [{ name: 'request', description: 'Session identity, ordered bytes, cancellation, and optional display name.' }],
         returns: 'the staged receipt and durable file reference.',
@@ -1196,6 +1221,51 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Attach an effect-scoped controller that can read and stop jobs. It serves the owners its registering context\'s scope covers, and start refuses an owner no attached controller serves.',
         parameters: [{ name: 'name', description: 'diagnostic label; duplicate names remain independent.' }],
         returns: 'disposer that detaches this controller.',
+      },
+    ],
+  },
+  {
+    key: 'larkManagement',
+    summary: 'Remote service and model-facing tool backed by the official Lark CLI.',
+    description: 'Remote service and model-facing tool backed by the official Lark CLI.',
+    methods: [
+      {
+        signature: '@Remote(\'status\') async status(): Promise<LarkManagementStatus>',
+        description: 'Read credentials, application scopes, and bot/user identity without exposing secret values.',
+        parameters: [],
+        returns: 'the complete secret-free management status.',
+      },
+      {
+        signature: '@Remote(\'saveApplication\') async saveApplication(input: LarkApplicationInput): Promise<void>',
+        description: 'Store the application id/brand and optionally replace the write-only secret.',
+        parameters: [{ name: 'input', description: 'Application identity, deployment, and optional replacement secret.' }],
+      },
+      {
+        signature: '@Remote(\'clearSecret\') async clearSecret(): Promise<void>',
+        description: 'Remove the provider-managed application secret.',
+        parameters: [],
+      },
+      {
+        signature: '@Remote(\'beginManagedRegistration\') async beginManagedRegistration(brand: \'feishu\' | \'lark\'): Promise<LarkManagedRegistrationRequest>',
+        description: 'Start the official PersonalAgent app-registration flow without requesting a manual secret.',
+        parameters: [{ name: 'brand', description: 'Lark deployment on which to create the managed application.' }],
+        returns: 'the opaque browser verification request.',
+      },
+      {
+        signature: '@Remote(\'completeManagedRegistration\') async completeManagedRegistration(): Promise<void>',
+        description: 'Finish a managed app registration after the user approves the official browser prompt.',
+        parameters: [],
+      },
+      {
+        signature: '@Remote(\'beginUserAuth\') async beginUserAuth(): Promise<LarkUserAuthRequest>',
+        description: 'Start user OAuth for the capability scopes represented by the management page.',
+        parameters: [],
+        returns: 'the opaque browser authorization request.',
+      },
+      {
+        signature: '@Remote(\'completeUserAuth\') async completeUserAuth(): Promise<void>',
+        description: 'Complete the persisted user OAuth request after the user authorizes it.',
+        parameters: [],
       },
     ],
   },
@@ -1519,6 +1589,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the new Session identity.',
       },
       {
+        signature: '@Remote(\'delete\') delete(request: SessionDeleteRequest): Promise<SessionDeleteValue>',
+        description: 'Permanently delete one Session and, when requested, its durable descendants.',
+        parameters: [{ name: 'request', description: 'root identity and recursive-deletion policy.' }],
+        returns: 'deleted identities in child-before-parent order.',
+      },
+      {
         signature: '@Remote(\'prompt\') prompt(request: SessionPromptRequest, signal: AbortSignal): Promise<SessionPromptValue>',
         description: 'Admit one prompt after explicitly resuming its Session.',
         parameters: [{ name: 'request', description: 'Session identity, prompt content, source metadata, and delivery mode.' }, { name: 'signal', description: 'caller cancellation before prompt admission begins.' }],
@@ -1625,6 +1701,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'List every stored session visible to this process, in no promised order.',
         parameters: [{ name: 'options', description: 'optional cancellation.' }],
         returns: 'one snapshot per stored session.',
+      },
+      {
+        signature: 'abstract delete(id: SessionId, options?: SessionPersistenceDeleteOptions): Promise<void>',
+        description: 'Permanently remove one stored Session and its event log.\n\nDeletion refuses while this process or another process owns the Session for writing. A resolved call makes subsequent `stat`/`list`/`open` calls observe absence; read handles already opened concurrently may reject on a later read. Consumers must stop the live Agent lifecycle before calling.',
+        parameters: [{ name: 'id', description: 'stored Session identity to remove.' }, { name: 'options', description: 'optional cancellation observed before deletion starts.' }],
+        throws: ['{SessionPersistenceNotFoundError} when the Session does not exist.', '{SessionAlreadyOwnedError} while a writer owns the Session.'],
       },
     ],
   },
@@ -2773,6 +2855,11 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the disposer that unregisters the provider.',
       },
       {
+        signature: 'setSearchProviderOverride(providerId: string | undefined): void',
+        description: 'Select one registered search provider until the owning composition clears it.',
+        parameters: [{ name: 'providerId', description: 'provider id, or `undefined` to restore configured/automatic selection.' }],
+      },
+      {
         signature: 'async search(request: WebSearchRequest, signal?: AbortSignal): Promise<WebSearchResult>',
         description: 'Run one search through the selected provider. Resolves the provider at call time with the selection rules above; throws WebError when the capability cannot run. The seam enforces `request.maxResults` on the result: if the provider over-returns, `sources[]` is truncated and `truncated` set.',
         parameters: [{ name: 'request', description: 'the query and optional result limit.' }, { name: 'signal', description: 'optional cancellation signal forwarded to the provider.' }],
@@ -2907,6 +2994,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Hide one known Session from Workspace grouping surfaces.',
         parameters: [{ name: 'request', description: 'Session identity to archive.' }],
         returns: 'the complete resulting archive set.',
+      },
+      {
+        signature: '@Remote(\'attachSession\') attachSession(request: WorkspaceAttachSessionRequest): Promise<WorkspaceAttachSessionValue>',
+        description: 'Add one known Session to a Workspace.',
+        parameters: [{ name: 'request', description: 'Workspace and Session identities to associate.' }],
+        returns: 'the changed Workspace projection.',
       },
       {
         signature: '@Remote({ mode: \'stream\' }) follow(signal: AbortSignal): AsyncIterable<WorkspaceFollowFrame>',
@@ -3739,6 +3832,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type AttachmentId = Branded<\'AttachmentId\'>;',
   },
   {
+    name: 'AttachmentRecognitionResult',
+    declaration: 'export interface AttachmentRecognitionResult {\n    text: string;\n}',
+  },
+  {
+    name: 'AttachmentRecognizer',
+    declaration: 'export interface AttachmentRecognizer {\n    id: string;\n    priority?: number;\n    maxInputBytes: number;\n    supports(input: RecognizableAttachmentRef): boolean;\n    recognize(input: StoredRecognizableAttachment, signal?: AbortSignal): Promise<AttachmentRecognitionResult | undefined>;\n}',
+  },
+  {
     name: 'AuthorizationEntry',
     declaration: 'export interface AuthorizationEntry {\n    key: CredentialKey;\n    label: string;\n    methods: readonly AuthorizationMethod[];\n    inFlight: boolean;\n}',
   },
@@ -4188,11 +4289,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'EncodedFileAttachment',
-    declaration: 'export interface EncodedFileAttachment {\n    data: string;\n    name?: string;\n}',
+    declaration: 'export interface EncodedFileAttachment {\n    data: string;\n    name?: string;\n    mediaType?: string;\n}',
   },
   {
     name: 'EncodedFileUploadRequest',
-    declaration: 'export interface EncodedFileUploadRequest {\n    readonly data: string;\n    readonly name?: string;\n}',
+    declaration: 'export interface EncodedFileUploadRequest {\n    readonly data: string;\n    readonly name?: string;\n    readonly mediaType?: string;\n}',
   },
   {
     name: 'EncodedImageAttachment',
@@ -4201,6 +4302,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'EpochHeader',
     declaration: 'export interface EpochHeader {\n    config: LlmCallConfig;\n    adapterDefaults?: LlmCallConfigAdapterDefaults;\n    tools?: ToolSchema[];\n}',
+  },
+  {
+    name: 'ExternalToolStatus',
+    declaration: 'export interface ExternalToolStatus {\n    readonly id: string;\n    readonly configured: boolean;\n    readonly enabled: boolean;\n    readonly toolRegistered: boolean;\n}',
   },
   {
     name: 'FeedbackCategory',
@@ -4212,7 +4317,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'FileAttachmentRef',
-    declaration: 'export interface FileAttachmentRef {\n    attachmentId: AttachmentId;\n    name: string;\n    bytes: number;\n}',
+    declaration: 'export interface FileAttachmentRef {\n    attachmentId: AttachmentId;\n    name: string;\n    bytes: number;\n    mediaType?: string;\n}',
   },
   {
     name: 'FileBlock',
@@ -4497,6 +4602,38 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'KvUnitDescriptor',
     declaration: 'export interface KvUnitDescriptor {\n    readonly name: string;\n    readonly version: number;\n    readonly tables: readonly string[];\n    readonly hasGlobal: boolean;\n    readonly layout?: \'single\' | \'per-record\';\n    readonly compatibleVersions?: readonly number[];\n}',
+  },
+  {
+    name: 'LarkApplicationInput',
+    declaration: 'export interface LarkApplicationInput {\n    readonly appId: string;\n    readonly brand: \'feishu\' | \'lark\';\n    readonly appSecret?: string;\n}',
+  },
+  {
+    name: 'LarkCapabilityId',
+    declaration: 'export type LarkCapabilityId = \'calendar\' | \'im\' | \'docs\' | \'drive\' | \'markdown\' | \'base\' | \'sheets\' | \'slides\' | \'task\' | \'wiki\' | \'contact\' | \'mail\' | \'meeting\' | \'attendance\' | \'approval\' | \'okr\' | \'apps\';',
+  },
+  {
+    name: 'LarkCapabilityStatus',
+    declaration: 'export interface LarkCapabilityStatus {\n    readonly id: LarkCapabilityId;\n    readonly label: string;\n    readonly state: \'granted\' | \'missing\' | \'unknown\';\n    readonly missingScopes: readonly string[];\n}',
+  },
+  {
+    name: 'LarkConversationStatus',
+    declaration: 'export interface LarkConversationStatus {\n    readonly status: \'disabled\' | \'waiting\' | \'connecting\' | \'ready\' | \'error\';\n    readonly diagnostic?: string;\n}',
+  },
+  {
+    name: 'LarkIdentityStatus',
+    declaration: 'export interface LarkIdentityStatus {\n    readonly status: string;\n    readonly available: boolean;\n    readonly verified?: boolean;\n}',
+  },
+  {
+    name: 'LarkManagedRegistrationRequest',
+    declaration: 'export interface LarkManagedRegistrationRequest {\n    readonly verificationUrl: string;\n}',
+  },
+  {
+    name: 'LarkManagementStatus',
+    declaration: 'export interface LarkManagementStatus {\n    readonly appId: string;\n    readonly brand: \'feishu\' | \'lark\';\n    readonly credentialMode: \'none\' | \'managed\' | \'self-built\';\n    readonly secretConfigured: boolean;\n    readonly secretWritable: boolean;\n    readonly userAuthorizationPending: boolean;\n    readonly cliAvailable: boolean;\n    readonly bot: LarkIdentityStatus;\n    readonly user: LarkIdentityStatus;\n    readonly userAuthorizationMissingScopes: readonly string[];\n    readonly conversation: LarkConversationStatus;\n    readonly capabilities: readonly LarkCapabilityStatus[];\n    readonly permissionTemplate: string;\n    readonly diagnostic?: string;\n}',
+  },
+  {
+    name: 'LarkUserAuthRequest',
+    declaration: 'export interface LarkUserAuthRequest {\n    readonly verificationUrl: string;\n}',
   },
   {
     name: 'LlmAdapter',
@@ -4879,6 +5016,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ReasoningEffortId = Branded<\'ReasoningEffortId\'>;',
   },
   {
+    name: 'RecognizableAttachmentRef',
+    declaration: 'export type RecognizableAttachmentRef = FileAttachmentRef | ImageAttachmentRef;',
+  },
+  {
     name: 'RedactedSecret',
     declaration: 'export interface RedactedSecret {\n    path: string[];\n    set: boolean;\n}',
   },
@@ -4980,11 +5121,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SaveFileAttachment',
-    declaration: 'export interface SaveFileAttachment {\n    data: Uint8Array;\n    name?: string;\n}',
+    declaration: 'export interface SaveFileAttachment {\n    data: Uint8Array;\n    name?: string;\n    mediaType?: string;\n}',
   },
   {
     name: 'SaveFileStreamAttachment',
-    declaration: 'export interface SaveFileStreamAttachment {\n    data: AsyncIterable<Uint8Array>;\n    signal?: AbortSignal;\n    name?: string;\n}',
+    declaration: 'export interface SaveFileStreamAttachment {\n    data: AsyncIterable<Uint8Array>;\n    signal?: AbortSignal;\n    name?: string;\n    mediaType?: string;\n}',
   },
   {
     name: 'SaveImageAttachment',
@@ -5097,6 +5238,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SessionCreateValue',
     declaration: 'export interface SessionCreateValue {\n    readonly sessionId: SessionId;\n    readonly agentPreset?: string;\n}',
+  },
+  {
+    name: 'SessionDeleteRequest',
+    declaration: 'export interface SessionDeleteRequest {\n    readonly sessionId: SessionId;\n    readonly recursive?: boolean;\n}',
+  },
+  {
+    name: 'SessionDeleteValue',
+    declaration: 'export interface SessionDeleteValue {\n    readonly deletedSessionIds: readonly SessionId[];\n}',
   },
   {
     name: 'SessionEvent',
@@ -5293,6 +5442,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SessionPersistenceCreateOptions',
     declaration: 'export interface SessionPersistenceCreateOptions {\n    readonly signal?: AbortSignal;\n    readonly inheritedEventCount?: SessionLogOffset;\n}',
+  },
+  {
+    name: 'SessionPersistenceDeleteOptions',
+    declaration: 'export interface SessionPersistenceDeleteOptions {\n    readonly signal?: AbortSignal;\n}',
   },
   {
     name: 'SessionPersistenceListOptions',
@@ -5705,6 +5858,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'StoredImageAttachment',
     declaration: 'export interface StoredImageAttachment {\n    ref: ImageAttachmentRef;\n    data: Uint8Array;\n}',
+  },
+  {
+    name: 'StoredRecognizableAttachment',
+    declaration: 'export interface StoredRecognizableAttachment {\n    ref: RecognizableAttachmentRef;\n    data: Uint8Array;\n    mediaType?: string;\n    name?: string;\n}',
   },
   {
     name: 'StreamChunk',
@@ -6421,6 +6578,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'WorkspaceArchiveValue',
     declaration: 'export interface WorkspaceArchiveValue {\n    readonly archivedSessionIds: readonly SessionId[];\n}',
+  },
+  {
+    name: 'WorkspaceAttachSessionRequest',
+    declaration: 'export interface WorkspaceAttachSessionRequest {\n    readonly workspaceId: WorkspaceId;\n    readonly sessionId: SessionId;\n}',
+  },
+  {
+    name: 'WorkspaceAttachSessionValue',
+    declaration: 'export interface WorkspaceAttachSessionValue {\n    readonly workspace: WorkspaceView;\n}',
   },
   {
     name: 'WorkspaceBaseline',

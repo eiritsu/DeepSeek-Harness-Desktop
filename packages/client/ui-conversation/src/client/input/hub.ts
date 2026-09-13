@@ -176,6 +176,23 @@ export class InputHub implements SessionInputResolver {
   }
 
   /**
+   * Query recursive folder intake without creating a Session input.
+   * @param id - target Session.
+   * @returns whether its mounted composer currently accepts a folder.
+   */
+  canPickFolders(id: SessionId): boolean {
+    return this.shells.get(id)?.canPickFolders() === true
+  }
+
+  /**
+   * Open the target composer's recursive folder dialog under its live intake policy.
+   * @param id - target Session.
+   */
+  pickFolder(id: SessionId): void {
+    this.shells.get(id)?.pickFolder()
+  }
+
+  /**
    * Resolve the optional slash controller for composer chrome that launches
    * the shared candidate menu without typing a trigger.
    * @param id - session id.

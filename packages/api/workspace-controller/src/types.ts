@@ -104,6 +104,17 @@ export interface WorkspaceArchiveSessionRequest {
   readonly sessionId: SessionId
 }
 
+/** Add one known Session to a Workspace's manual account. */
+export interface WorkspaceAttachSessionRequest {
+  readonly workspaceId: WorkspaceId
+  readonly sessionId: SessionId
+}
+
+/** Complete Workspace projection after adding a Session. */
+export interface WorkspaceAttachSessionValue {
+  readonly workspace: WorkspaceView
+}
+
 /** Complete archived Session set after a mutation. */
 export interface WorkspaceArchiveValue {
   readonly archivedSessionIds: readonly SessionId[]

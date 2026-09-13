@@ -181,6 +181,12 @@ registerSearchProvider(provider: WebSearchProvider): () => void
 registerFetchProvider(provider: WebFetchProvider): () => void
 
 /**
+ * Select one registered search provider until the owning composition clears it.
+ * @param providerId - provider id, or `undefined` to restore configured/automatic selection.
+ */
+setSearchProviderOverride(providerId: string | undefined): void
+
+/**
  * Run one search through the selected provider. Resolves the provider at call
  * time with the selection rules above; throws {@link WebError} when the
  * capability cannot run. The seam enforces `request.maxResults` on the result:

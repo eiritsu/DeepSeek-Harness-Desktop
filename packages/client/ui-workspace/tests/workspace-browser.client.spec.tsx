@@ -90,6 +90,8 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     searchResultLimit: 20,
     renameSession: vi.fn(async () => {}),
     forkSession: vi.fn(),
+    attachSession: vi.fn(async () => {}),
+    deleteSession: vi.fn(async () => {}),
     renameWorkspace: vi.fn(async () => {}),
     deleteWorkspace: vi.fn(async () => {}),
     archiveSession: vi.fn(async () => {}),
@@ -466,6 +468,31 @@ describe('WorkspaceBrowser', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: '单列表' }))
     expect(screen.getByText('kept-s')).toBeTruthy()
     expect(screen.queryByText('gone-s')).toBeNull()
+  })
+
+  it('attaches a session to another Workspace and confirms permanent deletion', async () => {
+    const attachSession = vi.fn(async () => {})
+    const deleteSession = vi.fn(async () => {})
+    mount({
+      useSessions: hook(sessionState([summary('alpha-s', 1)])),
+      useWorkspaces: hook(workspaceState([
+        workspace('alpha', ['alpha-s']),
+        workspace('beta', []),
+      ])),
+      attachSession,
+      deleteSession,
+    })
+    fireEvent.click(screen.getByText('alpha'))
+    fireEvent.click(screen.getByRole('button', { name: '会话“alpha-s”的操作' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '加入工作区' }))
+    fireEvent.click(screen.getByRole('button', { name: 'beta' }))
+    await waitFor(() => { expect(attachSession).toHaveBeenCalledWith(wid('beta'), sid('alpha-s')) })
+
+    fireEvent.click(screen.getByRole('button', { name: '会话“alpha-s”的操作' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '删除会话' }))
+    expect(screen.getByText('将永久删除“alpha-s”及其会话记录，无法恢复。')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '删除会话' }))
+    await waitFor(() => { expect(deleteSession).toHaveBeenCalledWith(sid('alpha-s')) })
   })
 
   it('logs and keeps the tree when the archive call rejects', async () => {

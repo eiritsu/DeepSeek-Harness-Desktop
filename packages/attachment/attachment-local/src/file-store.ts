@@ -13,6 +13,15 @@ import {
 
 const FILE_ID_PATTERN = /^sha256:([a-f0-9]{64})$/
 const WINDOWS_DEVICE_NAME = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/iu
+const MEDIA_TYPE_PATTERN = /^[!#$&^.+\w-]+\/[!#$&^.+\w-]+$/u
+
+function checkedMediaType(value: string | undefined): string | undefined {
+  if (value === undefined || value === '') return undefined
+  if (value.length > 255 || !MEDIA_TYPE_PATTERN.test(value)) {
+    throw new AttachmentError('File attachment media type is invalid.', 'INVALID_ATTACHMENT_REF')
+  }
+  return value.toLowerCase()
+}
 
 function isWindowsDeviceName(name: string): boolean {
   const dot = name.indexOf('.')
@@ -57,7 +66,8 @@ export function fileLeafName(value: string | undefined): string {
 
 function ensureFileReference(ref: FileAttachmentRef): string {
   const match = FILE_ID_PATTERN.exec(String(ref.attachmentId))
-  if (match?.[1] === undefined || ref.name !== fileLeafName(ref.name)) {
+  if (match?.[1] === undefined || ref.name !== fileLeafName(ref.name)
+    || checkedMediaType(ref.mediaType) !== ref.mediaType) {
     throw new AttachmentError('File attachment reference is invalid.', 'INVALID_ATTACHMENT_REF')
   }
   return match[1]
@@ -93,10 +103,12 @@ export async function saveFileVerbatim(
   input: SaveFileAttachment,
 ): Promise<FileAttachmentRef> {
   const sha256 = createHash('sha256').update(input.data).digest('hex')
+  const mediaType = checkedMediaType(input.mediaType)
   const ref: FileAttachmentRef = {
     attachmentId: AttachmentId(`sha256:${sha256}`),
     name: fileLeafName(input.name),
     bytes: input.data.byteLength,
+    ...(mediaType === undefined ? {} : { mediaType }),
   }
   const objectPath = storedFileObjectPath(root, sha256)
   await publishImmutableObject(root, objectPath, input.data, sha256)
@@ -115,6 +127,7 @@ export async function saveFileStreamVerbatim(
   input: SaveFileStreamAttachment,
 ): Promise<FileAttachmentRef> {
   const name = fileLeafName(input.name)
+  const mediaType = checkedMediaType(input.mediaType)
   const stored = await publishImmutableObjectStream(
     root,
     input.data,
@@ -125,6 +138,7 @@ export async function saveFileStreamVerbatim(
     attachmentId: AttachmentId(`sha256:${stored.sha256}`),
     name,
     bytes: stored.bytes,
+    ...(mediaType === undefined ? {} : { mediaType }),
   }
   input.signal?.throwIfAborted()
   await publishImmutableAlias(

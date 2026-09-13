@@ -29,6 +29,7 @@ async function uploadHarness(origin?: 'subagent'): Promise<{
   saveFile: ReturnType<typeof vi.fn>
   saveFileStream: ReturnType<typeof vi.fn>
   saveImages: ReturnType<typeof vi.fn>
+  recognize: ReturnType<typeof vi.fn>
   disposeAgent: () => void
   uploadRoute: (request: Request) => Promise<Response>
 }> {
@@ -57,6 +58,7 @@ async function uploadHarness(origin?: 'subagent'): Promise<{
     attachmentId: AttachmentId(`sha256:${'cd'.repeat(32)}`),
     name: input.name ?? 'file',
     bytes: input.data.byteLength,
+    ...(input.mediaType === undefined ? {} : { mediaType: input.mediaType }),
   }))
   const saveFileStream = vi.fn(async (input: SaveFileStreamAttachment): Promise<FileAttachmentRef> => {
     let bytes = 0
@@ -65,12 +67,14 @@ async function uploadHarness(origin?: 'subagent'): Promise<{
       attachmentId: AttachmentId(`sha256:${'ef'.repeat(32)}`),
       name: input.name ?? 'file',
       bytes,
+      ...(input.mediaType === undefined ? {} : { mediaType: input.mediaType }),
     }
   })
   const saveImages = vi.fn((): Promise<readonly ImageAttachmentRef[]> =>
     Promise.reject(new Error('fixture did not expect image persistence')))
+  const recognize = vi.fn(() => Promise.resolve(undefined))
   ctx.provide('attachments', Object.setPrototypeOf(
-    { saveFile, saveFileStream, saveImages },
+    { saveFile, saveFileStream, saveImages, recognize },
     AttachmentStore.prototype,
   ) as never)
   let uploadRoute: ((request: Request) => Promise<Response>) | undefined
@@ -106,6 +110,7 @@ async function uploadHarness(origin?: 'subagent'): Promise<{
     saveFile,
     saveFileStream,
     saveImages,
+    recognize,
     disposeAgent,
     uploadRoute,
   }
@@ -191,6 +196,24 @@ describe('Session file uploads', () => {
     await controller.prompt(promptRequest([{ type: 'file', receiptId: receipt.receiptId }]))
     expect((followup.mock.calls[0]?.[0] as UserMessage).content).toEqual([
       { type: 'file', attachment: receipt.file },
+    ])
+  })
+
+  it('records DeepSeek Files text beside the durable file before delivery', async () => {
+    const { controller, uploads, agent, followup, recognize } = await uploadHarness()
+    const receipt = await uploads.upload(agent, {
+      data: 'AAAA',
+      name: 'brief.pdf',
+      mediaType: 'application/pdf',
+    }, new AbortController().signal)
+    recognize.mockResolvedValueOnce({ text: 'recognized body' })
+
+    await controller.prompt(promptRequest([{ type: 'file', receiptId: receipt.receiptId }]))
+
+    expect(recognize).toHaveBeenCalledWith(receipt.file)
+    expect((followup.mock.calls[0]?.[0] as UserMessage).content).toEqual([
+      { type: 'file', attachment: receipt.file },
+      { type: 'text', text: '[DeepSeek Files extracted text from "brief.pdf":]\nrecognized body' },
     ])
   })
 

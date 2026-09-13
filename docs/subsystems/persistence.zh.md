@@ -2,9 +2,9 @@
 
 [English](persistence.md) | 中文
 
-事件日志的**持久性 seam**。[session.md](session.zh.md) 描述了内存中的 `Session`：仅追加的 `SessionEvent` 日志即为真源。本页描述如何使该日志持久化：抽象的 `SessionPersistence` 服务、它的提供方模型与随产品交付的 JSONL 后端、flush 检查点、崩溃恢复，以及随日志一同存储的元数据头。日志承载的事件词汇在生成的[持久化日志事件目录](../persistence-catalog.zh.md)中逐项列举。
+事件日志的**持久性 seam**。[session.md](session.zh.md) 描述了内存中的 `Session`：仅追加的 `SessionEvent` 日志即为真源。本页描述如何使该日志持久化：抽象的 `SessionPersistence` 服务、JSONL 与桌面 SQLite provider、flush 检查点、崩溃恢复，以及随日志一同存储的元数据头。日志承载的事件词汇在生成的[持久化日志事件目录](../persistence-catalog.zh.md)中逐项列举。
 
-该 seam 是一个[能力 seam](../../.agents/notes/implemented/architecture/2026-06-13-capability-seams.zh.md)：一个抽象服务（[dsh-session-persistence](../../packages/session/session-persistence)，`ctx.sessionPersistence`）在现有 `SessionEvent` 上暴露 `create`/`open`/`stat`/`list`——**没有平行的持久化事件类型**——其中 `create` 与 `open` 返回逐会话的 `SessionHandle`（`read`/`append`/`flush`/`close`），它承载全部日志访问与单写者所有权。仓库随产品交付 [dsh-session-persistence-jsonl](../../packages/session/session-persistence-jsonl) 作为其 provider；仓库外 provider 可以实现同一服务约定。见[基于句柄的持久化 Agent Note](../../.agents/notes/implemented/architecture/2026-08-27-handle-based-session-persistence.zh.md)与 [session-persistence Agent Note](../../.agents/notes/implemented/architecture/2026-06-14-session-persistence.zh.md)。
+该 seam 是一个[能力 seam](../../.agents/notes/implemented/architecture/2026-06-13-capability-seams.zh.md)：一个抽象服务（[dsh-session-persistence](../../packages/session/session-persistence)，`ctx.sessionPersistence`）在现有 `SessionEvent` 上暴露 `create`/`open`/`stat`/`list`——**没有平行的持久化事件类型**——其中 `create` 与 `open` 返回逐会话的 `SessionHandle`（`read`/`append`/`flush`/`close`），它承载全部日志访问与单写者所有权。仓库随产品交付用于通用 profile 的 [dsh-session-persistence-jsonl](../../packages/session/session-persistence-jsonl) 和用于 Desktop 的 [dsh-session-persistence-sqlite](../../packages/session/session-persistence-sqlite)；仓库外 provider 可以实现同一服务约定。见[基于句柄的持久化 Agent Note](../../.agents/notes/implemented/architecture/2026-08-27-handle-based-session-persistence.zh.md)与 [session-persistence Agent Note](../../.agents/notes/implemented/architecture/2026-06-14-session-persistence.zh.md)。
 
 ## `SessionHandle`——通向已存储会话的一条打开通道
 
@@ -327,6 +327,7 @@ interface SessionPersistenceSnapshot {
 随产品交付的 provider 实现抽象 `SessionPersistence` 约定（`create`/`open`/`stat`/`list`，逐会话 `SessionHandle` 承载 `read`/`append`/`flush`/`close`，全程可选支持取消），并通过共享的持久化契约套件：
 
 - **[dsh-session-persistence-jsonl](../../packages/session/session-persistence-jsonl)**——逐会话仅追加的逻辑 JSONL 日志，默认存储为带 checksum 的连续 Zstandard frame，也可配置为原始行；具备崩溃安全的原子实体化、逐批 `fsync` 的 append，以及在第一次新 append 之前截断撕裂尾部。`stat`/`list` 携带 `sizeBytes` 与尽力而为的、由 `fs.stat` 派生的修订号。
+- **[dsh-session-persistence-sqlite](../../packages/session/session-persistence-sqlite)**——单一 Desktop 数据库，其事务会原子追加事件批次，并推进已存事件计数与单调 revision。`stat`/`list` 无需加载正文即可读取计数。
 
 <!-- BEGIN GENERATED cordis-surface (gen-cordis-catalog.ts) — do not edit between markers -->
 
@@ -408,6 +409,20 @@ abstract stat(id: SessionId, options?: SessionPersistenceStatOptions): Promise<S
  * @returns one snapshot per stored session.
  */
 abstract list(options?: SessionPersistenceListOptions): Promise<readonly SessionPersistenceSnapshot[]>
+
+/**
+ * Permanently remove one stored Session and its event log.
+ *
+ * Deletion refuses while this process or another process owns the Session
+ * for writing. A resolved call makes subsequent `stat`/`list`/`open` calls
+ * observe absence; read handles already opened concurrently may reject on a
+ * later read. Consumers must stop the live Agent lifecycle before calling.
+ * @param id - stored Session identity to remove.
+ * @param options - optional cancellation observed before deletion starts.
+ * @throws {SessionPersistenceNotFoundError} when the Session does not exist.
+ * @throws {SessionAlreadyOwnedError} while a writer owns the Session.
+ */
+abstract delete(id: SessionId, options?: SessionPersistenceDeleteOptions): Promise<void>
 ```
 
 Types: [SessionId](core.zh.md)

@@ -175,6 +175,22 @@ Immutable binary attachment service. Implementations validate bytes before publi
 
 ```ts cordis-catalog
 /**
+ * Register one trusted semantic recognizer in deterministic priority order.
+ * @param recognizer - effect-scoped attachment recognizer.
+ * @returns disposer removing this exact recognizer.
+ */
+registerRecognizer(recognizer: AttachmentRecognizer): () => void
+
+/**
+ * Read and verify one durable attachment, then invoke its highest-priority recognizer.
+ * A generic file larger than the recognizer's declared buffer limit is not read.
+ * @param input - durable file or normalized-image reference.
+ * @param signal - optional cancellation for storage and recognition work.
+ * @returns bounded semantic text, or undefined when no recognizer accepts the input.
+ */
+async recognize( input: RecognizableAttachmentRef, signal?: AbortSignal, ): Promise<AttachmentRecognitionResult | undefined>
+
+/**
  * Validate one image without persisting it.
  * Batch callers validate every member before saving any member.
  * @param input - encoded bytes, declared media type, and optional display name.
@@ -317,7 +333,7 @@ registerAgentResolver(resolve: AgentResolver): () => void
  * @param request - Session identity, ordered bytes, cancellation, and optional display name.
  * @returns the staged receipt and durable file reference.
  */
-async uploadStream(request: { readonly sessionId: SessionId readonly data: AsyncIterable<Uint8Array> readonly signal?: AbortSignal readonly name?: string }): Promise<FileUploadValue>
+async uploadStream(request: { readonly sessionId: SessionId readonly data: AsyncIterable<Uint8Array> readonly signal?: AbortSignal readonly name?: string readonly mediaType?: string }): Promise<FileUploadValue>
 
 /**
  * Resolve one staged receipt inside its receiving Agent scope.

@@ -1,0 +1,50 @@
+{
+  "name": "@deepseek-ai/dsh-desktop-lite",
+  "description": "The lightweight macOS WKWebView bundle over the shared dsh Web application",
+  "version": "0.1.5-rc.2",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "directory": "packages/bundle/desktop-lite"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "cordis.patch.yml",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-client-ui-deepseek-files": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-lark": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-skill-library": "workspace:^",
+    "@deepseek-ai/dsh-external-tools": "workspace:^",
+    "@deepseek-ai/dsh-file-recognizer-office": "workspace:^",
+    "@deepseek-ai/dsh-lark": "workspace:^",
+    "@deepseek-ai/dsh-session-persistence-sqlite": "workspace:^"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:^"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:^"
+  }
+}

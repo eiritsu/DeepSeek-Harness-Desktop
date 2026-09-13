@@ -86,6 +86,7 @@ export class WebRuntime extends Service {
   private fetchProviders = new Map<string, WebFetchProvider>()
   private readonly searchProviderId: string | undefined
   private readonly fetchProviderId: string | undefined
+  private searchProviderOverride: string | undefined
 
   constructor(ctx: Context, config: WebRuntimeConfig = {}) {
     super(ctx, 'web')
@@ -115,6 +116,14 @@ export class WebRuntime extends Service {
     return this.registerProvider(this.fetchProviders, provider)
   }
 
+  /**
+   * Select one registered search provider until the owning composition clears it.
+   * @param providerId - provider id, or `undefined` to restore configured/automatic selection.
+   */
+  setSearchProviderOverride(providerId: string | undefined): void {
+    this.searchProviderOverride = providerId
+  }
+
   private registerProvider<P extends { readonly id: string }>(store: Map<string, P>, provider: P): () => void {
     if (store.has(provider.id)) {
       throw new WebError(`a web provider with id "${provider.id}" is already registered`, 'WEB_DUPLICATE_PROVIDER')
@@ -140,7 +149,9 @@ export class WebRuntime extends Service {
   async search(request: WebSearchRequest, signal?: AbortSignal): Promise<WebSearchResult> {
     const provider = resolveProvider({
       providers: this.searchProviders,
-      ...this.searchProviderId !== undefined ? { configuredId: this.searchProviderId } : {},
+      ...this.searchProviderOverride !== undefined
+        ? { configuredId: this.searchProviderOverride }
+        : this.searchProviderId !== undefined ? { configuredId: this.searchProviderId } : {},
     })
     const result = await provider.search(request, signal)
     return capSources(result, request.maxResults)

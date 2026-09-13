@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-本包让应用通过后端无关的 API 持久存储并恢复会话事件日志。读者可以创建、打开、检查、列出、追加、读取、刷新和关闭已存储会话，同时保持连续且仅追加的历史记录。只有完成 flush 才构成持久性屏障；读取方不会收到撕裂尾部或无效记录，并且每个后端实例内每个会话只允许一个写入方。若希望每个会话使用一份压缩日志，可选用随产品交付的 [JSONL 后端](../session-persistence-jsonl/README.zh.md)；也可以实现具备相同可观察保证的其他后端。
+本包让应用通过后端无关的 API 持久存储并恢复会话事件日志。读者可以创建、打开、检查、列出、追加、读取、刷新和关闭已存储会话，同时保持连续且仅追加的历史记录。只有完成 flush 才构成持久性屏障；读取方不会收到撕裂尾部或无效记录，并且每个后端实例内每个会话只允许一个写入方。每个 Session 使用一份压缩日志时选择 [JSONL](../session-persistence-jsonl/README.zh.md)，使用单一桌面数据库时选择 [SQLite](../session-persistence-sqlite/README.zh.md)。
 
 ## 目录
 
@@ -29,7 +29,7 @@ kind: "package-reference"
 
 ### 选择后端
 
-seam 随产品交付 [JSONL](../session-persistence-jsonl/README.zh.md) 后端。它为每个会话存储一份仅追加的 `.jsonl.zstd` 日志。第三方后端可以直接实现该服务；必须遵守的[后端约定](#understand-the-implementation)见下文。
+seam 随产品交付两个 provider：[JSONL](../session-persistence-jsonl/README.zh.md) 为每个 Session 存储一份仅追加的 `.jsonl.zstd` 日志，[SQLite](../session-persistence-sqlite/README.zh.md) 则把桌面 Session 存入单一事务数据库。第三方后端可以直接实现该服务；必须遵守的[后端约定](#understand-the-implementation)见下文。
 
 ### 服务提供什么
 
@@ -42,6 +42,7 @@ const reader = await ctx.sessionPersistence.open(id, 'read')   // observe withou
 const snap = await ctx.sessionPersistence.stat(id)             // header + revision (+ eventCount / sizeBytes) without a log read
 const all = await ctx.sessionPersistence.list()                // one snapshot per visible stored session
 await ctx.sessionPersistence.flush()                           // backend-wide durability barrier over every active write handle
+await ctx.sessionPersistence.delete(id)                        // refuse a writer, then remove the complete durable Session
 ```
 
 服务级 `flush()` 排空每个活跃写句柄已路由的事件并把其会话实体化，效果与各句柄自己的 `flush` 完全相同；失败按会话聚合为一个 `AggregateError` 而不中途放弃清扫，清扫途中被关闭的句柄视同已 flush，因为 close 本身会持久排空。
@@ -50,7 +51,7 @@ await ctx.sessionPersistence.flush()                           // backend-wide d
 
 ### 所有权与可见性
 
-`create` 与 `open(id, 'write')` 取得进程内单写者所有权：在持有者活跃期间第二次以写模式打开会以 `SessionAlreadyOwnedError` 拒绝，对已占用 id 执行 `create` 会以 `SessionAlreadyExistsError` 拒绝，在 `read` 句柄上执行修改会以 `SessionReadOnlyError` 拒绝——一种句柄类型，运行时拒绝。对已关闭句柄的任何操作会以 `SessionHandleClosedError` 拒绝，`SessionOwnershipLostError` 标记写所有权已永久丢失的写句柄（关闭并重新打开）。已创建的会话自 `create` 完成之刻起即可在本进程内被观察到，而后端可以把物理实体化推迟到第一次 `append` 或 `flush`；其他进程只能看到已实体化的会话，一个在崩溃前从未实体化的会话等于从未存在。
+`create` 与 `open(id, 'write')` 取得进程内单写者所有权：在持有者活跃期间第二次以写模式打开会以 `SessionAlreadyOwnedError` 拒绝，对已占用 id 执行 `create` 会以 `SessionAlreadyExistsError` 拒绝，在 `read` 句柄上执行修改会以 `SessionReadOnlyError` 拒绝——一种句柄类型，运行时拒绝。`delete(id)` 在 writer 存在时拒绝，移除完整持久化 Session，并让后续发现与打开操作观察到不存在。对已关闭句柄的任何操作会以 `SessionHandleClosedError` 拒绝，`SessionOwnershipLostError` 标记写所有权已永久丢失的写句柄（关闭并重新打开）。已创建的会话自 `create` 完成之刻起即可在本进程内被观察到，而后端可以把物理实体化推迟到第一次 `append` 或 `flush`；其他进程只能看到已实体化的会话，一个在崩溃前从未实体化的会话等于从未存在。
 
 ### 实时写路径与关闭排空
 
@@ -117,6 +118,7 @@ seam 的共享辅助函数校验由 `SESSION_FORMAT_VERSION` 标识的当前逻�
 - [会话持久化子系统](../../../docs/subsystems/persistence.zh.md)——完整服务约定、句柄语义、flush 检查点、崩溃恢复与生成的 Cordis API。
 - [基于句柄的持久化 Agent Note](../../../.agents/notes/implemented/architecture/2026-08-27-handle-based-session-persistence.zh.md)——seam 设计及其所有权模型。
 - [JSONL 持久化后端](../session-persistence-jsonl/README.zh.md)——随产品交付、按会话存储文件的后端。
+- [SQLite 持久化后端](../session-persistence-sqlite/README.zh.md)——面向桌面的单数据库后端。
 - [会话检查点策略](../session-checkpoint-policy/README.zh.md)——在语义边界上经由 `session/flush` 刷新的插件。
 - [会话包映射](../README.zh.md)——相邻的持久化、投影、标题与遥测包。
 
@@ -149,7 +151,7 @@ seam 不添加提示词或 schema。恢复会将已存储的表层事件还原�
 - **seam 只保证单个后端实例内的写所有权**——跨进程排他由具体提供方负责。随产品交付的 JSONL 提供方通过内核锁在不同实例和进程之间提供租约；其他提供方必须记录等效保证，或要求部署方阻止并发写入。
 - **在有活跃会话时重载后端插件会使其写入器明确报错**——重载后的后端无法服务旧实例签发的句柄；写入会持续失败直到会话重启，没有任何机制静默重新接管日志。
 - **只有通过句柄获取的会话才会持久化**——仅靠 `ctx.sessions.create` + `session/flush` 不存储任何内容；agent-loop 是生产环境的获取点，测试通过 `create`/`append`/`close` 写入初始存储数据。
-- **无删除或保留接口**——剪枝已存储会话属于带外后端维护。
+- **删除是显式且排他的**——`delete(id)` 会拒绝活动 writer，并且必须让 `stat`、`list` 与后续 `open` 观察到不存在。保留策略仍属于带外产品决策。
 - **`list()` 无分页且无过滤**——它返回每个已存储会话的快照；适合本地存储，大规模时无索引。
 - **合成 closer 是唯一崩溃方案**——恢复通过写句柄追加 `interruptedTurnClosers`；没有继续中断轮次而不先关闭它的部分轮次恢复。
 

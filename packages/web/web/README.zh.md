@@ -33,7 +33,7 @@ kind: "package-reference"
 
 ### 最小配置
 
-加载服务并让唯一挂载的后端自动选择，或用 `searchProvider`／`fetchProvider` 固定提供方 id。环境变量 `$DSH_WEB_SEARCH_PROVIDER` 与 `$DSH_WEB_FETCH_PROVIDER` 提供相同字段，不是另一条优先级链。
+加载服务并让唯一挂载的后端自动选择，或用 `searchProvider`／`fetchProvider` 固定提供方 id。环境变量 `$DSH_WEB_SEARCH_PROVIDER` 与 `$DSH_WEB_FETCH_PROVIDER` 提供相同字段，不是另一条优先级链。拥有实时提供方偏好的组合可以调用 `setSearchProviderOverride(id)`，且在偏好不再适用时必须以 `undefined` 清除；这个显式覆盖优先于静态字段，但不改变注册顺序。
 
 ```yaml
 - name: '@deepseek-ai/dsh-web'
@@ -64,7 +64,7 @@ const page = await ctx.web.fetch({ url: 'https://example.com' })
 
 ### 提供方选择
 
-每次调用都在执行时解析提供方，注册或加载顺序从不影响结果。已配置的提供方 id 在已注册且可用时优先；没有配置 id 时，服务运行唯一可用的提供方，或在情况不明时明确失败：
+每次调用都在执行时解析提供方，注册或加载顺序从不影响结果。实时组合覆盖优先，其次是已配置的提供方 id；两者都不存在时，服务运行唯一可用的提供方，或在情况不明时明确失败：
 
 | 情况 | 结果 |
 |---|---|

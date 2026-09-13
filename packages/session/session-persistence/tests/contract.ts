@@ -269,6 +269,34 @@ export function runPersistenceContract(name: string, make: () => Promise<Contrac
       }
     })
 
+    it('deletes a materialized session after ownership closes and refuses active or absent identities', async () => {
+      const backend = await make()
+      try {
+        const m = meta('delete-me', '/work')
+        const writer = await backend.persistence.create(m)
+        await writer.append(oneTurnLog())
+        await expect(backend.persistence.delete(m.id)).rejects.toBeInstanceOf(SessionAlreadyOwnedError)
+        await writer.close()
+
+        await backend.persistence.delete(m.id)
+        expect(await backend.persistence.stat(m.id)).toBeUndefined()
+        expect((await backend.persistence.list()).map(snapshot => snapshot.header.id)).not.toContain(m.id)
+        await expect(backend.persistence.open(m.id, 'read')).rejects.toBeInstanceOf(SessionPersistenceNotFoundError)
+        await expect(backend.persistence.delete(m.id)).rejects.toBeInstanceOf(SessionPersistenceNotFoundError)
+
+        if (backend.reopen !== undefined) {
+          const reopened = await backend.reopen()
+          try {
+            expect(await reopened.persistence.stat(m.id)).toBeUndefined()
+          } finally {
+            await reopened.dispose()
+          }
+        }
+      } finally {
+        await backend.dispose()
+      }
+    })
+
     it('a read handle refuses append and flush with SessionReadOnlyError', async () => {
       const { persistence, dispose } = await make()
       try {

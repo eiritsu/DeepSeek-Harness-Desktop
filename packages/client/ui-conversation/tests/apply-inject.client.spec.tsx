@@ -114,7 +114,7 @@ async function bench() {
 }
 
 describe('Conversation inject API', () => {
-  it('owns the File action, reads its mounted composer availability, and unregisters on disposal', async () => {
+  it('owns File and Folder actions, reads mounted composer availability, and unregisters both', async () => {
     const b = await bench()
     onTestFinished(() => b.runtime.dispose())
     const contributions = new Map<string, CommandContribution>()
@@ -125,7 +125,7 @@ describe('Conversation inject API', () => {
       },
     } satisfies Pick<CommandUiContract, 'register'>
     b.runtime.ctx.provide('commandUi', registry)
-    await vi.waitFor(() => { expect(contributions.has('file')).toBe(true) })
+    await vi.waitFor(() => { expect([...contributions.keys()]).toEqual(['file', 'folder']) })
     const file = contributions.get('file')!
     const target = { sessionId: ROOT }
     expect(file.label!()).toBe('文件')
@@ -154,6 +154,17 @@ describe('Conversation inject API', () => {
     expect(file.available(target)).toBe(false)
     file.ui.run(target)
     expect(replacement).toHaveBeenCalledOnce()
+    const folder = contributions.get('folder')!
+    expect(folder.label!()).toBe('文件夹')
+    expect(folder.available(target)).toBe(false)
+    if (folder.ui.kind !== 'action') throw new Error('Folder must be an action')
+    const openFolder = vi.fn()
+    const unbindFolder = keyboard.bindFolderPicker({ open: openFolder, available: () => true })
+    expect(folder.available(target)).toBe(true)
+    folder.ui.run(target)
+    expect(openFolder).toHaveBeenCalledOnce()
+    unbindFolder()
+    expect(folder.available(target)).toBe(false)
     await b.feature.dispose()
     expect(contributions.size).toBe(0)
   })

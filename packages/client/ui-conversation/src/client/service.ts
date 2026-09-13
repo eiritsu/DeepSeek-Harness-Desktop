@@ -379,6 +379,7 @@ export class ConversationController extends Service implements IConversation {
               }
             })
           },
+          attachment.file.type === '' ? undefined : attachment.file.type,
         )
         if (this.fileUploadOperations.get(attachment.id)?.controller !== controller) return
         this.fileUploads.update((draft) => {
@@ -565,7 +566,7 @@ export class ConversationController extends Service implements IConversation {
         continue
       }
       this.draftAttachments.delete(attachment.id)
-      if (ref !== undefined && 'mediaType' in ref
+      if (ref !== undefined && 'width' in ref
         && uiConversation?.seedImageUrl(sessionId, ref, attachment.previewUrl) === true) continue
       revokePreview(attachment.previewUrl)
     }

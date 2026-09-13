@@ -35,7 +35,10 @@ function bench() {
   return { controller, request, view }
 }
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined })
+})
 
 describe('Session export Header action', () => {
   it('opens the more-actions menu and downloads through the shared controller', async () => {
@@ -49,6 +52,19 @@ describe('Session export Header action', () => {
     await waitFor(() => { expect(b.request).toHaveBeenCalledWith(SID) })
     expect(b.view.queryByRole('menuitem', { name: 'Download session log' })).toBeNull()
     expect(await b.view.findByRole('dialog', { name: 'Session download started' })).toBeTruthy()
+  })
+
+  it('copies the exact opaque Session id', async () => {
+    const writeText = vi.fn(async () => undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    })
+    const b = bench()
+    fireEvent.click(b.view.getByRole('button', { name: 'More actions' }))
+    fireEvent.click(b.view.getByRole('menuitem', { name: 'Copy Session ID' }))
+    await waitFor(() => { expect(writeText).toHaveBeenCalledWith(SID) })
+    expect(b.request).not.toHaveBeenCalled()
   })
 
   it('closes the menu on Escape without downloading', () => {

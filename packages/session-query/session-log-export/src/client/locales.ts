@@ -4,6 +4,7 @@ export const NS = 'session-log-download'
 /** Simplified-Chinese Session export strings. */
 export const zh = {
   'header.more': '更多操作',
+  'menu.copyId': '复制 Session ID',
   'menu.download': '下载 Session 日志',
   'dialog.preparingTitle': '正在导出 Session',
   'dialog.preparingDescription': '正在准备包含当前 Session、子 Session 和附件的 ZIP 文件。',
@@ -17,6 +18,7 @@ export const zh = {
 /** English Session export strings. */
 export const en: Record<keyof typeof zh, string> = {
   'header.more': 'More actions',
+  'menu.copyId': 'Copy Session ID',
   'menu.download': 'Download session log',
   'dialog.preparingTitle': 'Exporting Session',
   'dialog.preparingDescription': 'Preparing a ZIP containing this Session, its sub-Sessions, and attachments.',

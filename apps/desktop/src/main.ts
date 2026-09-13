@@ -22,6 +22,9 @@ import { claimDesktopSingleInstance } from './single-instance.ts'
 import { DesktopUpdateCoordinator } from './update-coordinator.ts'
 import { desktopErrorState } from './startup-error.ts'
 import { startupFailureDocument } from './startup-document.ts'
+import { exportSessionBackup, importSessionBackup, resetSessionDatabase } from './session-backup.ts'
+import { claimDesktopDataLock } from './data-lock.ts'
+import { DesktopSkillLibrary, parseDesktopSkillRequest } from './skill-library.ts'
 
 const SCHEME = 'dsh-app'
 let focusPrimaryWindow = (): void => {}
@@ -150,9 +153,12 @@ async function serveShellAsset(request: Request): Promise<Response> {
 async function main(): Promise<void> {
   const resources = runtimeResources()
   const paths = resolveDesktopPaths()
+  const dataLock = claimDesktopDataLock(join(paths.root, 'runtime.lock'))
+  app.once('will-quit', () => { dataLock.release() })
   const development = app.isPackaged ? undefined : join(app.getAppPath(), '.desktop-build', 'development', 'project')
   const activeProject = development ?? paths.profile
   const manager = new DesktopProjectManager(paths, resources)
+  const skills = new DesktopSkillLibrary(resolve(paths.root, '..', 'skills'))
   profileRecoveryAvailable = () => development === undefined && manager.canRecoverProfile()
   let pageError: Extract<DesktopBackendState, { phase: 'error' }> | undefined
   let quitting = false
@@ -369,6 +375,64 @@ async function main(): Promise<void> {
     } catch (error) {
       await showStartupError(error)
     }
+  })
+  const sessionDatabase = join(paths.root, 'dsh-desktop.sqlite')
+  const runBackendMutation = async <T>(operation: () => Promise<T>): Promise<T> => {
+    await startup?.catch(() => undefined)
+    await navigateMain(startupUrl)
+    await backend.stop()
+    try {
+      return await operation()
+    } finally {
+      pageError = undefined
+      await reconcileBackend()
+    }
+  }
+  ipcMain.handle(DESKTOP_IPC.sessionBackupExport, async (event) => {
+    assertDesktopSender(event, ['app'])
+    const selection = await dialog.showSaveDialog({
+      title: messages.sessionBackupExportTitle,
+      defaultPath: 'deepseek-harness-sessions.sqlite',
+      filters: [{ name: 'SQLite', extensions: ['sqlite'] }],
+    })
+    if (selection.canceled) return {}
+    const destination = selection.filePath
+    await runBackendMutation(() => exportSessionBackup(sessionDatabase, destination))
+    return { path: destination }
+  })
+  ipcMain.handle(DESKTOP_IPC.sessionBackupImport, async (event) => {
+    assertDesktopSender(event, ['app'])
+    const selection = await dialog.showOpenDialog({
+      title: messages.sessionBackupImportTitle,
+      properties: ['openFile'],
+      filters: [{ name: 'SQLite', extensions: ['sqlite'] }],
+    })
+    const source = selection.filePaths[0]
+    if (selection.canceled || source === undefined) return { imported: false }
+    await runBackendMutation(() => importSessionBackup(source, sessionDatabase))
+    return { imported: true }
+  })
+  ipcMain.handle(DESKTOP_IPC.sessionDataReset, async (event) => {
+    assertDesktopSender(event, ['app'])
+    const confirmation = await dialog.showMessageBox({
+      type: 'warning',
+      title: messages.sessionDataResetTitle,
+      message: messages.sessionDataResetMessage,
+      buttons: [messages.sessionDataResetConfirm, messages.later],
+      defaultId: 1,
+      cancelId: 1,
+    })
+    if (confirmation.response !== 0) return { reset: false }
+    await runBackendMutation(() => resetSessionDatabase(sessionDatabase))
+    return { reset: true }
+  })
+  ipcMain.handle(DESKTOP_IPC.skillLibraryRequest, async (event, input: unknown) => {
+    assertDesktopSender(event, ['app'])
+    const request = parseDesktopSkillRequest(input)
+    if (request.action === 'downloadSkill' || request.action === 'removeSkill') {
+      return runBackendMutation(() => skills.request(request))
+    }
+    return skills.request(request)
   })
   ipcMain.handle(DESKTOP_IPC.updatesCheck, async (event) => {
     assertDesktopSender(event, ['shell'])

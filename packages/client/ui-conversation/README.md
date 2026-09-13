@@ -36,7 +36,7 @@ Target packages declaration-merge their snapshot and Location data maps, then re
 <a id="shell-and-standard-props"></a>
 ## Shell and standard props
 
-The composer registers the File command action and owns its label, availability, and native file-dialog callback. Menu availability and invocation both consult the mounted composer's current attachment-intake policy. Unmounting or locking the composer disables that action; disposing the plugin removes its registration. The callback binding stays inside the input module.
+The composer registers separate File and Folder command actions and owns their labels, availability, and native picker callbacks. File accepts every browser-supported file type; Folder asks the browser or embedding shell for recursive directory contents and sends each returned file through the same generic-file upload queue. Menu availability and invocation both consult the mounted composer's current attachment-intake policy. Unmounting or locking the composer disables both actions; disposing the plugin removes their registrations. The callback bindings stay inside the input module.
 
 Claimed commands retain their identity and highlight when only their arguments and trailing separator are deleted; editing the command name releases the claim. The same rules apply to every command and locale, including `/goal`, `/目标`, `/plan`, and `/计划`. Command hints and ordinary placeholders remain hidden throughout IME composition and reappear only after the editor commits the final text and the corresponding input is empty.
 

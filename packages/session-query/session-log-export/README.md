@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-session-log-export` lets the Web interface download a session's full history: a `Download session log` menu item under the Session Header's more-actions button and an `/export` slash command both hand the session tree — the session, its sub-sessions, and attachments — to the browser as a ZIP download. The package owns the Host archive stream, its authenticated Fetch route, and the browser controls and feedback. The browser chooses the download destination. Setup and usage come first; implementation details follow.
+`dsh-session-log-export` lets the Web interface copy a Session's opaque id or download its full history. `Copy Session ID` writes the exact id to the system clipboard. `Download session log` under the same Session Header more-actions button and the `/export` slash command both hand the session tree — the session, its sub-sessions, and attachments — to the browser as a ZIP download. The package owns the Host archive stream, its authenticated Fetch route, and the browser controls and feedback. The browser chooses the download destination. Setup and usage come first; implementation details follow.
 
 ## Table of Contents
 
@@ -25,7 +25,7 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
-Use this package when the Web bundle should let users export a session log. It requires Connection, the command registry, Session query and persistence, and attachments. Mount the plugin, then choose `Download session log` from the Session Header's more-actions menu or type `/export`; the browser downloads `dsh-session-<id>.zip`.
+Use this package when the Web bundle should let users copy an id for cross-Session references or export a session log. It requires Connection, the command registry, Session query and persistence, and attachments. Mount the plugin, then choose `Copy Session ID`, choose `Download session log`, or type `/export`; copying preserves the exact opaque id and exporting downloads `dsh-session-<id>.zip`.
 
 ### When to choose it
 
