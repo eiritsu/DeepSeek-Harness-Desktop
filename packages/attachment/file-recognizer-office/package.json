@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-file-recognizer-office",
   "description": "Sideloadable file recognition for text, Office Open XML, OpenDocument, and PDF attachments",
-  "version": "0.1.5-rc.2",
+  "version": "0.1.16",
   "publishConfig": {
     "access": "public"
   },
