@@ -411,6 +411,18 @@ describe('image draft rail', () => {
     expect(attachmentOwner(result.slotCalls).dropLimits).toEqual({ count: 20, size: '5MB' })
   })
 
+  it('inserts native-drop path references through the live composer editor', async () => {
+    const result = bench({ draft: '查看 ' })
+    act(() => { attachmentOwner(result.slotCalls).onInsertText?.('@"/tmp/report file.pdf" ') })
+    await vi.waitFor(() => {
+      expect(result.shell.snapshot.draft).toBe('@"/tmp/report file.pdf" 查看 ')
+    })
+
+    const locked = bench({ draft: '保持', disabled: true })
+    act(() => { attachmentOwner(locked.slotCalls).onInsertText?.('@/tmp/ignored ') })
+    expect(locked.shell.snapshot.draft).toBe('保持')
+  })
+
   it('announces server attachment rejections as product copy, other codes as developer text', () => {
     const attachmentError = (reason: string): SessionSnapshot['promptError'] => ({
       op: 'send',

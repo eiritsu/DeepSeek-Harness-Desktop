@@ -67,7 +67,7 @@ class ReleasedV2ToV3Stage implements SessionFormatMigrationStage {
     }
     const target = remapEvent(source, this.targetSeq, this.mapping)
     this.mapping.push(this.targetSeq++)
-    context.emitEvent(canonicalizeTransformedEvent(renamePtcEvent(target)))
+    context.emitEvent(canonicalizeTransformedEvent(transformReleasedEvent(target)))
     if (event.type === 'step/start') {
       this.step = { turn: data['turn'] as number, step: data['step'] as number }
       if (this.head === undefined) this.emitSystem('', event, context)
@@ -136,8 +136,8 @@ class ReleasedV2ToV3Stage implements SessionFormatMigrationStage {
   }
 }
 
-/** Source admission precedes renaming, so these payloads have exact audited fields. */
-function renamePtcEvent(event: SessionFormatEvent): SessionFormatEvent {
+/** Source admission precedes released payload conversion, so these payloads have exact audited fields. */
+function transformReleasedEvent(event: SessionFormatEvent): SessionFormatEvent {
   switch (event.type) {
     case 'agent-preset/selected':
       return (event.data as SessionFormatJsonObject)['agentPreset'] === 'code'
@@ -147,7 +147,7 @@ function renamePtcEvent(event: SessionFormatEvent): SessionFormatEvent {
     case 'tool/code-dispatch':
       return { ...event, type: 'tool/ptc-dispatch' }
     case 'user/message': {
-      const data = renameMessageSource(event.data as SessionFormatJsonObject)
+      const data = migrateMessage(event.data as SessionFormatJsonObject)
       return data === event.data ? event : { ...event, data }
     }
     case 'agent/inbox/spliced':
@@ -155,15 +155,33 @@ function renamePtcEvent(event: SessionFormatEvent): SessionFormatEvent {
       const data = event.data as SessionFormatJsonObject
       const key = event.type === 'agent/inbox/spliced' ? 'inserted' : 'messages'
       const messages = data[key] as readonly SessionFormatJsonObject[]
-      const renamed = messages.map(renameMessageSource)
-      return renamed.every((message, index) => message === messages[index])
+      const migrated = messages.map(migrateMessage)
+      return migrated.every((message, index) => message === messages[index])
         ? event
-        : { ...event, data: { ...data, [key]: renamed } }
+        : { ...event, data: { ...data, [key]: migrated } }
     }
     default:
       // Content, tool arguments, message IDs, and other payloads are not plugin attribution slots.
       return event
   }
+}
+
+function migrateMessage(message: SessionFormatJsonObject): SessionFormatJsonValue {
+  const renamed = renameMessageSource(message) as SessionFormatJsonObject
+  const content = renamed['content'] as readonly SessionFormatJsonValue[]
+  const migrated = content.flatMap((value): SessionFormatJsonValue[] => {
+    const block = value as SessionFormatJsonObject
+    if (block['type'] !== 'file' || typeof block['recognizedText'] !== 'string') return [value]
+    const { recognizedText, ...file } = block
+    const attachment = file['attachment'] as SessionFormatJsonObject
+    return [file, {
+      type: 'text',
+      text: `[DeepSeek Files extracted text from ${JSON.stringify(attachment['name'])}:]\n${recognizedText}`,
+    }]
+  })
+  return renamed === message && migrated.length === content.length
+    ? message
+    : { ...renamed, content: migrated }
 }
 
 function renameMessageSource(message: SessionFormatJsonObject): SessionFormatJsonValue {

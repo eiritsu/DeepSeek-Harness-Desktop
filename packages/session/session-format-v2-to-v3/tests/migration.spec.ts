@@ -236,6 +236,26 @@ describe('streaming V2 system prompt migration', () => {
     for (const bad of badMessages) expect(() => migrate([...opening(), event('user/message', bad, 'append')])).toThrow()
   })
 
+  it('preserves released Lark message provenance across direct and queued inputs', () => {
+    const source = { kind: 'lark', appId: 'app', chatId: 'chat', messageId: 'message', senderId: 'sender' }
+    const message = {
+      ...user('lark'), source,
+      content: [{ type: 'file', attachment: { attachmentId: 'file', name: 'brief.pdf', bytes: 16, mediaType: 'application/pdf' }, recognizedText: 'recognized body' }],
+    }
+    const inboxData = { target: 'next-turn', start: 0, inserted: [message] }
+    const inbox = event('agent/inbox/spliced', inboxData)
+    const output = migrate([inbox, ...opening(), event('user/message', message, 'append')])
+    const expected = {
+      ...message,
+      content: [
+        { type: 'file', attachment: { attachmentId: 'file', name: 'brief.pdf', bytes: 16, mediaType: 'application/pdf' } },
+        { type: 'text', text: '[DeepSeek Files extracted text from "brief.pdf":]\nrecognized body' },
+      ],
+    }
+    expect(output.events[0]?.data).toEqual({ ...inboxData, inserted: [expected] })
+    expect(output.events.at(-1)?.data).toEqual(expected)
+  })
+
   it.each([0, 1, 2])('restores log-only failed attempts from V%s without invoking the V0 event inventory', (version) => {
     const stream = [{ type: 'finish', reason: { kind: 'error', error: { name: 'ProviderError', message: 'failed' } } }]
     const attempts = version === 2

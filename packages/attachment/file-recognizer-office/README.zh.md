@@ -18,9 +18,9 @@ kind: "package-bundle"
 - [已知限制与后续工作](#known-limitations-and-deferred-work)
 - [开发备注](#dev-note)
 
-通过桌面插件审查流程安装精确 npm 版本或固定 Git commit。安装过程禁用 lifecycle scripts。解析器作为受信任本地插件代码运行，并限制输入大小、ZIP 条目数、解压字节数和提取字符数。
+通过桌面插件审查流程安装精确 npm 版本或固定 Git commit。安装过程禁用 lifecycle scripts。解析器作为受信任本地插件代码运行，并限制输入大小、ZIP 条目数、解压字节数、提取字符数、PDF 页数、单页像素数与渲染倍率。
 
-每项远程能力分别配置 Model ID、API Base URL 或完整 Endpoint URL，以及托管 API key。以 `/v1` 或 `/api/v1` 结尾的 URL 会自动补充标准 `chat/completions` 或 `audio/transcriptions` 操作路径；其他 URL 保持原样请求。OCR 与视频使用 OpenAI-compatible Chat Completions 内容（分别为 `file`/`image_url` 与 `video_url`），音频使用 OpenAI-compatible Audio Transcriptions multipart 请求。API key 值由 credentials provider 分别保存在 `DEEPSEEK_FILES_OCR_API_KEY`、`DEEPSEEK_FILES_AUDIO_API_KEY` 和 `DEEPSEEK_FILES_VIDEO_API_KEY`；settings 只保存这些引用。Model ID 或 URL 为空时，对应远程能力关闭。可提取的文本和文档始终在本机处理。Prompt 准入会按所选路由的有效模态决定每个媒体文件：原生 `image`、`audio`、`video` 或 `pdf` 会绕过对应识别器，不支持的模态则调用已配置回退并记录其文本。既没有原生传输、识别又没有产出内容时，不支持的音频、视频或 PDF 输入会被拒绝。
+每项远程能力分别配置 Model ID、API Base URL 或完整 Endpoint URL，以及托管 API key。以 `/v1` 或 `/api/v1` 结尾的 URL 会自动补充标准 `chat/completions` 或 `audio/transcriptions` 操作路径；其他 URL 保持原样请求。OCR 通过 OpenAI-compatible `image_url` 内容发送图片。无法在本机提取文字的 PDF 会先在本地逐页栅格化，再把受限制的每一页作为 PNG 图片发送，使只接受图片的 OCR endpoint 也能作为兜底。视频使用 `video_url`，音频使用 OpenAI-compatible Audio Transcriptions multipart 请求。API key 值由 credentials provider 分别保存在 `DEEPSEEK_FILES_OCR_API_KEY`、`DEEPSEEK_FILES_AUDIO_API_KEY` 和 `DEEPSEEK_FILES_VIDEO_API_KEY`；settings 只保存这些引用。Model ID 或 URL 为空时，对应远程能力关闭。Prompt 准入会按所选路由的有效模态决定每个媒体文件：原生 `image`、`audio`、`video` 或 `pdf` 会绕过对应识别器，不支持的模态则调用已配置回退并记录其文本。既没有原生传输、识别又没有产出内容时，不支持的音频、视频或 PDF 输入会被拒绝。
 
 <a id="required-harness-extension-points"></a>
 ## 需要的 Harness 底层扩展点
@@ -63,8 +63,8 @@ Quarterly report
 ## 已知限制与后续工作
 
 - 旧版二进制 DOC、XLS、PPT、RTF 和 EPUB 文件可以保存和下载，但此 provider 不解析其内容。
-- Provider 兼容性取决于具体协议。即使 endpoint 自称 OpenAI-compatible，也可能不支持 `file` 或 `video_url` 内容，因此需要按其文档确认能力。
-- 识别过程会把完整且受大小限制的附件上传到配置的第三方 endpoint；Harness 沙箱不能约束该 provider 的保留或处理策略。
+- Provider 兼容性取决于具体协议。即使 endpoint 自称 OpenAI-compatible，也可能不支持 `image_url` 或 `video_url` 内容，因此需要按其文档确认能力。
+- 识别过程会把受限制的媒体输入上传到配置的第三方 endpoint。扫描 PDF 上传受限制的逐页 PNG，而不是原始 PDF；Harness 沙箱不能约束该 provider 的保留或处理策略。
 
 本包不发布运行时 invariant companion；识别结果在 recognizer 调用处完成验证，注册与释放行为由聚焦测试覆盖。
 

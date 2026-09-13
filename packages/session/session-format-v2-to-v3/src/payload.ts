@@ -7,7 +7,7 @@ import { RELEASED_V2_EVENT_DISPOSITIONS } from '@deepseek-ai/dsh-session-format-
 
 /** Audited surface event names; all other admitted events are log-only. */
 export const SURFACE_TYPES: ReadonlySet<string> = new Set(['system/message', 'user/message', 'assistant/message', 'tool/result'])
-const SOURCE_KINDS = new Set(['user', 'plugin', 'model', 'tool', 'agent-instructions', 'session-reference', 'team-message', 'goal', 'skill-invocation', 'skill-catalog', 'coordinator', 'subagent-report', 'subagent-settled', 'webhook', 'agent-message'])
+const SOURCE_KINDS = new Set(['user', 'plugin', 'model', 'tool', 'agent-instructions', 'session-reference', 'team-message', 'goal', 'skill-invocation', 'skill-catalog', 'coordinator', 'subagent-report', 'subagent-settled', 'webhook', 'lark', 'agent-message'])
 
 /**
  * Require a JSON object at the durable input boundary.
@@ -184,12 +184,20 @@ function assertContentBlock(value: SessionFormatJsonValue | undefined, label: st
     assertContentKinds(block['content'], label + '.content')
   }
   if (block['type'] === 'file') {
-    keys(block, ['type', 'attachment'], [], label + ' kind "file"')
+    keys(block, ['type', 'attachment'], ['recognizedText'], label + ' kind "file"')
     const attachment = record(block['attachment'], label + ' kind "file" attachment')
-    keys(attachment, ['attachmentId', 'name', 'bytes'], [], label + ' kind "file" attachment')
+    keys(attachment, ['attachmentId', 'name', 'bytes'], ['mediaType'], label + ' kind "file" attachment')
     if (typeof attachment['attachmentId'] !== 'string' || attachment['attachmentId'].length === 0
       || typeof attachment['name'] !== 'string') throw new SessionFormatError(label + ' kind "file": file attachment requires attachmentId and name')
     sessionFormatCount(attachment['bytes'], label + ' kind "file" attachment bytes')
+    if (attachment['mediaType'] !== undefined
+      && (typeof attachment['mediaType'] !== 'string' || attachment['mediaType'].length === 0)) {
+      throw new SessionFormatError(label + ' file attachment mediaType must be a non-empty string')
+    }
+    if (block['recognizedText'] !== undefined
+      && (typeof block['recognizedText'] !== 'string' || block['recognizedText'].length === 0)) {
+      throw new SessionFormatError(label + ' kind "file": recognizedText must be a non-empty string')
+    }
     return
   }
   // Reuse frozen field rules without recursively revisiting tool-result children or interpreting opaque JSON.

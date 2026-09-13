@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   assertDesktopHostPackageFiles,
@@ -75,5 +76,25 @@ describe('desktop package-set selection', () => {
     expect(() => {
       assertDesktopHostPackageFiles(files.slice(1))
     }).toThrow(/lib\/index\.js/u)
+  })
+
+  it('keeps the Deepseek-Files recognizer in both Desktop profile overlays and package roots', () => {
+    const profiles = [
+      new URL('../../desktop-host/config/desktop.cordis.patch.yml', import.meta.url),
+      new URL('../../../packages/bundle/desktop-lite/cordis.patch.yml', import.meta.url),
+    ]
+    for (const profile of profiles) {
+      const source = readFileSync(profile, 'utf8')
+      expect(source).toContain("id: file-recognizer-office\n      name: '@deepseek-ai/dsh-file-recognizer-office'")
+      expect(source).toContain("id: ui-deepseek-files\n      name: '@deepseek-ai/dsh-client-ui-deepseek-files'")
+    }
+    const manifests = [
+      new URL('../../desktop-host/package.json', import.meta.url),
+      new URL('../../../packages/bundle/desktop-lite/package.json', import.meta.url),
+    ]
+    for (const manifest of manifests) {
+      const parsed = JSON.parse(readFileSync(manifest, 'utf8')) as { dependencies?: Record<string, string> }
+      expect(parsed.dependencies).toHaveProperty('@deepseek-ai/dsh-file-recognizer-office')
+    }
   })
 })

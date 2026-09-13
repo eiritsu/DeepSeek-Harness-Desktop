@@ -37,7 +37,7 @@ In Chat, one user message presents files and images in a right-aligned wrapping 
 
 ### Drop overlay
 
-While a file drag is over the page, the full-viewport overlay announces the drop: illustration, title, and a limits line when drops are accepted. The overlay only shows state — the owner's document-level listeners decide accept or reject.
+While a file drag is over the page, the full-viewport overlay announces the drop: illustration, title, and a limits line when drops are accepted. Browser file drops enter the ordinary attachment intake. The Swift shell's `dsh:native-drop` bridge turns bounded file bytes into browser files; directories and files above the bridge limit become quoted `@` path references. Both paths obey the owner's live intake lock.
 
 -----
 

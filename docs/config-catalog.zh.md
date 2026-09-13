@@ -774,6 +774,12 @@ export interface Config {
   maxUncompressedBytes?: number
   /** Maximum archive entries. Default: 4,000. */
   maxZipEntries?: number
+  /** Maximum PDF pages sent through OCR. Default: 20. */
+  maxPdfOcrPages?: number
+  /** Maximum pixels rendered for one PDF page. Default: 4,000,000. */
+  maxPdfPagePixels?: number
+  /** Maximum scale used while rasterizing one PDF page. Default: 2. */
+  maxPdfRenderScale?: number
   /** OpenAI-compatible OCR endpoint. */
   ocr?: RecognitionEndpointConfig
   /** OpenAI-compatible audio transcription endpoint. */
@@ -793,7 +799,7 @@ export interface RecognitionEndpointConfig {
 }
 ```
 
-来源：[`packages/attachment/file-recognizer-office/src/index.ts:38`](../packages/attachment/file-recognizer-office/src/index.ts)
+来源：[`packages/attachment/file-recognizer-office/src/index.ts:46`](../packages/attachment/file-recognizer-office/src/index.ts)
 
 <a id="deepseek-aidsh-file-reference-local"></a>
 

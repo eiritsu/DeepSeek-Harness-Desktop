@@ -1059,6 +1059,33 @@ describe.skipIf(!existsSync(dshBin))('dsh BUILT bin (node lib/bin.js, no tsx)', 
       expect(stdout).not.toMatch(/name: '@deepseek-ai\/dsh-client-/)
     }, SPAWN_TIMEOUT_MS + 30_000)
 
+    it('composes desktop-lite with SQLite as the only enabled Session persistence provider', async () => {
+      const { stdout, code, stderr } = await runBuiltBin(
+        ['--profile', 'desktop-lite', '--dump-default-config'],
+        { DSH_HOME: home },
+      )
+      expect(code).toBe(0)
+      expect(stderr).toBe('')
+      const rows = yaml.load(stdout, { schema: entryListSchema }) as Array<{
+        id?: string
+        name?: string
+        disabled?: boolean
+      }>
+      expect(rows.find(row => row.id === 'session-persistence-jsonl')).toMatchObject({
+        name: '@deepseek-ai/dsh-session-persistence-jsonl',
+        disabled: true,
+      })
+      expect(rows.find(row => row.id === 'session-persistence-sqlite')).toMatchObject({
+        name: '@deepseek-ai/dsh-session-persistence-sqlite',
+      })
+      expect(rows.find(row => row.id === 'file-recognizer-office')).toMatchObject({
+        name: '@deepseek-ai/dsh-file-recognizer-office',
+      })
+      expect(rows.find(row => row.id === 'ui-deepseek-files')).toMatchObject({
+        name: '@deepseek-ai/dsh-client-ui-deepseek-files',
+      })
+    }, SPAWN_TIMEOUT_MS + 30_000)
+
     it('prints the exact standalone sdk-minimal tree without dsh-base', async () => {
       const { stdout, code, stderr } = await runBuiltBin(
         ['--profile', 'sdk-minimal', '--dump-default-config'],

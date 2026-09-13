@@ -52,7 +52,7 @@ The Bundle mounts one Host plugin. The plugin persists the complete upstream JSO
 
 The catalog marks upstream modality, context, output-capacity, and reasoning fields as `authoritative`, so they replace stale local values in model discovery and prepared calls. A field absent upstream remains local. Discovery fields reported by the endpoint and values from earlier enrichers still take precedence.
 
-A recognized `owned_by` value selects that provider's declaration. An exact configured `baseURL` match against one provider API supplies the same identity for a local route alias. Without either identity, capacities and reasoning require identical same-ID declarations, while input modalities use their intersection. Route names, protocols, partial URLs, and model-name patterns provide no capability evidence.
+A recognized `owned_by` value selects that provider's declaration. An exact configured `baseURL` match against one provider API supplies the same identity for a local route alias. Without either identity, capacities use the smallest same-ID declaration, input modalities use their intersection, and reasoning requires identical declarations. Route names, protocols, partial URLs, and model-name patterns provide no capability evidence.
 
 A discovery or exact-model lookup refreshes a stale snapshot. Concurrent lookups share one refresh; success replaces the snapshot and failure retains the last successful data. Model IDs match case-insensitively, and uncovered fields use the installed pi-ai catalog.
 
@@ -105,7 +105,7 @@ Admitting an image changes request content and its cache identity exactly as a p
 <a id="known-limitations-and-deferred-work"></a>
 
 - **Refresh is demand-driven** — the plugin checks staleness during model discovery or an exact runtime lookup; it does not poll in the background or silently rewrite saved model rows. An earlier cache is marked stale once so endpoint identities and capacities are fetched and persisted on the next lookup.
-- **Opaque ownership is conservative** — without a recognized `owned_by` or exact provider endpoint match, every field requires identical same-id declarations; it never combines provider-specific extras.
+- **Opaque ownership is conservative** — without a recognized `owned_by` or exact provider endpoint match, capacities use the smallest same-ID declaration and input modalities use their intersection; reasoning still requires identical declarations, and provider-specific extras never combine.
 - **Only implemented transports become effective** — the catalog may declare `audio`, `video`, or `pdf`, but `llm-pi-ai` exposes those modalities only on Google protocols that serialize arbitrary inline media. Other protocols keep `text/image` and use recognition fallback.
 - **Output capability is not a request default** — `limit.output` sizes the provider model descriptor but does not become a request `maxTokens` value unless the provider profile explicitly configured one.
 - **Reasoning levels require an upstream declaration** — only standard levels in `reasoning_options` entries of type `effort` become model capabilities; the plugin does not guess levels when the source omits them.

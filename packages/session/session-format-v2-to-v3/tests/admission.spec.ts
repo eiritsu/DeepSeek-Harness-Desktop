@@ -74,6 +74,7 @@ describe('durable V3 admission failures', () => {
     { attachmentId: '', name: 'file', bytes: 1 },
     { attachmentId: 1, name: 'file', bytes: 1 },
     { attachmentId: 'sha256:abc', name: false, bytes: 1 },
+    { attachmentId: 'sha256:abc', name: 'file', bytes: 1, mediaType: 1 },
   ])('rejects malformed audited file metadata %j', (attachment) => {
     expect(() => migrate([...opening, event('user/message', { ...user, content: [{ type: 'file', attachment }] }, { surfaceOp: 'append' })])).toThrow(/file attachment/)
   })

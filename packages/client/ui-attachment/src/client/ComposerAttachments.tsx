@@ -18,7 +18,7 @@ interface ComposerRailItem extends AttachmentRailItem {
 
 /** Draft image previews, pending-file cards, drop target, and original-image preview. */
 export function ComposerAttachments({
-  attachments, canAcceptDrop, onAddFiles, onRemoveAttachment, uploads, onRetryFile, dropLimits, t,
+  attachments, canAcceptDrop, onAddFiles, onInsertText, onRemoveAttachment, uploads, onRetryFile, dropLimits, t,
 }: ComposerAttachmentsProps) {
   const [preview, setPreview] = useState<ComposerImageAttachment | null>(null)
   const [dragActive, setDragActive] = useState(false)
@@ -78,6 +78,48 @@ export function ComposerAttachments({
       window.removeEventListener('dragend', reset)
     }
   }, [canAcceptDrop, onAddFiles])
+
+  useEffect(() => {
+    type NativeItem = {
+      kind: 'image' | 'file' | 'directory'
+      path: string
+      name: string
+      mime?: string
+      dataBase64?: string
+    }
+    const onNativeDrop = (event: Event): void => {
+      if (!(event instanceof CustomEvent)) return
+      dragDepth.current = 0
+      setDragActive(false)
+      const items = (event.detail as { items?: unknown } | null)?.items
+      if (!Array.isArray(items) || items.length === 0 || !canAcceptDrop) return
+      const files: File[] = []
+      const references: string[] = []
+      for (const candidate of items) {
+        if (typeof candidate !== 'object' || candidate === null) continue
+        const item = candidate as Partial<NativeItem>
+        if ((item.kind === 'image' || item.kind === 'file') && typeof item.dataBase64 === 'string'
+          && typeof item.mime === 'string' && typeof item.name === 'string') {
+          try {
+            const binary = atob(item.dataBase64)
+            const bytes = Uint8Array.from(binary, character => character.charCodeAt(0))
+            files.push(new File([bytes], item.name, { type: item.mime }))
+          } catch {
+            // The native shell emits base64 only; an invalid bridge payload is ignored without affecting other items.
+          }
+          continue
+        }
+        if ((item.kind === 'file' || item.kind === 'directory') && typeof item.path === 'string') {
+          const path = item.kind === 'directory' && !item.path.endsWith('/') ? `${item.path}/` : item.path
+          references.push(path.includes(' ') ? `@\"${path}\"` : `@${path}`)
+        }
+      }
+      if (files.length > 0) onAddFiles(files)
+      if (references.length > 0) onInsertText?.(`${references.join(' ')} `)
+    }
+    window.addEventListener('dsh:native-drop', onNativeDrop)
+    return () => { window.removeEventListener('dsh:native-drop', onNativeDrop) }
+  }, [canAcceptDrop, onAddFiles, onInsertText])
 
   const railItems = useMemo<ComposerRailItem[]>(() => attachments.map(attachment => ({
     id: attachment.id,

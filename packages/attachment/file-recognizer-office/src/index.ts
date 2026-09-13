@@ -6,12 +6,19 @@ import z from '@deepseek-ai/schemastery'
 import type { AttachmentRecognizer, FileAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
+import type { Canvas, SKRSContext2D } from '@napi-rs/canvas'
 import { parseOfficeAsync } from 'officeparser'
+import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import yauzl from 'yauzl'
 import type { Entry } from 'yauzl'
 
 type RecognizerFile = { data: Uint8Array; mediaType?: string; name?: string }
 type ConfiguredRecognitionEndpoint = RecognitionEndpointConfig & { endpoint: string; model: string }
+type PdfCanvas = { canvas: Canvas; context: SKRSContext2D }
+type PdfCanvasFactory = {
+  create: (width: number, height: number) => PdfCanvas
+  destroy: (target: PdfCanvas) => void
+}
 
 const OFFICE_EXTENSIONS = new Set(['docx', 'pptx', 'xlsx', 'odt', 'odp', 'ods', 'pdf'])
 const ZIP_OFFICE_EXTENSIONS = new Set(['docx', 'pptx', 'xlsx', 'odt', 'odp', 'ods'])
@@ -45,6 +52,12 @@ export interface Config {
   maxUncompressedBytes?: number
   /** Maximum archive entries. Default: 4,000. */
   maxZipEntries?: number
+  /** Maximum PDF pages sent through OCR. Default: 20. */
+  maxPdfOcrPages?: number
+  /** Maximum pixels rendered for one PDF page. Default: 4,000,000. */
+  maxPdfPagePixels?: number
+  /** Maximum scale used while rasterizing one PDF page. Default: 2. */
+  maxPdfRenderScale?: number
   /** OpenAI-compatible OCR endpoint. */
   ocr?: RecognitionEndpointConfig
   /** OpenAI-compatible audio transcription endpoint. */
@@ -64,6 +77,9 @@ export const Config: z<Config> = z.object({
   maxExtractedChars: z.number().step(1).min(1).default(200_000),
   maxUncompressedBytes: z.number().step(1).min(1).default(128 * 1024 * 1024),
   maxZipEntries: z.number().step(1).min(1).default(4_000),
+  maxPdfOcrPages: z.number().step(1).min(1).default(20),
+  maxPdfPagePixels: z.number().step(1).min(1).default(4_000_000),
+  maxPdfRenderScale: z.number().min(0.1).default(2),
   ocr: recognitionEndpointConfig,
   audioTranscription: recognitionEndpointConfig,
   videoUnderstanding: recognitionEndpointConfig,
@@ -198,6 +214,60 @@ async function recognizeChatFile(
   return text
 }
 
+async function recognizePdf(
+  ctx: Context,
+  file: RecognizerFile,
+  config: Config,
+  signal: AbortSignal | undefined,
+): Promise<string | undefined> {
+  const ocr = config.ocr ?? {}
+  if (!configured(ocr)) return undefined
+  const maxPages = config.maxPdfOcrPages ?? 20
+  const maxPixels = config.maxPdfPagePixels ?? 4_000_000
+  const maxScale = config.maxPdfRenderScale ?? 2
+  const loadingTask = getDocument({
+    data: Uint8Array.from(file.data),
+    useWorkerFetch: false,
+  })
+  try {
+    const document = await loadingTask.promise
+    const canvasFactory = document.canvasFactory as PdfCanvasFactory
+    const pageCount = Math.min(document.numPages, maxPages)
+    const recognized: string[] = []
+    for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
+      signal?.throwIfAborted()
+      const page = await document.getPage(pageNumber)
+      const base = page.getViewport({ scale: 1 })
+      const scale = Math.min(maxScale, Math.sqrt(maxPixels / (base.width * base.height)))
+      const viewport = page.getViewport({ scale })
+      const target = canvasFactory.create(Math.ceil(viewport.width), Math.ceil(viewport.height))
+      try {
+        // PDF.js' public browser declaration names a DOM context, while its Node factory returns a napi-rs context.
+        await page.render({
+          canvas: null,
+          canvasContext: target.context as unknown as CanvasRenderingContext2D,
+          viewport,
+        }).promise
+        const png = target.canvas.toBuffer('image/png')
+        const text = await recognizeChatFile(ctx, {
+          data: png,
+          mediaType: 'image/png',
+          name: `${file.name ?? 'attachment.pdf'}#page-${String(pageNumber)}.png`,
+        }, ocr, 'ocr', signal)
+        if (text !== undefined) recognized.push(`[PDF page ${String(pageNumber)}]\n${text}`)
+      } finally {
+        canvasFactory.destroy(target)
+      }
+    }
+    if (document.numPages > pageCount) {
+      recognized.push(`[PDF OCR limited to first ${String(pageCount)} of ${String(document.numPages)} pages]`)
+    }
+    return recognized.length === 0 ? undefined : recognized.join('\n\n')
+  } finally {
+    await loadingTask.destroy()
+  }
+}
+
 async function transcribeAudio(
   ctx: Context,
   file: RecognizerFile & FileAttachmentRef,
@@ -321,7 +391,7 @@ export function apply(ctx: Context, config: Config): void {
           outputErrorToConsole: false,
         })).trim()
         if (text === '' && suffix === 'pdf') {
-          text = await recognizeChatFile(ctx, input, settings.ocr ?? {}, 'ocr', signal) ?? ''
+          text = await recognizePdf(ctx, input, settings, signal) ?? ''
         }
         signal?.throwIfAborted()
         return text === '' ? undefined : { text: truncate(text, maxExtractedChars) }

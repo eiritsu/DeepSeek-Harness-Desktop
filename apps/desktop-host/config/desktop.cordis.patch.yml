@@ -21,10 +21,10 @@
 - id: directory-picker
   disabled: true
 
+# Include patches require a matching package name for id-targeted updates.
+# Disable the base provider, then mount SQLite under its own row id.
 - id: session-persistence-jsonl
-  name: '@deepseek-ai/dsh-session-persistence-sqlite'
-  config:
-    path: !!js dshHomePath('desktop', 'dsh-desktop.sqlite')
+  disabled: true
 
 # Desktop has no implicit DeepSeek route; model routes are user-owned settings.
 - id: llm-deepseek
@@ -36,6 +36,11 @@
   config: {}
 
 - insert:
+    - id: session-persistence-sqlite
+      name: '@deepseek-ai/dsh-session-persistence-sqlite'
+      config:
+        path: !!js dshHomePath('desktop', 'dsh-desktop.sqlite')
+
     - id: external-tools
       name: '@deepseek-ai/dsh-external-tools'
 

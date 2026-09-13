@@ -454,6 +454,9 @@ export const InputBar = memo(function InputBar({
           attachments,
           canAcceptDrop,
           onAddFiles: intakeFiles,
+          onInsertText: (text) => {
+            if (!locked && !machineBusy) keyboard.paste(text)
+          },
           onRemoveAttachment: (id) => { removeAttachment?.(id) },
           uploads,
           onRetryFile: (id) => { retryFileUpload?.(id) },

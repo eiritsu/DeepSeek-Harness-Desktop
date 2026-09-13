@@ -132,6 +132,7 @@ describe('desktop macOS release signature', () => {
     }, 'win32', 'x64')
     expect(portablePath(config.directories.output)).toContain('/targets/win-x64/unsigned-artifacts')
     expect(portablePath(config.nsis.include)).toMatch(/\/scripts\/installer\.nsh$/u)
+    expect(portablePath(config.win.icon)).toMatch(/\/assets\/AppIcon\.ico$/u)
     expect(config).toMatchObject({
       win: { forceCodeSigning: false, signtoolOptions: { sign: undefined } },
       publish: null,

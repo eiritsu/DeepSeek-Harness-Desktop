@@ -181,6 +181,11 @@ function supportedCapacity(value: unknown): number | undefined {
   return Number.isInteger(value) && (value as number) > 0 ? value as number : undefined
 }
 
+/** Return the smallest capacity promised by every matching catalog route. */
+function minimumCapacity(values: readonly number[]): number | undefined {
+  return values.length === 0 ? undefined : Math.min(...values)
+}
+
 function sameModelId(left: string, right: string): boolean {
   return left.toLowerCase() === right.toLowerCase()
 }
@@ -306,19 +311,19 @@ class DynamicCatalog {
       remote,
       owners,
       candidate => candidate.contextWindow,
-      (left, right) => left === right,
+      minimumCapacity,
     )
     const maxOutputTokens = this.resolveField(
       remote,
       owners,
       candidate => candidate.maxOutputTokens,
-      (left, right) => left === right,
+      minimumCapacity,
     )
     const reasoningEfforts = this.resolveField(
       remote,
       owners,
       candidate => candidate.reasoningEfforts,
-      sameReasoningEfforts,
+      values => this.consensus(values, sameReasoningEfforts),
     )
     const builtin = this.builtin(model, owners)
     const resolvedInput = input.covered ? supportedModalities(input.value) : builtin.input
@@ -401,7 +406,7 @@ class DynamicCatalog {
     declarations: readonly CatalogDeclaration[],
     owners: readonly string[],
     select: (declaration: CatalogDeclaration) => T | undefined,
-    equals: (left: T, right: T) => boolean,
+    resolve: (values: readonly T[]) => T | undefined,
   ): CatalogResolution<T> {
     if (owners.length > 0) {
       const ownerSet = new Set(owners)
@@ -410,13 +415,13 @@ class DynamicCatalog {
       if (owned.length > 0) {
         return values.length === 0
           ? { covered: false }
-          : { covered: true, value: this.consensus(values, equals) }
+          : { covered: true, value: resolve(values) }
       }
     }
     const values = declarations.map(select).filter((value): value is T => value !== undefined)
     return values.length === 0
       ? { covered: false }
-      : { covered: true, value: this.consensus(values, equals) }
+      : { covered: true, value: resolve(values) }
   }
 
   private exactOwners(

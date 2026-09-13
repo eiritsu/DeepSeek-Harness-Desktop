@@ -287,6 +287,31 @@ describe('pi-ai model-discovery catalog', () => {
     )).resolves.toEqual({ contextWindow: 1_000_000, maxOutputTokens: 131_072 })
   })
 
+  it('uses conservative upstream capacities across exact-id provider replicas', async () => {
+    const ctx = new Context()
+    context = ctx
+    await mountRuntime(ctx)
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({
+      greenpt: {
+        api: 'https://api.greenpt.ai/v1',
+        models: { 'deepseek-v4.1-flash': { limit: { context: 1_000_000, output: 384_000 } } },
+      },
+      'ollama-cloud': {
+        api: 'https://ollama.com/v1',
+        models: { 'deepseek-v4.1-flash': { limit: { context: 1_048_576, output: 393_216 } } },
+      },
+    })))))
+    await ctx.plugin(ModelCatalogPiAi, { refreshIntervalMs: 60_000 })
+
+    await expect(ctx.llm.resolveModelCapacity(
+      'a6',
+      'deepseek-v4.1-flash',
+      undefined,
+      'a6',
+      'https://api.a6api.com/v1',
+    )).resolves.toEqual({ contextWindow: 1_000_000, maxOutputTokens: 384_000 })
+  })
+
   it('declares one parseable Profile Bundle patch', () => {
     const root = fileURLToPath(new URL('..', import.meta.url))
     const manifest = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as {

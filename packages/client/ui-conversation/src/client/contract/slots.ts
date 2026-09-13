@@ -62,6 +62,8 @@ export interface ComposerAttachmentsOwnerProps {
   canAcceptDrop: boolean
   /** Add one dropped batch through the composer's validation path. */
   onAddFiles: (files: readonly File[]) => void
+  /** Insert native file or directory path references into the composer draft. */
+  onInsertText?: (text: string) => void
   /** Remove one draft attachment through the Conversation service. */
   onRemoveAttachment: (id: DraftAttachmentId) => void
   /** Current per-draft upload states for file-kind attachments. */

@@ -27,7 +27,7 @@ Desktop 使用 `dsh-desktop.sqlite` 作为权威 Session 存储。当前 handle-
 
 | 能力 | 当前所有者与迁移规则 |
 |---|---|
-| 完整模型元数据与 reasoning 能力 | 已由当前 `llm-pi-ai` route metadata 吸收；不恢复分支中重复的 model catalog |
+| 完整模型元数据与 reasoning 能力 | `dsh-model-catalog` 刷新上游 `models.dev` 声明并补充 `llm-pi-ai` route，但不创建 provider；对同 ID 声明保守合并，避免不透明网关宣告任一上游声明并不支持的容量或模态 |
 | 文件/文件夹 GUI、拖放与全部 Session 文件 | 当前 attachment 与 file-upload packages 传递 `mediaType`；浏览器文件夹和 Swift 原生文件/目录经独立且有界的操作进入 |
 | DeepSeek Files 路由 | `file-recognizer-office` 注册到当前 Attachment recognizer seam；prompt admission 保留模型原生 modality，并记录 fallback 文本 |
 | Session 重命名、fork、归档、删除、Workspace 成员关系、复制 id 与日志下载 | 上游已有重命名、fork、归档与日志下载；本迁移增加持久化递归删除、加入 Workspace 与复制 id |
@@ -45,7 +45,7 @@ Desktop 使用 `dsh-desktop.sqlite` 作为权威 Session 存储。当前 handle-
 
 第一次针对当前代码树的 `packages/subagent` 审计在构建仓库的 Darwin arm64 `system.node` 后通过全部 826 项测试。最初的失败全部来自缺失 native addon 的环境准备，不是可复现的子代理缺陷。已合入的上游历史已经包含所报告 0.1.5 时期的修复：无效 catalog 与 snapshot 顺序（`661135fe29`）、catalog 失败后的 run rejection（`ba731d1c9e`）、declaration augmentation（`0274a6dd75`）、Host catalog event export（`924282cbcd`）、catalog event 顺序（`80e34ce709`）、parent-owned catalog（`2db4bdd31d`）、preset teardown（`3a98d05a3d`）和 `agent-started` 清理（`e7bde97aa0`）。在 native 前置条件存在时没有行为失败之前，不应再改动子代理代码。
 
-SQLite migration 测试会构造原桌面 schema 与 released v0 Session，并验证启动过程先通过已安装的 v0-to-v3 catalog 重写数据，`stat`、`open` 或 append 才能观察它。JSONL 与 SQLite persistence suites（包含持久化删除）目前通过 210 项测试。Swift 的 47 项测试包含权威 Session 数据库导出、导入、重置与 schema 校验。
+SQLite migration 测试会构造原桌面 schema 与 released v0 Session，并验证启动过程先通过已安装的 v0-to-v3 catalog 重写数据，`stat`、`open` 或 append 才能观察它。相邻迁移会接纳已发布的 Lark 消息来源，并把其历史 file block `recognizedText` 表示转换为当前 DeepSeek Files 文本 block，同时保留附件和传输标识。真实 `desktop-lite` 配置 dump 将 provider 替换固定为两项 Loader 操作：禁用基础 JSONL 行，并以独立 id 插入 SQLite provider。这能避免 include patcher 的 package-name 校验跳过替换。JSONL 与 SQLite persistence suites（包含持久化删除）目前通过 210 项测试。Swift 的 47 项测试包含权威 Session 数据库导出、导入、重置与 schema 校验。
 
 移植后的 Lark Host 与 Client suites 针对当前 settings、SessionQuery、attachment、Typert 和 lifecycle API 通过 40 项测试。Electron SkillHub bridge 测试覆盖不可信请求解析、catalog 投影、已安装 manifest 枚举和精确移除；共享 Client 测试覆盖 controller 状态与结果规范化。
 

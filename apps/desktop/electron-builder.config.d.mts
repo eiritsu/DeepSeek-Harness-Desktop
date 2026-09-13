@@ -21,6 +21,14 @@ export interface DesktopElectronBuilderConfig {
     readonly sign: boolean
     readonly writeUpdateInfo: boolean
   }
+  readonly win: {
+    readonly icon: string
+    readonly forceCodeSigning: boolean
+    readonly signtoolOptions: {
+      readonly sign: ((configuration: unknown) => Promise<void>) | undefined
+      readonly signingHashAlgorithms: readonly ['sha256']
+    }
+  }
   readonly nsis: {
     readonly include: string
   }

@@ -28,6 +28,8 @@ func makeDesktopWindow() -> NSWindow {
 }
 
 final class DesktopWebView: WKWebView {
+  private static let maxNativeDropFileBytes = 32 * 1024 * 1024
+
   override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
     let pboard = sender.draggingPasteboard
     if pboard.canReadObject(forClasses: [NSURL.self], options: nil) {
@@ -67,14 +69,14 @@ final class DesktopWebView: WKWebView {
         ])
       } else {
         let ext = url.pathExtension.lowercased()
-        let isImage = ["png", "jpg", "jpeg", "webp", "gif"].contains(ext)
-        if isImage, let data = try? Data(contentsOf: url), data.count <= 25 * 1024 * 1024 {
-          let mime = ext == "jpg" ? "image/jpeg" : "image/\(ext)"
+        if let data = try? Data(contentsOf: url), data.count <= Self.maxNativeDropFileBytes {
+          let type = UTType(filenameExtension: ext)
+          let isImage = type?.conforms(to: .image) == true
           results.append([
-            "kind": "image",
+            "kind": isImage ? "image" : "file",
             "path": path,
             "name": url.lastPathComponent,
-            "mime": mime,
+            "mime": type?.preferredMIMEType ?? "application/octet-stream",
             "dataBase64": data.base64EncodedString()
           ])
         } else {

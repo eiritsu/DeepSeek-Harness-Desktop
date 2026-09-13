@@ -154,6 +154,41 @@ describe('ComposerAttachments', () => {
     expect(view.queryByRole('status')).toBeNull()
   })
 
+  it('accepts Swift native drops as image files and quoted path references', () => {
+    const onAddFiles = vi.fn()
+    const onInsertText = vi.fn()
+    render(<ComposerAttachments {...props({ onAddFiles, onInsertText })} />)
+    window.dispatchEvent(new CustomEvent('dsh:native-drop', { detail: {
+      items: [
+        { kind: 'image', path: '/tmp/pixel.png', name: 'pixel.png', mime: 'image/png', dataBase64: 'AQI=' },
+        { kind: 'file', path: '/tmp/report.pdf', name: 'report.pdf', mime: 'application/pdf', dataBase64: 'AwQ=' },
+        { kind: 'file', path: '/tmp/report file.pdf', name: 'report file.pdf' },
+        { kind: 'directory', path: '/tmp/context', name: 'context' },
+        { kind: 'image', path: '/tmp/broken.png', name: 'broken.png', mime: 'image/png', dataBase64: '%' },
+        { kind: 'unknown', path: '/tmp/ignored', name: 'ignored' },
+      ],
+    } }))
+    expect(onAddFiles).toHaveBeenCalledTimes(1)
+    const files = onAddFiles.mock.calls[0]?.[0] as readonly File[]
+    expect(files).toHaveLength(2)
+    expect(files[0]?.name).toBe('pixel.png')
+    expect(files[0]?.type).toBe('image/png')
+    expect(files[1]?.name).toBe('report.pdf')
+    expect(files[1]?.type).toBe('application/pdf')
+    expect(onInsertText).toHaveBeenCalledWith('@"/tmp/report file.pdf" @/tmp/context/ ')
+  })
+
+  it('ignores native drops while attachment intake is locked', () => {
+    const onAddFiles = vi.fn()
+    const onInsertText = vi.fn()
+    render(<ComposerAttachments {...props({ canAcceptDrop: false, onAddFiles, onInsertText })} />)
+    window.dispatchEvent(new CustomEvent('dsh:native-drop', { detail: {
+      items: [{ kind: 'file', path: '/tmp/report.pdf', name: 'report.pdf' }],
+    } }))
+    expect(onAddFiles).not.toHaveBeenCalled()
+    expect(onInsertText).not.toHaveBeenCalled()
+  })
+
   it('routes rail removal and closes previews on Escape or attachment removal', () => {
     const onRemoveAttachment = vi.fn()
     const image = attachment('draft-1', 'pixel.png')

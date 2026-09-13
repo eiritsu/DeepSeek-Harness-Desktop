@@ -8,6 +8,7 @@ import { SettingsProvider } from '@deepseek-ai/dsh-settings'
 import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import { zipSync, strToU8 } from 'fflate'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { pdfFixture } from './pdf-fixture.ts'
 
 const officeParserMock = vi.hoisted(() => ({
   implementation: undefined as undefined | (() => Promise<string>),
@@ -504,16 +505,45 @@ describe('file-recognizer-office', () => {
 
   it('falls back from an empty PDF parse to configured OCR', async () => {
     officeParserMock.implementation = async () => ''
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ text: 'OCR PDF' }), { status: 200 }))
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ text: 'first page' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ text: 'second page' }), { status: 200 }))
     const recognizer = registered({
       ocr: { endpoint: 'https://vision.test/chat', model: 'vision' },
     })
-    await expect(recognizer.recognize(stored(ref('empty.pdf'), new Uint8Array([1]))))
-      .resolves.toEqual({ text: 'OCR PDF' })
+    await expect(recognizer.recognize(stored(ref('empty.pdf'), pdfFixture())))
+      .resolves.toEqual({ text: '[PDF page 1]\nfirst page\n\n[PDF page 2]\nsecond page' })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    for (const call of fetchMock.mock.calls) {
+      const body = call[1]?.body
+      expect(typeof body).toBe('string')
+      if (typeof body !== 'string') throw new TypeError('expected a JSON request body')
+      const content = (JSON.parse(body) as {
+        messages: Array<{ content: Array<{ type: string; image_url?: { url: string } }> }>
+      }).messages[0]?.content[1]
+      expect(content?.type).toBe('image_url')
+      expect(content?.image_url?.url).toMatch(/^data:image\/png;base64,/u)
+    }
 
     officeParserMock.implementation = async () => ''
-    await expect(registered().recognize(stored(ref('empty.pdf'), new Uint8Array([1]))))
+    await expect(registered().recognize(stored(ref('empty.pdf'), pdfFixture())))
       .resolves.toBeUndefined()
+  })
+
+  it('bounds scanned PDF OCR by page count and records the omitted-page marker', async () => {
+    officeParserMock.implementation = async () => ''
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ text: 'first page' }), { status: 200 }),
+    )
+    const recognizer = registered({
+      maxPdfOcrPages: 1,
+      maxPdfPagePixels: 10_000,
+      maxPdfRenderScale: 1,
+      ocr: { endpoint: 'https://vision.test/chat', model: 'vision' },
+    })
+    await expect(recognizer.recognize(stored(ref('bounded.pdf'), pdfFixture())))
+      .resolves.toEqual({ text: '[PDF page 1]\nfirst page\n\n[PDF OCR limited to first 1 of 2 pages]' })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('rechecks cancellation after document parsing', async () => {

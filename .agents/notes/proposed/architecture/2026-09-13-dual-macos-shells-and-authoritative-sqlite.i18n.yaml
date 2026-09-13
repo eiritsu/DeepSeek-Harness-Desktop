@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/proposed/architecture/2026-09-13-dual-macos-shells-and-authoritative-sqlite.md
-2026-09-13-dual-macos-shells-and-authoritative-sqlite.md: cb6116d182515b779df7c59d4e42d0e0c16d58be
-2026-09-13-dual-macos-shells-and-authoritative-sqlite.zh.md: bd63bcac8bd9f0a7f131091d51cedd12834c6108
+2026-09-13-dual-macos-shells-and-authoritative-sqlite.md: 48d0bf227142fab156aa18cb35a73628de3ee0cb
+2026-09-13-dual-macos-shells-and-authoritative-sqlite.zh.md: aca01aa30ca8c0405821a1783422dbaa923e099c

@@ -2,10 +2,10 @@
 # the browser transport, while replacing JSONL Session persistence with the
 # same authoritative SQLite database used by the Electron shell.
 
+# Include patches require a matching package name for id-targeted updates.
+# Disable the base provider, then mount SQLite under its own row id.
 - id: session-persistence-jsonl
-  name: '@deepseek-ai/dsh-session-persistence-sqlite'
-  config:
-    path: !!js dshHomePath('desktop', 'dsh-desktop.sqlite')
+  disabled: true
 
 # The desktop products start without an implicit first-party route. Users add
 # the provider routes they intend to use through Models settings.
@@ -13,6 +13,11 @@
   disabled: true
 
 - insert:
+    - id: session-persistence-sqlite
+      name: '@deepseek-ai/dsh-session-persistence-sqlite'
+      config:
+        path: !!js dshHomePath('desktop', 'dsh-desktop.sqlite')
+
     - id: external-tools
       name: '@deepseek-ai/dsh-external-tools'
 
