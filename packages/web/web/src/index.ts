@@ -154,7 +154,7 @@ export class WebRuntime extends Service {
         : this.searchProviderId !== undefined ? { configuredId: this.searchProviderId } : {},
     })
     const result = await provider.search(request, signal)
-    return capSources(result, request.maxResults)
+    return { ...capSources(result, request.maxResults), provider: provider.id }
   }
 
   /**

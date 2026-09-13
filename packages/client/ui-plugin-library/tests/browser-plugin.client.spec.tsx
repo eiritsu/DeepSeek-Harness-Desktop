@@ -61,6 +61,9 @@ describe('desktop plugin-library registration', () => {
     expect(overlay.locale).toBe(NS)
     expect((trigger.inject as () => { controller: unknown })().controller)
       .toBe((overlay.inject as () => { controller: unknown })().controller)
+    const controller = (trigger.inject as () => { controller: { getSnapshot(): boolean } })().controller
+    window.dispatchEvent(new Event('dsh:open-plugin-library'))
+    expect(controller.getSnapshot()).toBe(true)
 
     await fiber.dispose()
     expect(b.slots.entries('sidebar.footer.action')).toHaveLength(0)

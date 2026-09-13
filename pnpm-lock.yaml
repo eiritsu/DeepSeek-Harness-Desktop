@@ -523,6 +523,9 @@ importers:
       '@aws-sdk/client-s3':
         specifier: 3.1067.0
         version: 3.1067.0
+      '@deepseek-ai/dsh-client-ui-plugin-library':
+        specifier: workspace:^
+        version: link:../../packages/client/ui-plugin-library
       '@deepseek-ai/dsh-home-paths':
         specifier: workspace:^
         version: link:../../packages/util/home-paths

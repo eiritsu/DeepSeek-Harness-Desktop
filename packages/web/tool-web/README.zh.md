@@ -55,7 +55,7 @@ kind: "package-reference"
 
 ### 使用 web_search
 
-用包含 1 至 `searchMaxQueries` 个非空字符串的 `queries` 数组调用 `web_search`。完全相同的查询只执行一次；多个查询并发执行，来源按轮询顺序合并后再应用组合后的 `searchMaxResults` 上限。结果是可选的提供方答案，后接 `Sources:`，每行一个来源——`- [<title-or-url>](<url>)`，可选附 snippet 与日期——以及一句固定的引用 URL 指引。
+用包含 1 至 `searchMaxQueries` 个非空字符串的 `queries` 数组调用 `web_search`。完全相同的查询只执行一次；多个查询并发执行，来源按轮询顺序合并后再应用组合后的 `searchMaxResults` 上限。结果会先标明实际选中的提供方，再给出可选的提供方答案，后接 `Sources:`，每行一个来源——`- [<title-or-url>](<url>)`，可选附 snippet 与日期——以及一句固定的引用 URL 指引。
 
 ```text
 web_search({ queries: ['deepseek harness documentation'] })
@@ -115,7 +115,7 @@ schema 校验会在执行前拒绝缺失或非数组的 `queries` 字段、非�
 
 ### 呈现
 
-每个工具都在其结果（`output.presentationMeta`）上附加结构化元数据——保真的搜索来源，或抓取摘要（最终 URL、状态码、有效截断）——使 UI 可以渲染 `web` 结果卡片，回放也能复现它们，而无需重新解析有损的渲染文本。不具备 `web` 能力的 UI 回退到原始工具结果，也就是同一份文本。
+每个工具都在其结果（`output.presentationMeta`）上附加结构化元数据——实际选中的搜索提供方与保真的搜索来源，或抓取摘要（最终 URL、状态码、有效截断）——使 UI 可以渲染 `web` 结果卡片，回放也能复现它们，而无需重新解析有损的渲染文本。不具备 `web` 能力的 UI 回退到原始工具结果，也就是同一份文本。
 
 </details>
 

@@ -1093,4 +1093,52 @@ describe('user file attachments', () => {
     expect(new Set(icons).size).toBe(icons.length)
     expect(view.getByText('summarize these')).toBeTruthy()
   })
+
+  it('collapses recognized document text separately from the user prompt', () => {
+    const view = render(
+      <MessageItem
+        t={t}
+        node={{
+          kind: 'user',
+          seq: 1,
+          time: 1_000,
+          content: [
+            { type: 'text', text: '检查这份表格' },
+            { type: 'file', attachment: { attachmentId: 'sha256:ef', name: '验收单.xlsx', bytes: 24_000 } },
+            { type: 'text', text: '[DeepSeek Files extracted text from "验收单.xlsx":]\n合同号：123\n供应商：中国电信' },
+          ] as never,
+          source: null,
+        }}
+      />,
+    )
+    const disclosure = view.getByText('文档内容 · 验收单.xlsx').closest('details')
+    expect(disclosure).toBeInstanceOf(HTMLDetailsElement)
+    expect((disclosure as HTMLDetailsElement).open).toBe(false)
+    expect(view.getByText('检查这份表格')).toBeTruthy()
+    expect(view.getByText('合同号：123', { exact: false })).toBeTruthy()
+    expect(view.container.querySelectorAll('details')).toHaveLength(1)
+  })
+
+  it('keeps malformed recognition markers as ordinary user text', () => {
+    const values = [
+      'ordinary prompt',
+      '[DeepSeek Files extracted text from "missing separator"',
+      '[DeepSeek Files extracted text from nope:]\nbody',
+      '[DeepSeek Files extracted text from 1:]\nbody',
+    ]
+    const view = render(
+      <MessageItem
+        t={t}
+        node={{
+          kind: 'user',
+          seq: 1,
+          time: 1_000,
+          content: values.map(text => ({ type: 'text', text })) as never,
+          source: null,
+        }}
+      />,
+    )
+    expect(view.container.querySelector('details')).toBeNull()
+    for (const value of values) expect(view.container.textContent).toContain(value)
+  })
 })

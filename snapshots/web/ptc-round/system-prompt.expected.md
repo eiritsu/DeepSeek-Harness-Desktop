@@ -525,6 +525,7 @@ interface ToolOutputMap {
     truncated: boolean;
   };
   web_search: {
+    provider?: string;
     content?: string;
     sources: {
       url: string;

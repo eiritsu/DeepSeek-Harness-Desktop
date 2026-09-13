@@ -72,6 +72,7 @@ function sourceLabel(url: string, title: string | undefined): string {
  */
 export function formatSearchOutput(result: WebSearchResult): string {
   const parts: string[] = [EXTERNAL_WEB_CONTENT_NOTICE]
+  if (result.provider !== undefined) parts.push(`Search provider: ${result.provider}`)
   if (result.content !== undefined && result.content.length > 0) parts.push(result.content)
 
   if (result.sources.length > 0) {
@@ -113,6 +114,8 @@ export function presentSearchCall(args: WebSearchArgs): GenericCallView {
  * text cannot carry (the owning rationale is the web-result-card Agent Note).
  */
 export interface WebSearchMeta {
+  /** Stable provider id recorded by the web seam. */
+  provider?: string
   /** The faithful structured sources, in result order. */
   sources: WebSource[]
   /** True when the seam or multi-query merge cut the source list to honor the result cap. */
@@ -152,6 +155,7 @@ function projectSource(source: WebSearchSource): {
  */
 export function searchMetaFromValue(value: WebSearchResult): JsonValue {
   return {
+    ...value.provider !== undefined ? { provider: value.provider } : {},
     sources: value.sources.map(projectSource),
     truncated: value.truncated,
     ...value.content !== undefined ? { answer: value.content } : {},
@@ -178,11 +182,13 @@ function isWebSource(value: unknown): value is WebSource {
  */
 export function searchMetaFromResult(meta: unknown): WebSearchMeta | undefined {
   if (typeof meta !== 'object' || meta === null || Array.isArray(meta)) return undefined
-  const { sources, truncated, answer } = meta as Record<string, unknown>
+  const { provider, sources, truncated, answer } = meta as Record<string, unknown>
+  if (provider !== undefined && typeof provider !== 'string') return undefined
   if (!Array.isArray(sources) || !sources.every(isWebSource)) return undefined
   if (typeof truncated !== 'boolean') return undefined
   if (answer !== undefined && typeof answer !== 'string') return undefined
   return {
+    ...provider !== undefined ? { provider } : {},
     sources,
     truncated,
     ...answer !== undefined ? { answer } : {},
@@ -208,7 +214,7 @@ export function presentSearchResult(args: WebSearchArgs, result: ToolResult): We
   return {
     card: 'web',
     kind: 'search',
-    title: args.queries.join(', '),
+    title: `${args.queries.join(', ')}${meta.provider === undefined ? '' : ` · ${meta.provider}`}`,
     sources: meta.sources,
     truncated: meta.truncated,
     ...meta.answer !== undefined ? { answer: meta.answer } : {},
@@ -286,6 +292,7 @@ function mergeSearchResults(
     return [`### ${queries[index]}\n\n${result.content}`]
   })
   return {
+    ...results[0]?.provider !== undefined ? { provider: results[0].provider } : {},
     ...contents.length > 0 ? { content: contents.join('\n\n') } : {},
     sources,
     truncated: results.some(result => result.truncated) || droppedSource,
@@ -338,6 +345,7 @@ export function applyWebSearchTool(
         type: 'object',
         additionalProperties: false,
         properties: {
+          provider: { type: 'string' },
           content: { type: 'string' },
           sources: {
             type: 'array',
@@ -366,6 +374,7 @@ export function applyWebSearchTool(
       const queries = parseSearchArgs(args, maxQueries)
       const result = await runSearchQueries(ctx, queries, maxResults, exec.signal)
       return {
+        ...result.provider !== undefined ? { provider: result.provider } : {},
         ...result.content !== undefined ? { content: result.content } : {},
         sources: result.sources.map(projectSource),
         truncated: result.truncated,

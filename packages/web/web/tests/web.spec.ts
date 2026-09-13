@@ -110,7 +110,7 @@ describe('WebRuntime execution resolution', () => {
     const { web } = await mountWeb({ searchProvider: 'perplexity' })
     web.registerSearchProvider(makeSearchProvider('exa', available, () => Promise.resolve(searchResult('exa'))))
     web.registerSearchProvider(makeSearchProvider('perplexity', available, () => Promise.resolve(searchResult('perplexity'))))
-    await expect(web.search({ query: 'q' })).resolves.toMatchObject({ content: 'perplexity' })
+    await expect(web.search({ query: 'q' })).resolves.toMatchObject({ content: 'perplexity', provider: 'perplexity' })
   })
 
   it('lets an owning composition override and later restore provider selection', async () => {
@@ -119,9 +119,9 @@ describe('WebRuntime execution resolution', () => {
     web.registerSearchProvider(makeSearchProvider('perplexity', available, () => Promise.resolve(searchResult('perplexity'))))
 
     web.setSearchProviderOverride('exa')
-    await expect(web.search({ query: 'q' })).resolves.toMatchObject({ content: 'exa' })
+    await expect(web.search({ query: 'q' })).resolves.toMatchObject({ content: 'exa', provider: 'exa' })
     web.setSearchProviderOverride(undefined)
-    await expect(web.search({ query: 'q' })).resolves.toMatchObject({ content: 'perplexity' })
+    await expect(web.search({ query: 'q' })).resolves.toMatchObject({ content: 'perplexity', provider: 'perplexity' })
   })
 
   it('ignores unusable providers when auto-selecting', async () => {

@@ -1,18 +1,13 @@
 /** Typed preload operations exposed only by the Electron shell. */
 
-import type { DesktopPluginRecord } from './project-manager.ts'
 import type { DesktopLocale } from './locale.ts'
 import type { DesktopBackendState } from './backend-controller.ts'
 
 /** IPC channel names kept private to the desktop application bundle. */
 export const DESKTOP_IPC = {
   localeGet: 'dsh-desktop:locale-get',
-  pluginsList: 'dsh-desktop:plugins-list',
-  pluginsAdd: 'dsh-desktop:plugins-add',
-  pluginsRemove: 'dsh-desktop:plugins-remove',
-  pluginsUpdate: 'dsh-desktop:plugins-update',
-  pluginsToggle: 'dsh-desktop:plugins-toggle',
-  pluginsOpenManager: 'dsh-desktop:plugins-open-manager',
+  pluginLibraryRequest: 'dsh-desktop:plugin-library-request',
+  pluginLibraryOpen: 'dsh-desktop:plugin-library-open',
   pluginsDisableAll: 'dsh-desktop:plugins-disable-all',
   backendStatus: 'dsh-desktop:backend-status',
   backendRetry: 'dsh-desktop:backend-retry',
@@ -37,31 +32,7 @@ export interface DesktopUpdateState {
   readonly message?: string
 }
 
-/** Narrow bridge exposed through context isolation. */
-export interface DshDesktopApi {
-  readonly protocolVersion: 1
-  locale(): Promise<DesktopLocale>
-  readonly plugins: {
-    list(): Promise<readonly DesktopPluginRecord[]>
-    add(spec: string): Promise<void>
-    remove(name: string): Promise<void>
-    update(name: string, version: string): Promise<void>
-    toggle(name: string, enabled: boolean): Promise<void>
-    disableAll(): Promise<void>
-  }
-  readonly backend: {
-    status(): Promise<DesktopBackendState>
-    retry(): Promise<void>
-    subscribe(listener: (state: DesktopBackendState) => void): () => void
-  }
-  readonly updates: {
-    check(): Promise<DesktopUpdateState>
-    install(): Promise<void>
-    subscribe(listener: (state: DesktopUpdateState) => void): () => void
-  }
-}
-
-/** Backend-application bridge; package management remains isolated to shell documents. */
+/** Narrow backend-application bridge for data and Skill operations. */
 export interface DshDesktopApplicationApi {
   readonly protocolVersion: 1
   readonly data: {
@@ -71,17 +42,19 @@ export interface DshDesktopApplicationApi {
     importBackup(): Promise<{ imported: boolean }>
     reset(): Promise<{ reset: boolean }>
   }
-  readonly plugins: {
-    openManager(): Promise<void>
-  }
   readonly skills: {
     request(request: import('./skill-library.ts').DesktopSkillRequest): Promise<unknown>
   }
 }
 
 /** Startup-page controls, unavailable to backend-provided application documents. */
-export interface DshDesktopStartupApi extends Pick<DshDesktopApi, 'protocolVersion' | 'locale'> {
-  readonly backend: Omit<DshDesktopApi['backend'], 'retry'>
+export interface DshDesktopStartupApi {
+  readonly protocolVersion: 1
+  locale(): Promise<DesktopLocale>
+  readonly backend: {
+    status(): Promise<DesktopBackendState>
+    subscribe(listener: (state: DesktopBackendState) => void): () => void
+  }
   disablePlugins(): Promise<void>
   restart(): Promise<void>
   resetConfiguration(): Promise<void>

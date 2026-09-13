@@ -69,7 +69,7 @@ export interface DesktopProjectHooks {
 
 /** Supported dependency mutation. */
 export type DesktopProjectMutation =
-  | { readonly type: 'plugin-add'; readonly spec: string }
+  | { readonly type: 'plugin-add'; readonly spec: string; readonly expectedName?: string }
   | { readonly type: 'plugin-remove'; readonly name: string }
   | { readonly type: 'plugin-update'; readonly name: string; readonly version: string }
   | { readonly type: 'plugin-toggle'; readonly name: string; readonly enabled: boolean }
@@ -84,6 +84,10 @@ const PACKAGE_NAME_PATTERN = /^(?:@[a-z0-9][a-z0-9._~-]*\/[a-z0-9][a-z0-9._~-]*|
 const VERSION_PATTERN = /^[0-9A-Za-z][0-9A-Za-z.+_-]*$/u
 const MAX_PNPM_DIAGNOSTIC_BYTES = 64 * 1024
 const DESKTOP_REGISTRY = 'https://registry.npmjs.org/'
+const PINNED_GIT_SPEC_PATTERN = new RegExp(
+  String.raw`^(?:(?:git\+)?https:\/\/github\.com\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+\.git|github:[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+)#[0-9a-f]{40}$`,
+  'u',
+)
 
 function errorOf(reason: unknown, fallback: string): Error {
   return reason instanceof Error ? reason : new Error(fallback)
@@ -158,10 +162,16 @@ function projectManifest(projectDir: string): DesktopProjectManifest {
   }
   const manifest = { ...value, dependencies: value.dependencies ?? {} } as unknown as DesktopProjectManifest
   if (Object.entries(manifest.dependencies).some(([name, version]) => !PACKAGE_NAME_PATTERN.test(name)
-    || typeof version !== 'string' || valid(version) !== version)) {
-    throw new Error('desktop project: plugin dependencies must use exact registry versions')
+    || typeof version !== 'string' || !isPinnedDependency(version, projectDir))) {
+    throw new Error('desktop project: plugin dependencies must use an exact registry version, fixed GitHub commit, or local directory')
   }
   return manifest
+}
+
+function isPinnedDependency(spec: string, projectDir: string): boolean {
+  if (valid(spec) === spec || PINNED_GIT_SPEC_PATTERN.test(spec)) return true
+  if (!spec.startsWith('file:') || spec.length === 5 || spec.includes('\0')) return false
+  return existsSync(resolve(projectDir, spec.slice(5)))
 }
 
 function profilePluginNames(projectDir: string): readonly string[] {
@@ -236,6 +246,13 @@ export class DesktopProjectManager {
   listPlugins(): readonly DesktopPluginRecord[] {
     if (!existsSync(this.paths.profile)) return []
     return pluginRecords(this.paths.profile)
+  }
+
+  /** Return the exact registry version recorded for an installed plugin, if it is registry-managed. */
+  registryPluginVersion(name: string): string | undefined {
+    assertPackageName(name)
+    const spec = projectManifest(this.paths.profile).dependencies[name]
+    return spec !== undefined && valid(spec) === spec ? spec : undefined
   }
 
   /**
@@ -376,7 +393,8 @@ export class DesktopProjectManager {
   private async applyMutation(projectDir: string, mutation: Exclude<DesktopProjectMutation, { type: 'plugins-disable-all' }>): Promise<void> {
     switch (mutation.type) {
       case 'plugin-add': {
-        const requestedName = packageNameFromSpec(mutation.spec)
+        const requestedName = mutation.expectedName ?? packageNameFromSpec(mutation.spec)
+        assertPackageName(requestedName)
         if (this.currentRuntime().sharedPackages.some(entry => entry.name === requestedName)) {
           throw new Error(`desktop project: cannot install host-owned package ${requestedName}`)
         }

@@ -195,6 +195,32 @@ import Testing
   #expect(FileManager.default.fileExists(atPath: store.databaseURL.path))
 }
 
+@Test func desktopDataStoreMarksRemovedProfilePluginsDuringForcedSynchronization() throws {
+  let temporaryRoot = FileManager.default.temporaryDirectory
+    .appendingPathComponent("dsh-desktop-plugin-mirror-\(UUID().uuidString)", isDirectory: true)
+  defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+  let home = temporaryRoot.appendingPathComponent("home", isDirectory: true)
+  let profile = home.appendingPathComponent("profiles/desktop-lite", isDirectory: true)
+  try FileManager.default.createDirectory(at: profile, withIntermediateDirectories: true)
+  let manifest = profile.appendingPathComponent("package.json")
+  try Data(#"{"dependencies":{"fixture-old":"1.0.0"}}"#.utf8).write(to: manifest)
+
+  let store = try DesktopDataStore(supportRoot: temporaryRoot.appendingPathComponent("support"))
+  try store.initialize()
+  defer { store.close() }
+  try store.synchronizePayloads(from: home, force: true)
+  let initialStates = try store.pluginStates()
+  #expect(initialStates.map { "\($0.packageName):\($0.state)" } == ["fixture-old:installed"])
+
+  try Data(#"{"dependencies":{"fixture-current":"2.0.0"}}"#.utf8).write(to: manifest)
+  try store.synchronizePayloads(from: home, force: true)
+  let synchronizedStates = try store.pluginStates()
+  #expect(synchronizedStates.map { "\($0.packageName):\($0.state)" } == [
+    "fixture-current:installed",
+    "fixture-old:removed",
+  ])
+}
+
 @Test func compatibleHostNodeSkipsManagedInstallation() throws {
   let temporaryRoot = FileManager.default.temporaryDirectory
     .appendingPathComponent("dsh-host-node-\(UUID().uuidString)", isDirectory: true)

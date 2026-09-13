@@ -1,0 +1,9 @@
+# Deterministic search provider used by both authored replay and local inspection.
+- insert:
+    - id: web-search-provider-fixture
+      name: './web-search-provider-fixture.mjs'
+
+- id: web
+  name: '@deepseek-ai/dsh-web'
+  config:
+    searchProvider: tavily

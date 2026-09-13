@@ -1,0 +1,11 @@
+version: 1
+scenario: web-search-provider
+profile: headless
+composition: web-search-provider
+recording: authored
+permission: workspace-write
+header:
+  class: web-search-provider
+  pin: true
+  systemPromptSource: text-turn
+  toolSchemasSource: text-turn

@@ -10,8 +10,6 @@ import css from './PluginLibraryTrigger.module.css'
 export interface PluginLibraryTriggerInjected {
   /** Shared visibility controller for the shell overlay. */
   readonly controller: PluginLibraryController
-  /** Electron callback that opens its isolated native package manager. */
-  readonly openManager?: () => Promise<void>
 }
 
 /** Full props composed by the sidebar footer-action slot. */
@@ -21,7 +19,7 @@ export type PluginLibraryTriggerProps =
   & InjectFace<PluginLibraryTriggerInjected>
 
 /** Render one additive footer row without changing sidebar-owned chrome. */
-export function PluginLibraryTrigger({ wide, controller, openManager, t }: PluginLibraryTriggerProps) {
+export function PluginLibraryTrigger({ wide, controller, t }: PluginLibraryTriggerProps) {
   const open = useSyncExternalStore(controller.subscribe, controller.getSnapshot)
   return (
     <div className={wide ? css.root : `${css.root} ${css.rail}`}>
@@ -32,10 +30,7 @@ export function PluginLibraryTrigger({ wide, controller, openManager, t }: Plugi
         aria-expanded={open}
         data-plugin-library-trigger
         data-active={open || undefined}
-        onClick={() => {
-          if (openManager === undefined) controller.show()
-          else void openManager()
-        }}
+        onClick={() => { controller.show() }}
       >
         <IconCordisPluginOutline14 size={wide ? 16 : 18} />
         {wide && <span>{t('trigger')}</span>}

@@ -16,17 +16,40 @@ type PresentedAttachment =
   | { readonly type: 'image'; readonly image: MessageImageSource }
   | { readonly type: 'file'; readonly file: UserFile['attachment'] }
 
+const RECOGNIZED_ATTACHMENT_PREFIX = '[DeepSeek Files extracted text from '
+const RECOGNIZED_ATTACHMENT_TEXT_SEPARATOR = ':]\n'
+
+function parseRecognizedAttachmentText(value: string): { readonly name: string; readonly text: string } | undefined {
+  if (!value.startsWith(RECOGNIZED_ATTACHMENT_PREFIX)) return undefined
+  const separator = value.indexOf(RECOGNIZED_ATTACHMENT_TEXT_SEPARATOR, RECOGNIZED_ATTACHMENT_PREFIX.length)
+  if (separator < 0) return undefined
+  let name: unknown
+  try {
+    name = JSON.parse(value.slice(RECOGNIZED_ATTACHMENT_PREFIX.length, separator))
+  } catch {
+    return undefined
+  }
+  if (typeof name !== 'string') return undefined
+  return { name, text: value.slice(separator + RECOGNIZED_ATTACHMENT_TEXT_SEPARATOR.length) }
+}
+
 function contentParts(content: readonly unknown[]): {
   text: string
+  recognized: Array<{ readonly name: string; readonly text: string }>
   attachments: PresentedAttachment[]
   rest: unknown[]
 } {
   const texts: string[] = []
+  const recognized: Array<{ readonly name: string; readonly text: string }> = []
   const attachments: PresentedAttachment[] = []
   const rest: unknown[] = []
   for (const block of content) {
     const b = block as { type?: string; text?: string; attachment?: unknown }
-    if (b.type === 'text' && typeof b.text === 'string') texts.push(b.text)
+    if (b.type === 'text' && typeof b.text === 'string') {
+      const extracted = parseRecognizedAttachmentText(b.text)
+      if (extracted === undefined) texts.push(b.text)
+      else recognized.push(extracted)
+    }
     else if (b.type === 'image' && b.attachment !== undefined) {
       attachments.push({ type: 'image', image: { attachment: (b as UserImage).attachment } })
     }
@@ -35,7 +58,7 @@ function contentParts(content: readonly unknown[]): {
     }
     else rest.push(block)
   }
-  return { text: texts.join(''), attachments, rest }
+  return { text: texts.join(''), recognized, attachments, rest }
 }
 
 function retrySeconds(milliseconds: number): number {
@@ -175,7 +198,7 @@ function UserStyleBubble({
   references?: Pick<ChatNodeOwnerProps, 'openFile' | 'openSkill'>
   t: ChatViewSlotProps['t']
 }): ReactNode {
-  const { text, attachments: contentAttachments, rest } = contentParts(content)
+  const { text, recognized, attachments: contentAttachments, rest } = contentParts(content)
   const attachments = previewAttachments ?? contentAttachments
   const compactImages = attachments.length > 1
   const truncated = (total: number): string => t('json.truncated', { total })
@@ -217,6 +240,14 @@ function UserStyleBubble({
           {projectUserText(text, referenceLabels, skillNames, 'skill', references)}
           {rest.map((block, i) => <JsonBlock key={i} label={t('message.extraBlock')} payload={block} truncatedLabel={truncated} />)}
         </div>}
+        {recognized.map((item, index) => (
+          <details key={`${item.name}:${index}`} className={css.recognizedText}>
+            <summary className={css.recognizedSummary}>
+              {t('message.attachmentExtracted', { name: item.name })}
+            </summary>
+            <div className={css.recognizedBody}>{item.text}</div>
+          </details>
+        ))}
         {referenceLabels.length > 0 && (
           <div className={css.referenceSummary}>
             {t('message.referenceSummary', { labels: referenceLabels.join(t('message.referenceSeparator')) })}

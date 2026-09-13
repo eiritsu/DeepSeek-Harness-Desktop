@@ -147,19 +147,9 @@ export interface DesktopPluginBridge {
   ): Promise<PluginBridgeReplies[K]>
 }
 
-/** Electron shell bridge that opens its isolated native package manager. */
-export interface ElectronPluginBridge {
-  /** Open or focus the package-manager window. */
-  openManager(): Promise<void>
-}
-
 declare global {
   interface Window {
-    /** Installed only by the macOS desktop shell on a main-frame loopback page. */
+    /** Installed by a supported desktop shell on its main application page. */
     dshDesktopPluginBridge?: DesktopPluginBridge
-    /** Installed by the Electron application preload on the main renderer. */
-    dshDesktop?: {
-      readonly plugins?: ElectronPluginBridge
-    }
   }
 }

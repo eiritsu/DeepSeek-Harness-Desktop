@@ -3,4 +3,4 @@
 .trigger:hover, .trigger[data-active] { background: var(--dsw-alias-interactive-bg-hover); }
 .trigger span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rail { flex: none; width: 36px; height: 36px; margin: 0; }
-.rail .trigger { justify-content: center; gap: 0; width: 36px; height: 36px; margin: 0; padding: 0; border-radius: 50%; }
+.rail .trigger { justify-content: center; gap: 0; width: 36px; height: 36px; margin: 0; padding: 0; border-radius: 50%; corner-shape: round; }

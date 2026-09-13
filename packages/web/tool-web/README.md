@@ -55,7 +55,7 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 
 ### Using web_search
 
-Call `web_search` with a `queries` array of one to `searchMaxQueries` non-empty strings. Exact duplicate queries run once; multiple queries run concurrently and their sources merge round-robin before the combined `searchMaxResults` cap applies. The result is an optional provider answer followed by `Sources:` with one line per source — `- [<title-or-url>](<url>)`, optionally with snippet and date — and a standing instruction to cite the URLs.
+Call `web_search` with a `queries` array of one to `searchMaxQueries` non-empty strings. Exact duplicate queries run once; multiple queries run concurrently and their sources merge round-robin before the combined `searchMaxResults` cap applies. The result names the selected provider, then includes an optional provider answer followed by `Sources:` with one line per source — `- [<title-or-url>](<url>)`, optionally with snippet and date — and a standing instruction to cite the URLs.
 
 ```text
 web_search({ queries: ['deepseek harness documentation'] })
@@ -115,7 +115,7 @@ The package is built on one separation and one registration rule:
 
 ### Presentation
 
-Each tool attaches structured metadata to its result (`output.presentationMeta`) — the faithful search sources, or the fetch summary (final URL, status code, effective truncation) — so the UI can render `web` result cards and replay reproduces them without reparsing the lossy render text. A UI without the `web` capability falls back to the raw tool result, which is the same text.
+Each tool attaches structured metadata to its result (`output.presentationMeta`) — the selected search provider and faithful sources, or the fetch summary (final URL, status code, effective truncation) — so the UI can render `web` result cards and replay reproduces them without reparsing the lossy render text. A UI without the `web` capability falls back to the raw tool result, which is the same text.
 
 </details>
 

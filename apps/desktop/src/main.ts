@@ -26,6 +26,7 @@ import { exportSessionBackup, importSessionBackup, resetSessionDatabase } from '
 import { claimDesktopDataLock } from './data-lock.ts'
 import { DesktopSkillLibrary, parseDesktopSkillRequest } from './skill-library.ts'
 import { exportConfigurationBackup, importConfigurationBackup } from './configuration-backup.ts'
+import { ElectronPluginLibrary, parsePluginBridgeRequest } from './plugin-library.ts'
 
 const SCHEME = 'dsh-app'
 let focusPrimaryWindow = (): void => {}
@@ -165,7 +166,6 @@ async function main(): Promise<void> {
   let quitting = false
   let startup: Promise<void> | undefined
   let mainWindow: BrowserWindow | undefined
-  let pluginWindow: BrowserWindow | undefined
   let shellInstallerOwnsQuit = false
   let updateState: DesktopUpdateState = { phase: 'idle' }
   const lifecycleState = (): { readonly quitting: boolean; readonly mainWindow: BrowserWindow | undefined } => ({
@@ -175,7 +175,6 @@ async function main(): Promise<void> {
   const locale = resolveDesktopLocale(app.getLocale())
   const messages = locale.messages
   const appPreload = fileURLToPath(new URL('./preload-app.cjs', import.meta.url))
-  const managementPreload = fileURLToPath(new URL('./preload.cjs', import.meta.url))
   const startupUrl = `${SCHEME}://shell/startup.html`
   const applicationUrl = `${SCHEME}://app/index.html`
   let navigation: { window: BrowserWindow; url: string; promise: Promise<void> } | undefined
@@ -306,7 +305,7 @@ async function main(): Promise<void> {
     return active.fetch(request)
   })
 
-  const mutate = async (event: IpcMainInvokeEvent, mutation: Parameters<DesktopProjectManager['mutate']>[0]): Promise<void> => {
+  const mutateFromShell = async (event: IpcMainInvokeEvent, mutation: Parameters<DesktopProjectManager['mutate']>[0]): Promise<void> => {
     assertDesktopSender(event, ['shell'])
     if (development !== undefined) {
       throw new Error('dsh desktop: plugin package changes require a packaged application')
@@ -326,30 +325,7 @@ async function main(): Promise<void> {
     assertDesktopSender(event, ['shell'])
     return locale
   })
-  ipcMain.handle(DESKTOP_IPC.pluginsList, (event) => {
-    assertDesktopSender(event, ['shell'])
-    if (development !== undefined) return []
-    return manager.listPlugins()
-  })
-  ipcMain.handle(DESKTOP_IPC.pluginsAdd, (event, spec: unknown) => {
-    if (typeof spec !== 'string') throw new Error('dsh desktop: plugin spec must be a string')
-    return mutate(event, { type: 'plugin-add', spec })
-  })
-  ipcMain.handle(DESKTOP_IPC.pluginsRemove, (event, name: unknown) => {
-    if (typeof name !== 'string') throw new Error('dsh desktop: plugin name must be a string')
-    return mutate(event, { type: 'plugin-remove', name })
-  })
-  ipcMain.handle(DESKTOP_IPC.pluginsUpdate, (event, name: unknown, version: unknown) => {
-    if (typeof name !== 'string' || typeof version !== 'string') {
-      throw new Error('dsh desktop: plugin name and version must be strings')
-    }
-    return mutate(event, { type: 'plugin-update', name, version })
-  })
-  ipcMain.handle(DESKTOP_IPC.pluginsToggle, (event, name: unknown, enabled: unknown) => {
-    if (typeof name !== 'string' || typeof enabled !== 'boolean') throw new Error('dsh desktop: invalid plugin activation request')
-    return mutate(event, { type: 'plugin-toggle', name, enabled })
-  })
-  ipcMain.handle(DESKTOP_IPC.pluginsDisableAll, event => mutate(event, { type: 'plugins-disable-all' }))
+  ipcMain.handle(DESKTOP_IPC.pluginsDisableAll, event => mutateFromShell(event, { type: 'plugins-disable-all' }))
   ipcMain.handle(DESKTOP_IPC.backendStatus, (event) => {
     assertDesktopSender(event, ['shell'])
     return backendState()
@@ -398,6 +374,34 @@ async function main(): Promise<void> {
       await reconcileBackend()
     }
   }
+  const mutatePlugin = async (mutation: Parameters<DesktopProjectManager['mutate']>[0]): Promise<void> => {
+    if (development !== undefined) throw new Error('dsh desktop: plugin package changes require a packaged application')
+    await startup?.catch(() => undefined)
+    pageError = undefined
+    try {
+      await manager.mutate(mutation, hooks)
+    } catch (error) {
+      await showStartupError(error)
+      throw error
+    }
+  }
+  const pluginLibrary = new ElectronPluginLibrary(paths.root, resources.dsh, manager, mutatePlugin)
+  ipcMain.handle(DESKTOP_IPC.pluginLibraryRequest, async (event, input: unknown) => {
+    assertDesktopSender(event, ['app'])
+    const request = parsePluginBridgeRequest(input)
+    if (request.action === 'selectDirectory') {
+      const selection = await dialog.showOpenDialog({ properties: ['openDirectory'] })
+      return { path: selection.canceled ? undefined : selection.filePaths[0] }
+    }
+    if (request.action === 'exportConfig') return {}
+    if (request.action === 'importConfig') return {}
+    if (request.action === 'resetData') return {}
+    const reply = await pluginLibrary.request(request)
+    if (request.action === 'install' || request.action === 'remove') {
+      setTimeout(() => { void navigateMain(applicationUrl).catch((error: unknown) => { console.error(error) }) }, 500)
+    }
+    return reply
+  })
   ipcMain.handle(DESKTOP_IPC.sessionBackupExport, async (event) => {
     assertDesktopSender(event, ['app'])
     const selection = await dialog.showSaveDialog({
@@ -518,22 +522,18 @@ async function main(): Promise<void> {
     }
   }
 
-  const openPluginWindow = (): void => {
-    if (pluginWindow !== undefined && !pluginWindow.isDestroyed()) {
-      pluginWindow.focus()
+  const openPluginLibrary = (): void => {
+    focusPrimaryWindow()
+    const window = mainWindow
+    if (window === undefined || window.isDestroyed()) return
+    if (window.webContents.getURL() === applicationUrl) {
+      window.webContents.send(DESKTOP_IPC.pluginLibraryOpen)
       return
     }
-    pluginWindow = createWindow(managementPreload)
-    pluginWindow.setSize(900, 620)
-    pluginWindow.setTitle(messages.pluginWindowTitle)
-    pluginWindow.once('ready-to-show', () => { pluginWindow?.show() })
-    pluginWindow.once('closed', () => { pluginWindow = undefined })
-    void pluginWindow.loadURL(`${SCHEME}://shell/plugin-manager.html`)
+    void reconcileBackend().then(() => {
+      if (!window.isDestroyed()) window.webContents.send(DESKTOP_IPC.pluginLibraryOpen)
+    }).catch((error: unknown) => { console.error(error) })
   }
-  ipcMain.handle(DESKTOP_IPC.pluginsOpenManager, (event) => {
-    assertDesktopSender(event, ['app'])
-    openPluginWindow()
-  })
 
   Menu.setApplicationMenu(Menu.buildFromTemplate([{
     label: process.platform === 'darwin' ? app.name : messages.application,
@@ -542,7 +542,7 @@ async function main(): Promise<void> {
         label: development === undefined ? messages.pluginsMenu : messages.pluginsMenuPackagedOnly,
         accelerator: 'CmdOrCtrl+,',
         enabled: development === undefined,
-        click: openPluginWindow,
+        click: openPluginLibrary,
       },
       { label: messages.checkUpdatesMenu, click: () => { void checkAndPrompt(true) } },
       { type: 'separator' },

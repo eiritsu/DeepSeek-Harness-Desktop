@@ -10,7 +10,9 @@ import {
   offloadedImageText,
   offloadedImagePrefixCount,
   offloadRequestImagesWithPolicy,
+  parseRecognizedAttachmentText,
   projectImagesForTextModel,
+  recognizedAttachmentText,
   resolveImageAttachmentAccess,
   requestImageHandleText,
 } from '../src/index.ts'
@@ -19,6 +21,23 @@ import type { ContentBlock, Message } from '../src/index.ts'
 const source = { kind: 'plugin' as const, plugin: 'test' }
 
 const OMITTED = '[omitted]'
+
+describe('attachment-recognition text', () => {
+  it('round-trips names and extracted text through the stable recorded representation', () => {
+    const encoded = recognizedAttachmentText('验收单 "最终".xlsx', '第一行\n第二行')
+    expect(encoded).toBe('[DeepSeek Files extracted text from "验收单 \\"最终\\".xlsx":]\n第一行\n第二行')
+    expect(parseRecognizedAttachmentText(encoded)).toEqual({
+      name: '验收单 "最终".xlsx',
+      text: '第一行\n第二行',
+    })
+  })
+
+  it('leaves ordinary and malformed user text unclassified', () => {
+    expect(parseRecognizedAttachmentText('ordinary prompt')).toBeUndefined()
+    expect(parseRecognizedAttachmentText('[DeepSeek Files extracted text from nope:]\nbody')).toBeUndefined()
+    expect(parseRecognizedAttachmentText('[DeepSeek Files extracted text from 1:]\nbody')).toBeUndefined()
+  })
+})
 
 function offloadBase64(messages: readonly Message[], maxBytes: number | undefined): readonly Message[] {
   return offloadRequestImagesWithPolicy(messages, {

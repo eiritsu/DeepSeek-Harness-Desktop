@@ -402,6 +402,8 @@ export interface LaunchOptions {
    * 127.0.0.1; a non-resolving authority fails before Host trust is exercised.
    */
   remoteAuthority?: string
+  /** Loopback address used for token exchange when the remote authority has a test-local DNS mapping. */
+  remoteAuthorityAddress?: string
   /** Reuse an existing harness home so a second Host can verify user settings across origins. */
   harnessHome?: string
 }
@@ -782,7 +784,15 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
     }
     baseUrl = `http://${browserHost}:${String(port)}`
     authenticatedUrl = ctx.connection.authenticatedUrl(baseUrl)
-    const login = await fetch(authenticatedUrl, { redirect: 'manual' })
+    const loginUrl = options.remoteAuthorityAddress === undefined
+      ? authenticatedUrl
+      : authenticatedUrl.replace(`://${browserHost}:`, `://${options.remoteAuthorityAddress}:`)
+    const login = await fetch(loginUrl, {
+      redirect: 'manual',
+      ...(options.remoteAuthorityAddress === undefined
+        ? {}
+        : { headers: { host: `${browserHost}:${String(port)}` } }),
+    })
     const setCookie = login.headers.get('set-cookie')
     if (login.status !== 303 || login.headers.get('location') !== '/' || setCookie === null) {
       throw new Error('web e2e scaffold: browser token exchange did not return its session cookie')

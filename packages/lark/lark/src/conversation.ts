@@ -13,7 +13,7 @@ import type {
   SaveFileAttachment,
   SaveImageAttachment,
 } from '@deepseek-ai/dsh-attachment'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, recognizedAttachmentText } from '@deepseek-ai/dsh-llm'
 import type { AssistantMessage, ContentBlock } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
@@ -274,7 +274,7 @@ export class LarkConversationBridge {
         if (recognized !== undefined && recognized.text !== '') {
           blocks.push({
             type: 'text',
-            text: `[DeepSeek Files extracted text from ${JSON.stringify(ref.name)}:]\n${recognized.text}`,
+            text: recognizedAttachmentText(ref.name, recognized.text),
           })
         }
       }

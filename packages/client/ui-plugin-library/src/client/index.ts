@@ -10,7 +10,18 @@ import { PluginLibraryOverlay, type PluginLibraryOverlayInjected } from './Plugi
 import { PluginLibraryTrigger, type PluginLibraryTriggerInjected } from './PluginLibraryTrigger.tsx'
 import { en, zh, type PluginLibraryLocaleKey } from './locales.ts'
 
-export type { DesktopPluginBridge, InstalledPlugin, PluginAuditRecord, PluginReviewReport } from './bridge.ts'
+export type {
+  CommunityPlugin,
+  DesktopPluginBridge,
+  InstalledPlugin,
+  PluginAuditRecord,
+  PluginBridgeReplies,
+  PluginBridgeRequest,
+  PluginCategory,
+  PluginReviewReport,
+  ThirdPartyCategory,
+  ThirdPartyPlugin,
+} from './bridge.ts'
 export type { PluginLibraryLocaleKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -29,8 +40,7 @@ export const inject = ['slots', 'locale']
 /** Register nothing in a normal browser; the desktop bridge is the capability signal. */
 export function apply(ctx: ClientContext): void {
   const bridge = window.dshDesktopPluginBridge
-  const electron = window.dshDesktop?.plugins
-  if (bridge === undefined && electron === undefined) return
+  if (bridge === undefined) return
 
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-plugin-library: dictionaries')
   const controller = new PluginLibraryController()
@@ -40,13 +50,9 @@ export function apply(ctx: ClientContext): void {
     id: 'plugin-library',
     order: 90,
     locale: NS,
-    inject: (): PluginLibraryTriggerInjected => ({
-      controller,
-      ...(electron === undefined ? {} : { openManager: () => electron.openManager() }),
-    }),
+    inject: (): PluginLibraryTriggerInjected => ({ controller }),
   }, PluginLibraryTrigger))
 
-  if (bridge === undefined) return
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({
     name: 'shell.overlay',
     id: 'plugin-library',
@@ -54,4 +60,9 @@ export function apply(ctx: ClientContext): void {
     locale: NS,
     inject: (): PluginLibraryOverlayInjected => ({ bridge, controller }),
   }, PluginLibraryOverlay))
+  ctx.effect(() => {
+    const open = (): void => { controller.show() }
+    window.addEventListener('dsh:open-plugin-library', open)
+    return () => { window.removeEventListener('dsh:open-plugin-library', open) }
+  }, 'ui-plugin-library: desktop menu trigger')
 }

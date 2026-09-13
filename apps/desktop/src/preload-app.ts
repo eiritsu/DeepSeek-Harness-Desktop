@@ -3,6 +3,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { DESKTOP_IPC, type DshDesktopApplicationApi, type DshDesktopStartupApi } from './ipc.ts'
 import type { DesktopBackendState } from './backend-controller.ts'
+import type { DesktopPluginBridge } from '@deepseek-ai/dsh-client-ui-plugin-library/client'
 
 const startup: DshDesktopStartupApi = {
   protocolVersion: 1,
@@ -29,15 +30,22 @@ const application: DshDesktopApplicationApi = {
     importBackup: () => ipcRenderer.invoke(DESKTOP_IPC.sessionBackupImport) as Promise<{ imported: boolean }>,
     reset: () => ipcRenderer.invoke(DESKTOP_IPC.sessionDataReset) as Promise<{ reset: boolean }>,
   },
-  plugins: {
-    openManager: () => ipcRenderer.invoke(DESKTOP_IPC.pluginsOpenManager) as Promise<void>,
-  },
   skills: {
     request: request => ipcRenderer.invoke(DESKTOP_IPC.skillLibraryRequest, request) as Promise<unknown>,
   },
 }
 
 const owned = location.protocol === 'dsh-app:'
+const applicationDocument = owned && location.hostname === 'app'
 contextBridge.exposeInMainWorld('dshDesktop', owned && location.hostname === 'shell'
   ? startup
-  : owned && location.hostname === 'app' ? application : { protocolVersion: 1 })
+  : applicationDocument ? application : { protocolVersion: 1 })
+if (applicationDocument) {
+  const plugins: DesktopPluginBridge = {
+    request: request => ipcRenderer.invoke(DESKTOP_IPC.pluginLibraryRequest, request) as Promise<never>,
+  }
+  contextBridge.exposeInMainWorld('dshDesktopPluginBridge', plugins)
+  ipcRenderer.on(DESKTOP_IPC.pluginLibraryOpen, () => {
+    window.dispatchEvent(new Event('dsh:open-plugin-library'))
+  })
+}

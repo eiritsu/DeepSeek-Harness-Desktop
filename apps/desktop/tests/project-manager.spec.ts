@@ -162,6 +162,23 @@ describe('desktop external plugin profile', () => {
     }
   })
 
+  it('accepts fixed GitHub commits and existing local directories in the managed manifest', async () => {
+    const { root, manager } = setup()
+    await manager.applyRelease()
+    const local = join(root, 'local-plugin')
+    mkdirSync(local)
+    const manifestPath = join(manager.paths.profile, 'package.json')
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { dependencies: Record<string, string> }
+    manifest.dependencies = {
+      'github-plugin': `https://github.com/example/plugin.git#${'a'.repeat(40)}`,
+      'local-plugin': `file:${local}`,
+    }
+    writeFileSync(manifestPath, JSON.stringify(manifest))
+
+    expect(manager.registryPluginVersion('github-plugin')).toBeUndefined()
+    expect(manager.registryPluginVersion('local-plugin')).toBeUndefined()
+  })
+
   it('retries installation after an interrupted runtime rebuild removed plugin files', async () => {
     const { root, manager } = setup()
     await manager.applyRelease()

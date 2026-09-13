@@ -305,8 +305,10 @@ export function PluginLibraryOverlay({ bridge, controller, t }: PluginLibraryOve
       await bridge.request({ action: 'install', reviewId: report.reviewId, force })
       setReport(undefined)
       setSource('')
+      await refresh()
     } catch (reason) {
       setError(errorMessage(reason))
+    } finally {
       setBusy(undefined)
     }
   }
@@ -387,8 +389,10 @@ export function PluginLibraryOverlay({ bridge, controller, t }: PluginLibraryOve
     setError(undefined)
     try {
       await bridge.request({ action: 'remove', package: plugin.name })
+      await refresh()
     } catch (reason) {
       setError(errorMessage(reason))
+    } finally {
       setBusy(undefined)
     }
   }

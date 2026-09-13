@@ -8,7 +8,7 @@ import z from '@deepseek-ai/schemastery'
 import { z as zod } from 'zod'
 import type { ZodType } from 'zod'
 import type { Branded } from '@deepseek-ai/dsh-brand'
-import { isAgentLoopRequest } from '@deepseek-ai/dsh-llm'
+import { isAgentLoopRequest, parseRecognizedAttachmentText } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions } from '@deepseek-ai/dsh-llm'
 import { assertNever, deepFreeze } from '@deepseek-ai/dsh-util-values'
 import type {
@@ -133,6 +133,7 @@ function sessionTitleUserMessageOf(event: SessionEvent): SessionTitleUserMessage
   const content = event.data.content
   const text = content
     .filter((block): block is Extract<(typeof content)[number], { type: 'text' }> => block.type === 'text')
+    .filter(block => parseRecognizedAttachmentText(block.text) === undefined)
     .map(block => block.text)
     .join('\n')
   if (normalizeSessionTitle(text, Number.MAX_SAFE_INTEGER).length === 0) return undefined

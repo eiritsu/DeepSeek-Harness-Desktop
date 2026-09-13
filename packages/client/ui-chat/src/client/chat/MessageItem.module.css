@@ -346,3 +346,66 @@
   font-size: 12px;
   line-height: 15px;
 }
+
+.recognizedText {
+  width: 100%;
+  max-width: 525px;
+  overflow: hidden;
+  border: 0.5px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12));
+  border-radius: 12px;
+  background: var(--dsw-specific-input-major, transparent);
+  color: var(--dsw-alias-label-secondary);
+  box-sizing: border-box;
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(20px + var(--dsh-content-font-delta-secondary, 0px));
+}
+
+.recognizedSummary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  overflow: hidden;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.recognizedSummary::-webkit-details-marker {
+  display: none;
+}
+
+.recognizedSummary::before {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentcolor;
+  border-bottom: 1.5px solid currentcolor;
+  content: '';
+  transform: rotate(-45deg);
+  transition: transform 120ms ease;
+}
+
+.recognizedText[open] .recognizedSummary::before {
+  transform: rotate(45deg);
+}
+
+.recognizedSummary:focus-visible {
+  outline: 1.5px solid var(--dsw-alias-button-info-fill);
+  outline-offset: -2px;
+}
+
+.recognizedBody {
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  max-height: 360px;
+  padding: 10px 12px;
+  overflow: auto;
+  border-top: 0.5px solid var(--dsw-alias-border-l2, rgba(0, 0, 0, 0.12));
+  color: var(--dsw-alias-label-primary);
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

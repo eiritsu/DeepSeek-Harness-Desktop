@@ -7,6 +7,51 @@ import type {
 } from '@deepseek-ai/dsh-attachment'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 
+const RECOGNIZED_ATTACHMENT_TEXT_PREFIX = '[DeepSeek Files extracted text from '
+const RECOGNIZED_ATTACHMENT_TEXT_SEPARATOR = ':]\n'
+
+/** Parsed fields from one recorded attachment-recognition text block. */
+export interface RecognizedAttachmentText {
+  /** Display name recorded for the recognized attachment. */
+  readonly name: string
+  /** Semantic text extracted from the attachment. */
+  readonly text: string
+}
+
+/**
+ * Encode attachment-recognition output as the stable text block recorded next
+ * to its durable attachment.
+ * @param name - attachment display name or durable identity.
+ * @param text - bounded semantic text returned by the recognizer.
+ * @returns model-visible text that replay and clients can identify.
+ */
+export function recognizedAttachmentText(name: string, text: string): string {
+  return `${RECOGNIZED_ATTACHMENT_TEXT_PREFIX}${JSON.stringify(name)}${RECOGNIZED_ATTACHMENT_TEXT_SEPARATOR}${text}`
+}
+
+/**
+ * Parse the stable attachment-recognition text representation.
+ * @param value - one recorded text block.
+ * @returns its attachment name and extracted text, or undefined for ordinary user text.
+ */
+export function parseRecognizedAttachmentText(value: string): RecognizedAttachmentText | undefined {
+  if (!value.startsWith(RECOGNIZED_ATTACHMENT_TEXT_PREFIX)) return undefined
+  const separator = value.indexOf(RECOGNIZED_ATTACHMENT_TEXT_SEPARATOR, RECOGNIZED_ATTACHMENT_TEXT_PREFIX.length)
+  if (separator < 0) return undefined
+  const encodedName = value.slice(RECOGNIZED_ATTACHMENT_TEXT_PREFIX.length, separator)
+  let name: unknown
+  try {
+    name = JSON.parse(encodedName)
+  } catch {
+    return undefined
+  }
+  if (typeof name !== 'string') return undefined
+  return {
+    name,
+    text: value.slice(separator + RECOGNIZED_ATTACHMENT_TEXT_SEPARATOR.length),
+  }
+}
+
 /** Execution-world path that model tools can use to read one normalized attachment. */
 export interface ImageAttachmentAccess {
   /** Absolute path to immutable normalized bytes; callers must treat it as read-only. */

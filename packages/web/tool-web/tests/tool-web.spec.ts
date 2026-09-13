@@ -102,6 +102,11 @@ describe('search formatting', () => {
     expect(out).toContain('[not a url](not a url)')
   })
 
+  it('identifies the selected provider in model-facing search output', () => {
+    expect(formatSearchOutput({ provider: 'tavily', truncated: false, sources: [] }))
+      .toContain('Search provider: tavily')
+  })
+
   it('presents a search call with a joined query title', () => {
     expect(presentSearchCall({ queries: ['one', 'two'] })).toEqual({ card: 'generic', title: 'one, two', kind: 'search', rawInput: 'one, two' })
   })
@@ -116,13 +121,14 @@ function toolResult(meta: unknown, text = 'body', isError = false): ToolResult {
 describe('web_search presentation meta and result view', () => {
   it('projects sources, answer, and truncation into meta, omitting absent optional fields', () => {
     const meta = searchMetaFromValue({
-      content: 'an answer', truncated: true,
+      provider: 'tavily', content: 'an answer', truncated: true,
       sources: [
         { url: 'https://a.test/x', title: 'A', snippet: 'about a', publishedAt: '2026-01-01' },
         { url: 'https://b.test/y' },
       ],
     })
     expect(meta).toEqual({
+      provider: 'tavily',
       answer: 'an answer',
       truncated: true,
       sources: [
@@ -139,10 +145,11 @@ describe('web_search presentation meta and result view', () => {
 
   it('round-trips projected meta back to a typed search meta', () => {
     const value = {
-      content: 'ans', truncated: false,
+      provider: 'tavily', content: 'ans', truncated: false,
       sources: [{ url: 'https://a.test', title: 'A', snippet: 's', publishedAt: '2026-01-01' }],
     }
     expect(searchMetaFromResult(searchMetaFromValue(value))).toEqual({
+      provider: 'tavily',
       answer: 'ans', truncated: false,
       sources: [{ url: 'https://a.test', title: 'A', snippet: 's', publishedAt: '2026-01-01' }],
     })
@@ -150,13 +157,13 @@ describe('web_search presentation meta and result view', () => {
 
   it('presents a completed search as a web/search card carrying the structured sources, titled by the query', () => {
     const meta = searchMetaFromValue({
-      content: 'an answer', truncated: true,
+      provider: 'tavily', content: 'an answer', truncated: true,
       sources: [{ url: 'https://a.test', title: 'A', snippet: 'snip', publishedAt: '2026-07-20' }],
     })
     expect(presentSearchResult({ queries: ['q'] }, toolResult(meta, 'rendered'))).toEqual({
       card: 'web',
       kind: 'search',
-      title: 'q',
+      title: 'q · tavily',
       answer: 'an answer',
       truncated: true,
       sources: [{ url: 'https://a.test', title: 'A', snippet: 'snip', publishedAt: '2026-07-20' }],
@@ -515,7 +522,7 @@ describe('tool-web execution through the real registry', () => {
     const { fiber, call } = await mountTools({ webConfig: { searchProvider: 'stub-search' }, search: searchProvider(result) })
     const out = await call('web_search', { queries: ['q'] })
     expect(out.isError).toBe(false)
-    expect(out.value).toEqual(result)
+    expect(out.value).toEqual({ provider: 'stub-search', ...result })
     expect(out.content.map(b => b.type === 'text' ? b.text : '').join('')).toContain('[A](https://a.test)')
     await fiber.dispose()
   })
@@ -559,6 +566,7 @@ describe('tool-web execution through the real registry', () => {
     const out = await pending
     expect(out.isError).toBe(false)
     expect(out.value).toEqual({
+      provider: 'stub-search',
       content: '### one\n\nanswer one\n\n### two\n\nanswer two',
       sources: [
         { url: 'https://a.test', title: 'A' },
@@ -585,6 +593,7 @@ describe('tool-web execution through the real registry', () => {
     const out = await call('web_search', { queries: ['one', 'two'] })
     expect(out.isError).toBe(false)
     expect(out.value).toEqual({
+      provider: 'stub-search',
       sources: [
         { url: 'https://a.test' },
         { url: 'https://b.test' },
@@ -643,6 +652,7 @@ describe('tool-web execution through the real registry', () => {
     const out = await call('web_search', { queries: ['one', 'two'] })
     expect(out.isError).toBe(false)
     expect(out.value).toEqual({
+      provider: 'stub-search',
       sources: [{ url: 'https://a.test' }, { url: 'https://c.test' }],
       truncated: true,
     })
@@ -659,11 +669,11 @@ describe('tool-web execution through the real registry', () => {
     const { ctx, fiber, call } = await mountTools({ webConfig: { searchProvider: 'stub-search' }, search: searchProvider(result) })
     const out = await call('web_search', { queries: ['q'] })
     expect(out.meta).toEqual({
-      answer: 'answer', truncated: true,
+      provider: 'stub-search', answer: 'answer', truncated: true,
       sources: [{ url: 'https://a.test', title: 'A', snippet: 'snip', publishedAt: '2026-07-20' }],
     })
     const view = ctx.tools.get('web_search')?.presentResult?.({ queries: ['q'] }, { content: out.content, isError: out.isError, ...out.meta !== undefined ? { meta: out.meta } : {} })
-    expect(view).toMatchObject({ card: 'web', kind: 'search', truncated: true, answer: 'answer' })
+    expect(view).toMatchObject({ card: 'web', kind: 'search', title: 'q · stub-search', truncated: true, answer: 'answer' })
     await fiber.dispose()
   })
 

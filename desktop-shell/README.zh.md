@@ -25,7 +25,7 @@ Electron runtime 已不再支持 macOS 11 和 12，因此 Electron 应用面向 
 
 生产环境的 Lite 壳使用 `~/.dsh` 作为 `DSH_HOME`，与 Electron 和 CLI 一致。`desktop-lite` 与 Electron 组合都把 `$DSH_HOME/desktop/dsh-desktop.sqlite` 用作权威 Session 持久化。因此两个壳可以保留同一份 Session 历史、Session ID、跨 Session 引用、附件 metadata 与 SQLite 迁移行为。两个 profile 都会挂载 DeepSeek Files 识别、外部搜索 provider 设置、SkillHub、原生插件库、Lark 与 `dsh-model-catalog`。模型 catalog 会从 `models.dev` 刷新完整的上游声明，并补充模型发现和实际调用，但不会隐式创建 provider 路由。
 
-Swift 壳把自身的源码/更新审计 catalog 保存在 `~/Library/Application Support/DeepSeek Harness Lite`；这个辅助数据库不是 Session 权威来源。首次启动可以从旧版 `~/Library/Application Support/DeepSeek Harness Desktop/data` 迁移数据，并保留旧目录。
+Swift 壳把自身的源码/更新审计 catalog 保存在 `~/Library/Application Support/DeepSeek Harness Lite`；这个辅助数据库不是 Session 权威来源。强制同步 profile 时，当前 manifest 中已不存在的依赖会被标记为已移除，因此其插件清单不会继续报告陈旧安装。首次启动可以从旧版 `~/Library/Application Support/DeepSeek Harness Desktop/data` 迁移数据，并保留旧目录。
 
 `dsh web:` 启动行是壳的就绪信号：Web profile 只会在插件加载完成结算且本地服务器可用后输出该行。Lite 收到该信号后直接导航一次，不再探测私有插件路由。旧数据迁移复制 `.credentials.yaml` 时，Lite 会把权限收紧为 `0600`；格式错误的凭据文件仍会导致启动失败，但失败界面会指出文件和恢复操作，且不会显示凭据值。
 

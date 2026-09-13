@@ -1,4 +1,4 @@
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, recognizedAttachmentText } from '@deepseek-ai/dsh-llm'
 import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it } from 'vitest'
 import SessionStore, { Session, SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
@@ -141,6 +141,34 @@ describe('SessionTitleService', () => {
     expect(first?.messageSeqs).toEqual([eligible.seq])
     expect(ctx.sessionTitle.get(session)).toEqual(first)
     expect(session.snapshotEvents().filter(event => event.type === 'session/title')).toHaveLength(1)
+  })
+
+  it('excludes attachment-recognition text from fallback and provider title input', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionProjectionRegistry)
+    await ctx.plugin(SessionTitleService, CONFIG)
+    const session = ctx.sessions.create(SessionId('recognized-attachment-title'))
+    session.append('turn/start', { turn: 1 })
+    session.append('user/message', createUserMessage({
+      content: [
+        { type: 'file', attachment: { attachmentId: 'sha256:file' as never, name: '验收单.xlsx', bytes: 24_000 } },
+        { type: 'text', text: recognizedAttachmentText('验收单.xlsx', '合同号 123') },
+      ],
+      source: { kind: 'user' },
+    }), { surfaceOp: 'append' })
+    await settleTitles()
+    expect(ctx.sessionTitle.get(session)).toBeUndefined()
+
+    session.append('user/message', createUserMessage({
+      content: [
+        { type: 'text', text: '检查付款条款' },
+        { type: 'text', text: recognizedAttachmentText('验收单.xlsx', '不得成为标题') },
+      ],
+      source: { kind: 'user' },
+    }), { surfaceOp: 'append' })
+    await settleTitles()
+    expect(ctx.sessionTitle.get(session)?.title).toBe('检查付款条款')
   })
 
   it('folds the latest title event during replay', () => {

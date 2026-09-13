@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-13-collapsed-attachment-recognition-text.md
+2026-09-13-collapsed-attachment-recognition-text.md: ae794752639c9e34cb221ab9fdd1a37e0fb9014d
+2026-09-13-collapsed-attachment-recognition-text.zh.md: 4f5700a7c22d7ba1f1eac31e1b65f08f95614104

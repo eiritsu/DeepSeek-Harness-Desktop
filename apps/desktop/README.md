@@ -25,13 +25,13 @@ The [Electron packaging and update Agent Note](../../.agents/notes/implemented/a
 
 Electron owns `$DSH_HOME/profiles/desktop`. Its `dependencies` contains only installed external plugins at exact versions; `dsh.profile.bundles` contains the built-in bundles followed by enabled plugins. The signed application supplies dsh, the private Desktop Host, and their production packages from `resources/dsh`. Shared package links resolve to those actual directories. Both host and plugins execute in the same bundled upstream Node process, with normal realpath resolution; Desktop does not enable `--preserve-symlinks`. The CLI cannot boot or mutate this profile.
 
-The local startup page exposes startup status and available recovery actions; the loaded dsh renderer receives only the desktop protocol marker. The separate plugin window receives structured list, install, remove, update, and update-check operations; neither renderer receives filesystem access, raw Electron IPC, a shell, or arbitrary pnpm arguments.
+The local startup page exposes startup status and available recovery actions. The loaded dsh renderer receives the desktop protocol marker plus narrow data, Skill, and plugin-library bridges. The plugin library uses the same shared overlay as Lite and accepts only structured discovery, review, install, remove, and audit operations; it receives no general filesystem access, raw Electron IPC, shell, or arbitrary pnpm arguments.
 
 The loaded application receives three narrow operations for the authoritative Session SQLite database: export, validated import, and reset. Export and import use native file dialogs; every operation stops the Node Host before copying or replacing the database, validates schema and required tables, applies owner-only file permissions, and restarts the Host. The Desktop composition also mounts the live `models.dev` metadata catalog and starts without an implicit DeepSeek provider route; routes remain user-owned settings.
 
 The application also receives a typed SkillHub request bridge. Catalog responses and archives have byte limits; archive installation rejects invalid identifiers, symbolic links, excessive entries, missing `SKILL.md`, and existing destinations. Install and exact-name removal stop the Host before changing `$DSH_HOME/skills`. No general filesystem, arbitrary URL, raw IPC, shell, or package-manager capability is exposed to the Web client. The built-in Desktop composition also mounts the shared DeepSeek Files, external-tools, SkillHub, and Lark packages.
 
-Electron chooses typed English or Chinese shell copy from its application locale and falls back to English. Menus, native dialogs, the startup page, and the plugin-management renderer use the same locale payload; the repository Client UI i18n gate checks these desktop sources.
+Electron chooses typed English or Chinese shell copy from its application locale and falls back to English. Menus, native dialogs, the startup page, and the shared plugin-library overlay use locale-owned copy; the repository Client UI i18n gate checks these desktop sources.
 
 ### Runtime and plugin activation
 

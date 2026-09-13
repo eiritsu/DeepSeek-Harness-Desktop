@@ -230,6 +230,8 @@ describe('PluginLibraryOverlay', () => {
     fireEvent.click(screen.getByRole('button', { name: en.forceInstall }))
     await vi.waitFor(() => {
       expect(request).toHaveBeenCalledWith({ action: 'install', reviewId: 'review-1', force: true })
+      expect(request.mock.calls.filter(([input]) => input.action === 'list')).toHaveLength(2)
+      expect(screen.queryByRole('button', { name: en.forceInstalling })).toBeNull()
     })
   })
 })

@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { DESKTOP_IPC, type DshDesktopApplicationApi, type DshDesktopStartupApi } from '../src/ipc.ts'
+import type { DesktopPluginBridge } from '@deepseek-ai/dsh-client-ui-plugin-library/client'
 
 const electron = vi.hoisted(() => ({
   contextBridge: { exposeInMainWorld: vi.fn() },
@@ -9,7 +10,7 @@ vi.mock('electron', () => electron)
 
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); vi.resetModules() })
 
-it('exposes Session data and Skill maintenance only to the owned application document', async () => {
+it('exposes Session data, Skill maintenance, and the reviewed plugin bridge only to the owned application document', async () => {
   vi.stubGlobal('location', new URL('dsh-app://app/index.html'))
   await import('../src/preload-app.ts')
   const api = electron.contextBridge.exposeInMainWorld.mock.calls[0]?.[1] as DshDesktopApplicationApi
@@ -17,12 +18,16 @@ it('exposes Session data and Skill maintenance only to the owned application doc
   await api.data.importBackup()
   await api.data.reset()
   await api.skills.request({ action: 'listSkills' })
+  const plugins = electron.contextBridge.exposeInMainWorld.mock.calls[1]?.[1] as DesktopPluginBridge
+  await plugins.request({ action: 'list' })
   expect(electron.ipcRenderer.invoke.mock.calls).toEqual([
     [DESKTOP_IPC.sessionBackupExport],
     [DESKTOP_IPC.sessionBackupImport],
     [DESKTOP_IPC.sessionDataReset],
     [DESKTOP_IPC.skillLibraryRequest, { action: 'listSkills' }],
+    [DESKTOP_IPC.pluginLibraryRequest, { action: 'list' }],
   ])
+  expect(electron.contextBridge.exposeInMainWorld.mock.calls[1]?.[0]).toBe('dshDesktopPluginBridge')
   expect(api).not.toHaveProperty('plugins')
 })
 

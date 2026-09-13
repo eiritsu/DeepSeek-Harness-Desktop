@@ -1,5 +1,5 @@
 ---
-description: "面向 macOS WKWebView 桌面壳的插件发现、不可变来源审查、安装、移除与审计界面。"
+description: "Swift 与 Electron 桌面壳共享的插件发现、不可变来源审查、安装、移除与审计界面。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-client-ui-plugin-library` 在 macOS 桌面壳公开 `window.dshDesktopPluginBridge` 时增加插件管理入口和覆盖层。它列出 Web profile 的内置 Bundle 与树外依赖、发现社区项目、审查不可变或本地来源，并把通过审查的变更委托给原生桌面壳。安装的插件依赖和 Skill 数据保存在桌面 App 的 Application Support 数据目录中。普通浏览器使用相同 Web 组合，但由于不存在特权 bridge，这个包不会注册任何界面。来源审查是安装预检，不是沙箱或发布者背书。
+`dsh-client-ui-plugin-library` 在 Swift 或 Electron 桌面壳公开 `window.dshDesktopPluginBridge` 时增加插件管理入口和覆盖层。它列出内置 Bundle 与树外依赖、发现社区项目、审查不可变或本地来源，并把通过审查的变更委托给所属桌面壳。安装的插件依赖保存在桌面壳自有 profile 中，共享 Skill 数据仍位于 `DSH_HOME`。普通浏览器使用相同 Web 组合，但由于不存在特权 bridge，这个包不会注册任何界面。来源审查是安装预检，不是沙箱或发布者背书。
 
 ## 目录
 
@@ -25,13 +25,13 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用这个包
 
-随附的 Web 应用会挂载这个包，但它只在配套 macOS 桌面壳内可见。从侧边栏底部打开“插件库”，即可检查 profile 依赖、查询公共 npm 更新、审查来源、移除依赖或读取原生审计日志。
+随附的 Web 应用会挂载这个包，但它只在受支持的桌面壳内可见。从侧边栏底部或 Electron 应用菜单打开“插件库”，即可检查 profile 依赖、查询公共 npm 更新、审查来源、移除依赖或读取桌面壳审计日志。
 
 ### 审查并安装来源
 
-审查接受精确 npm 版本、固定到 commit 的 HTTPS GitHub 仓库或本地目录。可直接安装的来源必须具有有效根 package manifest，并由 `dsh.bundle.patch` 指向实际存在的包内 YAML 入口。原生 bridge 会签发一个有效期 15 分钟的一次性审查 token，再用精确保存且禁用依赖 lifecycle script 的方式把安装委托给 `dsh plugin --profile web`。
+审查接受精确 npm 版本、固定到 commit 的 HTTPS GitHub 仓库或本地目录。可直接安装的来源必须具有有效根 package manifest，并由 `dsh.bundle.patch` 指向实际存在的包内 YAML 入口。桌面壳 bridge 会签发一个有效期 15 分钟的一次性审查 token，再以精确来源且禁用依赖 lifecycle script 的方式安装到其受管 profile。
 
-社区发现统一使用 [SkillHub Plugins 目录](https://skillhub.cloud.tencent.com/plugins)。目录元数据只用于发现；选中的 GitHub 仓库会先固定到 commit，再通过本机结构审查后才能安装。
+社区发现使用 [SkillHub Plugins 目录](https://skillhub.cloud.tencent.com/plugins)与 GitHub 的 `dsh-plugin` topic。目录元数据只用于发现；选中的 GitHub 仓库会先固定到 commit，再通过结构审查后才能安装。
 
 ### 挂载到其他 Web 组合
 
@@ -49,7 +49,7 @@ kind: "package-reference"
 <details>
 <summary>实现内部细节 — 点击展开</summary>
 
-插件把原生 bridge 作为能力信号，注册本地化文案，再通过既有 slot 注册表贡献一个 `sidebar.footer.action` 配置项与一个 `shell.overlay` 配置项。两个贡献通过同一个控制器共享覆盖层可见状态。原生桌面壳负责固定来源、检查 package、执行命令、持久化审计记录和重启；浏览器代码只负责展示及类型化请求/回复投影。
+插件把桌面 bridge 作为能力信号，注册本地化文案，再通过既有 slot 注册表贡献一个 `sidebar.footer.action` 配置项与一个 `shell.overlay` 配置项。两个贡献通过同一个控制器共享覆盖层可见状态，Electron 应用菜单会分发同一个控制器事件。所属桌面壳负责固定来源、检查 package、执行命令、持久化审计记录和重启；浏览器代码只负责展示及类型化请求/回复投影。
 
 本包不发布 runtime invariant companion，因为 bridge 是否存在和浏览器本地 UI 状态之间不存在可独立观察的运行时关系。
 
@@ -67,7 +67,8 @@ kind: "package-reference"
 <a id="further-exploration"></a>
 ## 延伸阅读
 
-- [macOS 桌面壳](../../../desktop-shell/README.zh.md) — 原生 bridge、生命周期、更新与信任限制。
+- [macOS 桌面壳](../../../desktop-shell/README.zh.md) — Swift bridge、生命周期、更新与信任限制。
+- [Electron 桌面壳](../../../apps/desktop/README.zh.md) — 跨平台 bridge、打包与受管 profile 行为。
 - [UI slot 系统](../ui-slots/README.zh.md) — 入口和覆盖层使用的类型化可追加注册机制。
 - [Web 应用组合包](../../bundle/web-app/README.zh.md) — 挂载这个浏览器插件的组合。
 - [插件命令](../../../apps/cli/reference/README.zh.md) — 桌面壳委托的 profile 依赖生命周期。

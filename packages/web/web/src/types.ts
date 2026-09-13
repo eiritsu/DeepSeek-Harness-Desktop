@@ -33,6 +33,8 @@ export interface WebSearchRequest {
  * when it cut `sources[]` down to `maxResults`.
  */
 export interface WebSearchResult {
+  /** Stable id of the provider selected by the web service. */
+  readonly provider?: string
   /** Optional provider-generated answer text, search context, or summary. */
   readonly content?: string
   /** Citeable sources, already truncated to the request's `maxResults`. */

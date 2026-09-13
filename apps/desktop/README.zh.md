@@ -25,7 +25,7 @@ Electron 44 决定了实际 macOS 下限。macOS 安装包明确面向 macOS 13 
 
 Electron 拥有 `$DSH_HOME/profiles/desktop`。其 `dependencies` 只包含已安装外部插件的精确版本；`dsh.profile.bundles` 包含内置 bundle，后接已启用插件。签名应用从 `resources/dsh` 提供 dsh、私有 Desktop Host 及其生产依赖。共享包链接解析到这些实际目录。宿主与插件在同一个内置上游 Node 进程中执行，使用正常的 realpath 解析；Desktop 不启用 `--preserve-symlinks`。CLI 不能启动或修改此 profile。
 
-本地启动页提供启动状态和可用恢复操作；加载后的 dsh 渲染进程仅接收桌面协议标记。独立插件窗口接收结构化的列表、安装、删除、更新和更新检查操作；两个渲染进程都无法访问文件系统、原始 Electron IPC、shell 或任意 pnpm 参数。
+本地启动页提供启动状态和可用恢复操作。加载后的 dsh 渲染进程接收桌面协议标记及范围受限的数据、Skill 和插件库 bridge。插件库与 Lite 使用同一个共享覆盖层，只接受结构化的发现、审查、安装、移除和审计操作；它无法访问通用文件系统、原始 Electron IPC、shell 或任意 pnpm 参数。
 
 加载后的应用还会获得三个仅针对权威 Session SQLite 数据库的窄接口：导出、经验证的导入和清空。导出与导入使用原生文件对话框；每个操作都会先停止 Node Host，再复制或替换数据库，同时验证 schema 和必需数据表、设置仅 owner 可读写权限，最后重新启动 Host。Desktop 组合还会挂载实时 `models.dev` 模型 metadata catalog，并且不会隐式创建 DeepSeek provider 路由；路由继续由用户设置拥有。
 

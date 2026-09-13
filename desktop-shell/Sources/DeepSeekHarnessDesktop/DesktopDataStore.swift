@@ -108,6 +108,22 @@ final class DesktopDataStore: @unchecked Sendable {
     return rows
   }
 
+  /// Return mirrored plugin states for diagnostics and migration verification.
+  func pluginStates() throws -> [(packageName: String, state: String)] {
+    guard database != nil else { throw DesktopError.message("桌面 SQLite 数据库尚未初始化。") }
+    var statement: OpaquePointer?
+    try prepare("SELECT package_name, state FROM plugins ORDER BY package_name", &statement)
+    defer { sqlite3_finalize(statement) }
+    var rows: [(String, String)] = []
+    while sqlite3_step(statement) == SQLITE_ROW {
+      rows.append((
+        String(cString: sqlite3_column_text(statement, 0)),
+        String(cString: sqlite3_column_text(statement, 1))
+      ))
+    }
+    return rows
+  }
+
   /// Copy the current file-backed payloads into their SQLite migration tables.
   /// The source files remain untouched so an interrupted upgrade can be rolled back.
   func synchronizePayloads(from root: URL, force: Bool = false) throws {
@@ -138,6 +154,7 @@ final class DesktopDataStore: @unchecked Sendable {
         try upsert(table: "workspaces", keyColumn: "id", key: "session-projection", payload: content)
       }
       let profiles = root.appendingPathComponent("profiles", isDirectory: true)
+      try execute("UPDATE plugins SET state = 'removed', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE source = 'profile'")
       if let entries = try? fileManager.contentsOfDirectory(at: profiles, includingPropertiesForKeys: [.isDirectoryKey]) {
         for entry in entries where (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
           let manifest = entry.appendingPathComponent("package.json")
@@ -360,7 +377,7 @@ final class DesktopDataStore: @unchecked Sendable {
 
   private func upsertPlugin(package: String, version: String, config: String) throws {
     var statement: OpaquePointer?
-    try prepare("INSERT INTO plugins(package_name, source, version, config_json, state, updated_at) VALUES (?, 'profile', ?, ?, 'installed', strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) ON CONFLICT(package_name) DO UPDATE SET version = excluded.version, config_json = excluded.config_json, updated_at = excluded.updated_at", &statement)
+    try prepare("INSERT INTO plugins(package_name, source, version, config_json, state, updated_at) VALUES (?, 'profile', ?, ?, 'installed', strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) ON CONFLICT(package_name) DO UPDATE SET source = excluded.source, version = excluded.version, config_json = excluded.config_json, state = excluded.state, updated_at = excluded.updated_at", &statement)
     defer { sqlite3_finalize(statement) }
     bind(package, to: statement, index: 1)
     bind(version, to: statement, index: 2)

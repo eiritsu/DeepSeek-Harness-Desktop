@@ -11,7 +11,7 @@ import type {
 import type { FileUploadReceiptId } from '@deepseek-ai/dsh-client-file-upload/types'
 import type {} from '@deepseek-ai/dsh-client-file-upload'
 import {
-  ReasoningEffortId, assistantStreamChunks, createUserMessage, freezeMessage,
+  ReasoningEffortId, assistantStreamChunks, createUserMessage, freezeMessage, recognizedAttachmentText,
 } from '@deepseek-ai/dsh-llm'
 import type { MessageSource } from '@deepseek-ai/dsh-llm'
 import { SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
@@ -71,7 +71,7 @@ function hasPromptContent(content: readonly PromptContentCandidate[]): boolean {
 
 function recognizedText(part: Exclude<AdmittedPromptContentPart, { type: 'text' }>, text: string): string {
   const name = part.attachment.name ?? String(part.attachment.attachmentId)
-  return `[DeepSeek Files extracted text from ${JSON.stringify(name)}:]\n${text}`
+  return recognizedAttachmentText(name, text)
 }
 
 async function recognizePromptAttachments(

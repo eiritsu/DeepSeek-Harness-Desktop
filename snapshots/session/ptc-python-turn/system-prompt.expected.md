@@ -498,6 +498,7 @@ class WebSearchOutputSources(TypedDict):
     publishedAt: NotRequired[str]
 
 class WebSearchOutput(TypedDict):
+    provider: NotRequired[str]
     content: NotRequired[str]
     sources: list[WebSearchOutputSources]
     truncated: bool
