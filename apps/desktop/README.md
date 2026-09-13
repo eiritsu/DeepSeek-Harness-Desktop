@@ -102,6 +102,8 @@ Each target owns its packed package inputs, prepared runtime, package set, dsh t
 
 Apple Silicon development hosts without a Developer ID certificate can build an ad-hoc signed application, DMG, and ZIP for local startup and installer testing:
 
+The macOS package converts [`../../desktop-shell/Resources/AppIcon.svg`](../../desktop-shell/Resources/AppIcon.svg) into its application icon, so the Electron and native editions use the same artwork.
+
 ```sh
 pnpm run package:desktop:mac:arm64:local
 ```

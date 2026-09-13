@@ -82,6 +82,7 @@ export function createElectronBuilderConfig(
     ],
     mac: {
       category: 'public.app-category.developer-tools',
+      icon: fileURLToPath(new URL('../../desktop-shell/Resources/AppIcon.svg', import.meta.url)),
       minimumSystemVersion: '13.0.0',
       identity: local ? '-' : macOSSigning?.signingIdentity,
       forceCodeSigning: true,

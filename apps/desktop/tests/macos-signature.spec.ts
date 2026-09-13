@@ -57,6 +57,7 @@ describe('desktop macOS release signature', () => {
     expect(config.extraResources[1]?.to).toBe('dsh')
     expect(portablePath(config.extraResources[0]?.from ?? '')).toContain('/.desktop-build/targets/mac-arm64/runtime')
     expect(portablePath(config.extraResources[1]?.from ?? '')).toContain('/.desktop-build/targets/mac-arm64/dsh')
+    expect(portablePath(config.mac.icon)).toMatch(/\/desktop-shell\/Resources\/AppIcon\.svg$/u)
     expect(config).toMatchObject({
       appId: RELEASE_ENVIRONMENT.DSH_DESKTOP_APP_ID,
       productName: 'DeepSeek Harness Electron',

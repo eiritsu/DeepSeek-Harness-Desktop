@@ -102,6 +102,8 @@ macOS arm64 命令要求 Apple Silicon。macOS x64 命令可以在 Intel macOS �
 
 没有 Developer ID 证书的 Apple Silicon 开发主机可以构建 ad-hoc 签名的应用、DMG 和 ZIP，用于本机启动与安装测试：
 
+macOS 包会将 [`../../desktop-shell/Resources/AppIcon.svg`](../../desktop-shell/Resources/AppIcon.svg) 转换为应用图标，因此 Electron 版与原生版使用同一套图稿。
+
 ```sh
 pnpm run package:desktop:mac:arm64:local
 ```
