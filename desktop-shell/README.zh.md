@@ -27,6 +27,8 @@ Electron runtime 已不再支持 macOS 11 和 12，因此 Electron 应用面向 
 
 Swift 壳把自身的源码/更新审计 catalog 保存在 `~/Library/Application Support/DeepSeek Harness Lite`；这个辅助数据库不是 Session 权威来源。首次启动可以从旧版 `~/Library/Application Support/DeepSeek Harness Desktop/data` 迁移数据，并保留旧目录。
 
+`dsh web:` 启动行是壳的就绪信号：Web profile 只会在插件加载完成结算且本地服务器可用后输出该行。Lite 收到该信号后直接导航一次，不再探测私有插件路由。旧数据迁移复制 `.credentials.yaml` 时，Lite 会把权限收紧为 `0600`；格式错误的凭据文件仍会导致启动失败，但失败界面会指出文件和恢复操作，且不会显示凭据值。
+
 配置导出会脱敏：凭据、Session 正文、附件字节、日志和机器身份不会导出。导入和重置会先停止 Node runtime，再替换数据。在同时分发两个壳之前，打包还必须保证同一时间只有一个桌面写入者。
 
 ## 开发

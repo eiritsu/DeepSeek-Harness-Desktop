@@ -130,14 +130,6 @@ import Testing
   #expect(RuntimeController.reloadURL(for: startup) == URL(string: "http://127.0.0.1:43210/"))
 }
 
-@Test func readinessURLDropsTheOneTimeAuthenticationToken() throws {
-  let startup = try #require(
-    URL(string: "http://127.0.0.1:43210/?token=authenticated_process_token#fragment")
-  )
-
-  #expect(RuntimeController.readinessURL(for: startup) == URL(string: "http://127.0.0.1:43210/plugins/__dsh_ready"))
-}
-
 @Test func startupFailureIdentifiesTheRootSideloadedPackage() {
   let state = StartupState(progress: { _ in }, log: { _ in })
   state.consume(Data("failed to import loader entry ui-lark (@deepseek-ai/dsh-lark/ui)\n".utf8), isError: true)
@@ -152,6 +144,23 @@ import Testing
     stderr: "dsh: profile bundle \"plain-plugin\" declares no dsh.bundle"
   )
   #expect(bundleFailure.failingPluginPackage == "plain-plugin")
+}
+
+@Test func startupFailureExplainsCredentialRecoveryWithoutExposingValues() {
+  let permission = RuntimeStartupFailure(
+    status: 1,
+    stderr: "credentials-local: /tmp/.credentials.yaml is readable beyond its owner (mode 644); secret-value"
+  )
+  #expect(permission.errorDescription?.contains("/tmp/.credentials.yaml") == true)
+  #expect(permission.errorDescription?.contains("mode 644") == true)
+  #expect(permission.errorDescription?.contains("secret-value") == false)
+
+  let format = RuntimeStartupFailure(
+    status: 1,
+    stderr: "credentials-local: /tmp/.credentials.yaml must be a mapping\nsecret-value"
+  )
+  #expect(format.errorDescription?.contains("凭据文件格式无效") == true)
+  #expect(format.errorDescription?.contains("secret-value") == false)
 }
 
 @Test func desktopDataStoreInventoriesLegacyUserDataInSQLite() throws {
@@ -584,6 +593,10 @@ private func createSourceArchive(from source: URL, at archive: URL) throws {
   try FileManager.default.createDirectory(at: legacy.appendingPathComponent("sessions", isDirectory: true), withIntermediateDirectories: true)
   try Data("model: legacy\n".utf8).write(to: legacy.appendingPathComponent("settings.yaml"))
   try Data("legacy-credentials\n".utf8).write(to: legacy.appendingPathComponent(".credentials.yaml"))
+  try FileManager.default.setAttributes(
+    [.posixPermissions: 0o644],
+    ofItemAtPath: legacy.appendingPathComponent(".credentials.yaml").path
+  )
   try Data("legacy-identity\n".utf8).write(to: legacy.appendingPathComponent(".anonymous-user-id"))
   try Data("{\"sessions\":[\"legacy\"]}\n".utf8).write(to: legacy.appendingPathComponent("workspace.json"))
   try Data("session log\n".utf8).write(to: legacy.appendingPathComponent("sessions/legacy.jsonl"))
@@ -609,6 +622,11 @@ private func createSourceArchive(from source: URL, at archive: URL) throws {
   let dataHome = support.appendingPathComponent("data", isDirectory: true)
   #expect(try String(contentsOf: dataHome.appendingPathComponent("settings.yaml"), encoding: .utf8) == "model: legacy\n")
   #expect(try String(contentsOf: dataHome.appendingPathComponent(".credentials.yaml"), encoding: .utf8) == "legacy-credentials\n")
+  #expect(
+    try FileManager.default.attributesOfItem(
+      atPath: dataHome.appendingPathComponent(".credentials.yaml").path
+    )[.posixPermissions] as? Int == 0o600
+  )
   #expect(try String(contentsOf: dataHome.appendingPathComponent(".anonymous-user-id"), encoding: .utf8) == "legacy-identity\n")
   #expect(FileManager.default.fileExists(atPath: dataHome.appendingPathComponent("sessions/legacy.jsonl").path))
   #expect(FileManager.default.fileExists(atPath: legacy.appendingPathComponent("sessions/legacy.jsonl").path))

@@ -6,7 +6,25 @@ struct RuntimeStartupFailure: LocalizedError, Sendable {
   let stderr: String
 
   var errorDescription: String? {
-    "Harness 在就绪前退出（状态码 \(status)）。详情见桌面日志。"
+    if let permission = Self.firstCaptures(
+      pattern: #"credentials-local: ([^\n]+) is readable beyond its owner \(mode ([0-7]+)\)"#,
+      in: stderr
+    ) {
+      return "凭据文件权限不安全：\(permission[0])（mode \(permission[1])）。请将权限设为 600 后重新启动。"
+    }
+    if let path = Self.firstCapture(
+      pattern: #"credentials-local: ([^\n]+) must be a mapping"#,
+      in: stderr
+    ) {
+      return "凭据文件格式无效：\(path)。请先备份并移走该文件，再重新启动并在设置中保存凭据。"
+    }
+    if let path = Self.firstCapture(
+      pattern: #"credentials-local: invalid document at ([^:\n]+)"#,
+      in: stderr
+    ) {
+      return "凭据文件 YAML 无效：\(path)。请根据桌面日志修正，或备份并移走该文件后重新启动。"
+    }
+    return "Harness 在就绪前退出（状态码 \(status)）。详情见桌面日志。"
   }
 
   var failingPluginPackage: String? {
@@ -37,6 +55,19 @@ struct RuntimeStartupFailure: LocalizedError, Sendable {
           let range = Range(match.range(at: 1), in: value)
     else { return nil }
     return String(value[range])
+  }
+
+  private static func firstCaptures(pattern: String, in value: String) -> [String]? {
+    guard let expression = try? NSRegularExpression(pattern: pattern),
+          let match = expression.firstMatch(
+            in: value,
+            range: NSRange(value.startIndex..., in: value)
+          )
+    else { return nil }
+    return (1..<match.numberOfRanges).compactMap { index in
+      guard let range = Range(match.range(at: index), in: value) else { return nil }
+      return String(value[range])
+    }
   }
 }
 
@@ -118,14 +149,6 @@ final class StartupState: @unchecked Sendable {
 }
 
 final class RuntimeController: @unchecked Sendable {
-  private static let readinessSession: URLSession = {
-    let configuration = URLSessionConfiguration.ephemeral
-    configuration.httpCookieStorage = nil
-    configuration.httpShouldSetCookies = false
-    configuration.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-    return URLSession(configuration: configuration)
-  }()
-
   private let queue = DispatchQueue(label: "ai.deepseek.harness.desktop.runtime", qos: .userInitiated)
   private let lock = NSLock()
   private let supportRoot: URL
@@ -224,64 +247,7 @@ final class RuntimeController: @unchecked Sendable {
     let (resolvedURL, resolvedError) = state.outcome()
     if let resolvedError { throw resolvedError }
     guard let resolvedURL else { throw DesktopError.message("Harness 未返回有效的本地地址。") }
-    try waitForWebReady(resolvedURL, progress: progress)
     return resolvedURL
-  }
-
-  /// Wait until the Web profile has registered its client-bundle route.
-  ///
-  /// The CLI announces its listening URL before the WebView should navigate. The
-  /// readiness route is unauthenticated and therefore does not consume the
-  /// one-time process token reserved for the WebView's first request.
-  private func waitForWebReady(
-    _ authenticatedURL: URL,
-    progress: @escaping @Sendable (String) -> Void
-  ) throws {
-    guard let readinessURL = Self.readinessURL(for: authenticatedURL) else {
-      throw DesktopError.message("Harness 返回的本地地址无效。")
-    }
-    let deadline = Date().addingTimeInterval(120)
-    var announced = false
-    while Date() < deadline {
-      if Self.fetchStatus(readinessURL) == 204 {
-        return
-      }
-      if !announced {
-        progress("正在等待插件模块就绪…\n")
-        announced = true
-      }
-      usleep(200_000)
-    }
-    throw DesktopError.message("本地 Web 服务已启动，但插件模块未及时就绪。请查看桌面日志后重试。")
-  }
-
-  static func readinessURL(for authenticatedURL: URL) -> URL? {
-    guard var components = URLComponents(url: authenticatedURL, resolvingAgainstBaseURL: false) else {
-      return nil
-    }
-    components.path = "/plugins/__dsh_ready"
-    components.query = nil
-    components.fragment = nil
-    return components.url
-  }
-
-  private static func fetchStatus(_ url: URL) -> Int? {
-    fetch(url)?.status
-  }
-
-  private static func fetch(_ url: URL) -> (data: Data, status: Int)? {
-    let semaphore = DispatchSemaphore(value: 0)
-    let result = LockedBox<(data: Data, status: Int)?>(nil)
-    var request = URLRequest(url: url)
-    request.timeoutInterval = 2
-    readinessSession.dataTask(with: request) { data, response, _ in
-      if let status = (response as? HTTPURLResponse)?.statusCode {
-        result.set((data ?? Data(), status))
-      }
-      semaphore.signal()
-    }.resume()
-    guard semaphore.wait(timeout: .now() + 2) == .success else { return nil }
-    return result.get()
   }
 
   private func readOutput(_ pipe: Pipe, state: StartupState, isError: Bool) {

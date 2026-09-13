@@ -194,6 +194,9 @@ final class SourceManager: @unchecked Sendable {
       } else if !fileManager.fileExists(atPath: target.path) || Self.legacyFileWins(relativePath: relative) {
         if fileManager.fileExists(atPath: target.path) { try fileManager.removeItem(at: target) }
         try fileManager.copyItem(at: item, to: target)
+        if relative == ".credentials.yaml" {
+          try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
+        }
       }
     }
     if relativePath == "profiles/web" {
