@@ -7,6 +7,11 @@
   config:
     path: !!js dshHomePath('desktop', 'dsh-desktop.sqlite')
 
+# The desktop products start without an implicit first-party route. Users add
+# the provider routes they intend to use through Models settings.
+- id: llm-deepseek
+  disabled: true
+
 - insert:
     - id: external-tools
       name: '@deepseek-ai/dsh-external-tools'
@@ -19,6 +24,17 @@
 
     - id: ui-skill-library
       name: '@deepseek-ai/dsh-client-ui-skill-library'
+
+    - id: ui-plugin-library
+      name: '@deepseek-ai/dsh-client-ui-plugin-library'
+
+    - id: model-catalog
+      name: '@deepseek-ai/dsh-model-catalog'
+      config:
+        catalogURL: https://models.dev/api.json
+        refreshIntervalMs: 86400000
+        requestTimeoutMs: 15000
+        maxResponseBytes: 8388608
 
     - id: lark
       name: '@deepseek-ai/dsh-lark'

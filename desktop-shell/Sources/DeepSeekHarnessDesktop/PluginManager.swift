@@ -104,8 +104,10 @@ final class PluginManager: @unchecked Sendable {
   /// bundles. They remain App-owned and should still be visible in inventory.
   private static let embeddedManagedBundleNames = Set([
     "@deepseek-ai/dsh-client-ui-deepseek-files",
+    "@deepseek-ai/dsh-client-ui-plugin-library",
     "@deepseek-ai/dsh-external-tools",
     "@deepseek-ai/dsh-file-recognizer-office",
+    "@deepseek-ai/dsh-model-catalog",
   ])
   private struct CatalogCacheKey: Hashable {
     let page: Int
@@ -245,8 +247,10 @@ final class PluginManager: @unchecked Sendable {
         // because they intentionally have no `dsh.bundle` declaration.
         let clientOnly = [
           "@deepseek-ai/dsh-client-ui-deepseek-files",
+          "@deepseek-ai/dsh-client-ui-plugin-library",
           "@deepseek-ai/dsh-external-tools",
           "@deepseek-ai/dsh-file-recognizer-office",
+          "@deepseek-ai/dsh-model-catalog",
         ]
         let bundleCountBeforeCleanup = bundles.count
         bundles.removeAll { clientOnly.contains($0) }

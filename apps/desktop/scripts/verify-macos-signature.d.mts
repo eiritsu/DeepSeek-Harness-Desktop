@@ -28,6 +28,14 @@ export function signMacOSRuntimeCode(
 ): Promise<void>
 
 /**
+ * Ad-hoc sign one runtime executable for a local macOS package.
+ * @param path - Writable standalone Mach-O file.
+ * @param identifier - Stable code-signing identifier derived from the app ID and CAS digest.
+ * @returns Resolves after codesign exits successfully.
+ */
+export function signMacOSRuntimeAdHocCode(path: string, identifier: string): Promise<void>
+
+/**
  * Verify one Mach-O file embedded in the runtime tree.
  * @param path - Mach-O file to inspect.
  * @param expected - Public release identity.
@@ -35,11 +43,23 @@ export function signMacOSRuntimeCode(
 export function verifyMacOSRuntimeCode(path: string, expected: MacOSSigningEnvironment): void
 
 /**
+ * Verify an ad-hoc signed runtime executable without qualifying it for release.
+ * @param path - Mach-O file to inspect.
+ */
+export function verifyMacOSRuntimeAdHocCode(path: string): void
+
+/**
  * Verify the full application signature and its release owner.
  * @param appPath - Path to the packaged `.app` directory.
  * @param expected - Public release identity.
  */
 export function verifyMacOSSignature(appPath: string, expected: MacOSSigningEnvironment): void
+
+/**
+ * Verify a local application's deep ad-hoc signature without qualifying it for release.
+ * @param appPath - Path to the packaged `.app` directory.
+ */
+export function verifyMacOSAdHocSignature(appPath: string): void
 
 /**
  * Verify an independently distributed application's signature, ticket, and Gatekeeper acceptance.

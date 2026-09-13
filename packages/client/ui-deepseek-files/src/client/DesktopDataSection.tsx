@@ -3,6 +3,8 @@ import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots
 import css from './DeepseekFilesSection.module.css'
 
 interface ElectronDataBridge {
+  exportConfiguration(): Promise<unknown>
+  importConfiguration(): Promise<unknown>
   exportBackup(): Promise<unknown>
   importBackup(): Promise<unknown>
   reset(): Promise<unknown>
@@ -26,7 +28,9 @@ type Operation = 'configExport' | 'configImport' | 'sessionExport' | 'sessionImp
 
 function operation(operation: Operation): Promise<unknown> {
   const electron = window.dshDesktop?.data
-  if (electron !== undefined && operation.startsWith('session')) {
+  if (electron !== undefined && operation !== 'resetAll') {
+    if (operation === 'configExport') return electron.exportConfiguration()
+    if (operation === 'configImport') return electron.importConfiguration()
     if (operation === 'sessionExport') return electron.exportBackup()
     if (operation === 'sessionImport') return electron.importBackup()
     return electron.reset()
@@ -65,7 +69,7 @@ export function DesktopDataSection({ t }: DesktopDataSectionProps): ReactNode {
       </header>
       {!available ? <p className={css.status}>{t('dataUnavailable')}</p> : (
         <>
-          {swiftAvailable ? <section className={css.card}>
+          {electronAvailable || swiftAvailable ? <section className={css.card}>
             <h2>{t('configBackupTitle')}</h2>
             <p>{t('configBackupIntro')}</p>
             <div className={css.actions}>

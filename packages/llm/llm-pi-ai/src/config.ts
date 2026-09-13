@@ -215,6 +215,12 @@ export interface ResolvedPiAiProviderProfile
    * own, so a catalog capability must not appear here.
    */
   configuredMaxTokens: ReadonlyMap<string, number>
+  /** Complete configured or installed-catalog modalities, keyed by model id. */
+  inputModalities: ReadonlyMap<string, readonly PiAiModality[]>
+  /** Upstream owners preserved from configuration, keyed by model id. */
+  modelOwners: ReadonlyMap<string, string>
+  /** Model ids whose configuration permits external catalog enrichment. */
+  externallyResolvableInputModels: ReadonlySet<string>
 }
 
 /** Plugin configuration: the provider routes this instance owns. */
@@ -297,6 +303,7 @@ const reasoningEfforts = z.dict(
 
 /** The fields a `models` entry and a `modelOverrides` value share; only the id's home differs. */
 const modelFields = {
+  ownedBy: z.string(),
   name: z.string(),
   contextWindow: z.number().step(1).min(1),
   maxTokens: z.number().step(1).min(1),
@@ -497,6 +504,9 @@ export function resolveProfiles(
       ...rest.headers === undefined ? {} : { headers: { ...rest.headers } },
       ...rest.thinkingBudgets === undefined ? {} : { thinkingBudgets: { ...rest.thinkingBudgets } },
       configuredMaxTokens: catalog?.configuredMaxTokens ?? new Map(),
+      inputModalities: catalog?.inputModalities ?? new Map(),
+      modelOwners: catalog?.modelOwners ?? new Map(),
+      externallyResolvableInputModels: catalog?.externallyResolvableInputModels ?? new Set(),
       modelErrors: catalog?.modelErrors ?? new Map(),
       ...piProvider === undefined ? {} : { piProvider },
       ...catalogError === undefined ? {} : { catalogError },

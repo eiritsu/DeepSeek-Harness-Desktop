@@ -21,10 +21,18 @@ final class DesktopBackupManager: @unchecked Sendable {
     let staged = destination.deletingLastPathComponent()
       .appendingPathComponent(".session-export-\(UUID().uuidString).sqlite")
     defer { try? fileManager.removeItem(at: staged) }
-    try fileManager.copyItem(at: source, to: staged)
+    let snapshot = try CommandRunner.run(
+      executable: URL(fileURLWithPath: "/usr/bin/sqlite3"),
+      arguments: [source.path, ".backup '\(staged.path.replacingOccurrences(of: "'", with: "''"))'"]
+    )
+    guard snapshot.status == 0 else {
+      throw DesktopError.message("会话备份读取 SQLite 快照失败：\(snapshot.output)")
+    }
+    try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: staged.path)
     try validateSessionDatabase(at: staged)
     if fileManager.fileExists(atPath: destination.path) { try fileManager.removeItem(at: destination) }
     try fileManager.moveItem(at: staged, to: destination)
+    try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
   }
 
   /// Import a validated Session database while retaining the previous file for rollback.
@@ -41,11 +49,13 @@ final class DesktopBackupManager: @unchecked Sendable {
       try? fileManager.removeItem(at: rollback)
     }
     try fileManager.copyItem(at: source, to: staged)
+    try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: staged.path)
     try validateSessionDatabase(at: staged)
     let retained = fileManager.fileExists(atPath: target.path)
     if retained { try fileManager.moveItem(at: target, to: rollback) }
     do {
       try fileManager.moveItem(at: staged, to: target)
+      try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
       for suffix in ["-wal", "-shm"] {
         let sidecar = URL(fileURLWithPath: target.path + suffix)
         if fileManager.fileExists(atPath: sidecar.path) { try fileManager.removeItem(at: sidecar) }
@@ -85,10 +95,19 @@ final class DesktopBackupManager: @unchecked Sendable {
     let manifestData = try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys])
     try (manifestData + Data("\n".utf8)).write(to: stage.appendingPathComponent("manifest.json"), options: .atomic)
 
+    let settings = dataRoot.appendingPathComponent("settings.yaml")
+    if fileManager.fileExists(atPath: settings.path) {
+      try fileManager.copyItem(at: settings, to: stage.appendingPathComponent("settings.yaml"))
+    }
+
     let database = dataRoot.appendingPathComponent("desktop/dsh-desktop.sqlite")
     if fileManager.fileExists(atPath: database.path) {
       let copy = stage.appendingPathComponent("dsh-desktop.sqlite")
-      try fileManager.copyItem(at: database, to: copy)
+      let snapshot = try CommandRunner.run(
+        executable: URL(fileURLWithPath: "/usr/bin/sqlite3"),
+        arguments: [database.path, ".backup '\(copy.path.replacingOccurrences(of: "'", with: "''"))'"],
+      )
+      guard snapshot.status == 0 else { throw DesktopError.message("配置备份读取 SQLite 快照失败：\(snapshot.output)") }
       try scrubDatabase(at: copy)
     }
 
@@ -107,6 +126,7 @@ final class DesktopBackupManager: @unchecked Sendable {
       arguments: ["-c", "-k", "--sequesterRsrc", stage.path, destination.path],
     )
     guard result.status == 0 else { throw DesktopError.message("配置备份压缩失败：\(result.output)") }
+    try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
   }
 
   /// Import a previously exported archive into the desktop data root.
@@ -134,20 +154,35 @@ final class DesktopBackupManager: @unchecked Sendable {
 
     let importedDB = root.appendingPathComponent("dsh-desktop.sqlite")
     do {
-      if fileManager.fileExists(atPath: importedDB.path) {
-        let target = dataRoot.appendingPathComponent("desktop/dsh-desktop.sqlite")
+      let importedSettings = root.appendingPathComponent("settings.yaml")
+      let restoredSettings: Data?
+      if fileManager.fileExists(atPath: importedSettings.path) {
+        restoredSettings = try Data(contentsOf: importedSettings)
+      } else if fileManager.fileExists(atPath: importedDB.path) {
+        restoredSettings = try legacySettings(from: importedDB)
+      } else {
+        restoredSettings = nil
+      }
+      if let restoredSettings {
+        let target = dataRoot.appendingPathComponent("settings.yaml")
         try stageExisting(target, in: rollbackRoot, moved: &moved)
-        try replace(importedDB, at: target)
+        try fileManager.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try restoredSettings.write(to: target, options: .atomic)
+        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
       }
       for name in ["profiles", "skills"] {
         let imported = root.appendingPathComponent(name, isDirectory: true)
         guard fileManager.fileExists(atPath: imported.path) else { continue }
         let target = dataRoot.appendingPathComponent(name, isDirectory: true)
         try stageExisting(target, in: rollbackRoot, moved: &moved)
+        if let retained = moved.last, retained.target == target {
+          try copyArtifacts(from: retained.backup, to: target)
+        }
         try copyArtifacts(from: imported, to: target)
       }
+      try migrateLegacyWebPlugins(from: root)
     } catch {
-      for name in ["desktop/dsh-desktop.sqlite", "profiles", "skills"] {
+      for name in ["settings.yaml", "profiles", "skills"] {
         let target = dataRoot.appendingPathComponent(name)
         if fileManager.fileExists(atPath: target.path) { try? fileManager.removeItem(at: target) }
       }
@@ -199,9 +234,10 @@ final class DesktopBackupManager: @unchecked Sendable {
 
   private func validateSessionDatabase(at database: URL) throws {
     let query = "PRAGMA user_version; SELECT name FROM sqlite_master WHERE type='table' AND name IN ('dsh_session_metadata','dsh_session_events') ORDER BY name;"
+    let immutable = database.absoluteString + "?immutable=1"
     let result = try CommandRunner.run(
       executable: URL(fileURLWithPath: "/usr/bin/sqlite3"),
-      arguments: [database.path, query]
+      arguments: ["-readonly", immutable, query]
     )
     guard result.status == 0 else {
       throw DesktopError.message("会话备份不是可读取的 SQLite 数据库：\(result.output)")
@@ -216,13 +252,61 @@ final class DesktopBackupManager: @unchecked Sendable {
     }
   }
 
-  private func replace(_ source: URL, at destination: URL) throws {
+  private func legacySettings(from database: URL) throws -> Data? {
+    let query = "SELECT json_group_object(namespace, json(payload_json)) FROM settings;"
+    let result = try CommandRunner.run(
+      executable: URL(fileURLWithPath: "/usr/bin/sqlite3"),
+      arguments: [database.path, query],
+    )
+    guard result.status == 0 else {
+      throw DesktopError.message("配置备份中的模型与工具设置无法读取：\(result.output)")
+    }
+    let text = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !text.isEmpty, text != "{}" else { return nil }
+    let value = try JSONSerialization.jsonObject(with: Data(text.utf8))
+    guard var settings = value as? [String: Any] else {
+      throw DesktopError.message("配置备份中的设置格式无效。")
+    }
+    if settings["llm-pi-ai"] == nil, let legacy = settings.removeValue(forKey: "llm-dsh-ai") {
+      settings["llm-pi-ai"] = legacy
+    }
+    return try JSONSerialization.data(withJSONObject: settings, options: [.prettyPrinted, .sortedKeys]) + Data("\n".utf8)
+  }
+
+  private func migrateLegacyWebPlugins(from archiveRoot: URL) throws {
+    let source = archiveRoot.appendingPathComponent("profiles/web/package.json")
+    let destination = dataRoot.appendingPathComponent("profiles/desktop-lite/package.json")
     let fileManager = FileManager.default
-    try fileManager.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-    let temporary = destination.deletingLastPathComponent().appendingPathComponent(".import-\(UUID().uuidString).sqlite")
-    try fileManager.copyItem(at: source, to: temporary)
-    if fileManager.fileExists(atPath: destination.path) { try fileManager.removeItem(at: destination) }
-    try fileManager.moveItem(at: temporary, to: destination)
+    guard fileManager.fileExists(atPath: source.path), fileManager.fileExists(atPath: destination.path),
+          let legacy = try JSONSerialization.jsonObject(with: Data(contentsOf: source)) as? [String: Any],
+          var current = try JSONSerialization.jsonObject(with: Data(contentsOf: destination)) as? [String: Any]
+    else { return }
+    let legacyDependencies = (legacy["dependencies"] as? [String: String]) ?? [:]
+    var dependencies = (current["dependencies"] as? [String: String]) ?? [:]
+    for (name, version) in legacyDependencies where !name.hasPrefix("@deepseek-ai/") {
+      dependencies[name] = version
+    }
+    current["dependencies"] = dependencies
+    var dsh = (current["dsh"] as? [String: Any]) ?? [:]
+    var profile = (dsh["profile"] as? [String: Any]) ?? [:]
+    var bundles = (profile["bundles"] as? [String]) ?? []
+    let legacyDsh = legacy["dsh"] as? [String: Any]
+    let legacyProfile = legacyDsh?["profile"] as? [String: Any]
+    for name in (legacyProfile?["bundles"] as? [String]) ?? []
+      where !name.hasPrefix("@deepseek-ai/") && !bundles.contains(name) {
+      // Configuration archives intentionally omit executable dependencies. Keep
+      // the requested package version, but do not activate code that is absent
+      // from this profile until the user installs or reviews it again.
+      let installed = destination.deletingLastPathComponent()
+        .appendingPathComponent("node_modules", isDirectory: true)
+        .appendingPathComponent(name, isDirectory: true)
+      if fileManager.fileExists(atPath: installed.path) { bundles.append(name) }
+    }
+    profile["bundles"] = bundles
+    dsh["profile"] = profile
+    current["dsh"] = dsh
+    let data = try JSONSerialization.data(withJSONObject: current, options: [.prettyPrinted, .sortedKeys]) + Data("\n".utf8)
+    try data.write(to: destination, options: .atomic)
   }
 
   private func scrubDatabase(at database: URL) throws {
@@ -238,6 +322,7 @@ final class DesktopBackupManager: @unchecked Sendable {
       "u_workspace_workspaces",
       "audit_log",
       "data_inventory",
+      "metadata",
     ]
     let quoted = tables.map { "'\($0)'" }.joined(separator: ",")
     let present = try CommandRunner.run(
@@ -245,10 +330,16 @@ final class DesktopBackupManager: @unchecked Sendable {
       arguments: [database.path, "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN (\(quoted));"],
     )
     guard present.status == 0 else { throw DesktopError.message("配置备份读取 SQLite 表失败：\(present.output)") }
-    let statements = present.output
+    let presentTables = present.output
       .split(whereSeparator: \.isNewline)
+      .map(String.init)
+    var statements = presentTables
+      .filter { $0 != "metadata" }
       .map { "DELETE FROM \"\($0)\";" }
-      + ["DELETE FROM metadata WHERE key IN ('anonymous-user-id', 'payload-import-v1');", "VACUUM;"]
+    if presentTables.contains("metadata") {
+      statements.append("DELETE FROM metadata WHERE key IN ('anonymous-user-id', 'payload-import-v1');")
+    }
+    statements.append("VACUUM;")
     let scrub = try CommandRunner.run(
       executable: URL(fileURLWithPath: "/usr/bin/sqlite3"),
       arguments: [database.path, statements.joined(separator: " ")],
@@ -276,8 +367,12 @@ final class DesktopBackupManager: @unchecked Sendable {
       if name == "node_modules" || name == ".git" || name.hasPrefix(".") { continue }
       let target = destination.appendingPathComponent(name)
       let isDirectory = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
-      if isDirectory { try copyArtifacts(from: item, to: target) }
-      else { try fileManager.copyItem(at: item, to: target) }
+      if isDirectory {
+        try copyArtifacts(from: item, to: target)
+      } else {
+        if fileManager.fileExists(atPath: target.path) { try fileManager.removeItem(at: target) }
+        try fileManager.copyItem(at: item, to: target)
+      }
     }
   }
 }

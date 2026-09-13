@@ -35,10 +35,12 @@
   "dependencies": {
     "@deepseek-ai/dsh-client-ui-deepseek-files": "workspace:^",
     "@deepseek-ai/dsh-client-ui-lark": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-plugin-library": "workspace:^",
     "@deepseek-ai/dsh-client-ui-skill-library": "workspace:^",
     "@deepseek-ai/dsh-external-tools": "workspace:^",
     "@deepseek-ai/dsh-file-recognizer-office": "workspace:^",
     "@deepseek-ai/dsh-lark": "workspace:^",
+    "@deepseek-ai/dsh-model-catalog": "workspace:^",
     "@deepseek-ai/dsh-session-persistence-sqlite": "workspace:^"
   },
   "peerDependencies": {

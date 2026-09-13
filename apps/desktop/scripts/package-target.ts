@@ -77,18 +77,29 @@ export function withoutWindowsSigningEnvironment(environment: NodeJS.ProcessEnv)
  * Select signing and NSIS-compatible archive filters for electron-builder.
  * @param environment - Target packaging environment.
  * @param unsigned - Whether to create a local unsigned Windows artifact.
- * @returns Packaging environment without certificate inputs for unsigned builds.
+ * @param local - Whether to create an ad-hoc signed macOS test artifact.
+ * @returns Packaging environment without release credentials for local builds.
  */
-export function desktopElectronBuilderEnvironment(environment: NodeJS.ProcessEnv, unsigned: boolean): NodeJS.ProcessEnv {
-  const selected: NodeJS.ProcessEnv = { ...environment, DSH_DESKTOP_UNSIGNED: unsigned ? '1' : '0' }
+export function desktopElectronBuilderEnvironment(
+  environment: NodeJS.ProcessEnv,
+  unsigned: boolean,
+  local = false,
+): NodeJS.ProcessEnv {
+  const selected: NodeJS.ProcessEnv = {
+    ...environment,
+    DSH_DESKTOP_LOCAL: local ? '1' : '0',
+    DSH_DESKTOP_UNSIGNED: unsigned ? '1' : '0',
+  }
   // The bundled NSIS decoder cannot extract 7-Zip's automatic ARM64-filtered entries.
   if (environment.DSH_DESKTOP_TARGET_PLATFORM === 'win32') selected.ELECTRON_BUILDER_7Z_FILTER = 'BCJ'
-  if (!unsigned) return selected
+  if (!unsigned && !local) return selected
   return {
     ...Object.fromEntries(Object.entries(withoutWindowsSigningEnvironment(selected))
-      .filter(([name]) => !/^(?:WIN_)?CSC_/iu.test(name))),
+      .filter(([name]) => !/^(?:WIN_)?CSC_/iu.test(name))
+      .filter(([name]) => !local || (!name.startsWith('APPLE_') && !name.startsWith('DSH_DESKTOP_MACOS_')))),
     CSC_IDENTITY_AUTO_DISCOVERY: 'false',
-    DSH_DESKTOP_UNSIGNED: '1',
+    DSH_DESKTOP_LOCAL: local ? '1' : '0',
+    DSH_DESKTOP_UNSIGNED: unsigned ? '1' : '0',
   }
 }
 
@@ -172,6 +183,7 @@ interface DesktopPackageInvocation {
   readonly target: DesktopPackageTarget
   readonly directory: boolean
   readonly prepareOnly: boolean
+  readonly local: boolean
   readonly unsigned: boolean
 }
 
@@ -199,6 +211,7 @@ export function parseDesktopPackageInvocation(
     options: {
       dir: { type: 'boolean', default: false },
       'prepare-only': { type: 'boolean', default: false },
+      local: { type: 'boolean', default: false },
       unsigned: { type: 'boolean', default: false },
     },
   })
@@ -206,10 +219,14 @@ export function parseDesktopPackageInvocation(
   const name = positionals[0] ?? hostTargetName(hostPlatform, hostArch)
   if (values.unsigned && name !== 'win-x64') throw new Error('desktop package: --unsigned requires win-x64')
   if (values.unsigned && values['prepare-only']) throw new Error('desktop package: --unsigned cannot use --prepare-only')
+  const target = resolveDesktopPackageTarget(name, hostPlatform, hostArch)
+  if (values.local && target.platform !== 'darwin') throw new Error('desktop package: --local requires macOS')
+  if (values.local && values.unsigned) throw new Error('desktop package: --local and --unsigned are mutually exclusive')
   return {
-    target: resolveDesktopPackageTarget(name, hostPlatform, hostArch),
+    target,
     directory: values.dir,
     prepareOnly: values['prepare-only'],
+    local: values.local,
     unsigned: values.unsigned,
   }
 }
@@ -280,10 +297,14 @@ async function main(): Promise<void> {
   const buildEnv = withoutWindowsSigningEnvironment(withoutDesktopUploadCredentials(process.env))
   const targetEnv: NodeJS.ProcessEnv = {
     ...buildEnv,
+    ...(invocation.local && buildEnv.DSH_DESKTOP_APP_ID === undefined
+      ? { DSH_DESKTOP_APP_ID: 'ai.deepseek.harness.desktop.electron' }
+      : {}),
+    DSH_DESKTOP_LOCAL: invocation.local ? '1' : '0',
     DSH_DESKTOP_TARGET_PLATFORM: target.platform,
     DSH_DESKTOP_TARGET_ARCH: target.arch,
   }
-  const electronBuilderEnv = desktopElectronBuilderEnvironment(targetEnv, invocation.unsigned)
+  const electronBuilderEnv = desktopElectronBuilderEnvironment(targetEnv, invocation.unsigned, invocation.local)
   for (const name of WINDOWS_SIGNING_ENV_NAMES) {
     if (!invocation.unsigned && process.env[name] !== undefined) electronBuilderEnv[name] = process.env[name]
   }
@@ -311,7 +332,7 @@ async function main(): Promise<void> {
   await runPnpm(['run', 'prepare:packages'], targetEnv)
   await runPnpm(['run', 'prepare:dsh'], targetEnv)
   if (invocation.prepareOnly) return
-  if (target.platform === 'darwin' && !invocation.directory) {
+  if (target.platform === 'darwin' && !invocation.directory && !invocation.local) {
     await runPnpm([
       ...desktopElectronBuilderArguments(target, true),
       '--config.mac.notarize=false',
@@ -325,7 +346,9 @@ async function main(): Promise<void> {
   } else {
     await runPnpm(desktopElectronBuilderArguments(target, invocation.directory), electronBuilderEnv)
   }
-  if (!invocation.directory && !invocation.unsigned) writeReleaseRecord(target, electronBuilderEnv, buildPaths.artifacts)
+  if (!invocation.directory && !invocation.unsigned && !invocation.local) {
+    writeReleaseRecord(target, electronBuilderEnv, buildPaths.artifacts)
+  }
 }
 
 if (process.argv[1] !== undefined && import.meta.filename === resolve(process.argv[1])) await main()

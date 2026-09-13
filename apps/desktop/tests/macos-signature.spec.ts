@@ -59,6 +59,8 @@ describe('desktop macOS release signature', () => {
     expect(portablePath(config.extraResources[1]?.from ?? '')).toContain('/.desktop-build/targets/mac-arm64/dsh')
     expect(config).toMatchObject({
       appId: RELEASE_ENVIRONMENT.DSH_DESKTOP_APP_ID,
+      productName: 'DeepSeek Harness Electron',
+      artifactName: 'deepseek-harness-electron-${version}-${os}-${arch}.${ext}',
       mac: {
         identity: RELEASE_ENVIRONMENT.DSH_DESKTOP_MACOS_SIGNING_IDENTITY,
         forceCodeSigning: true,
@@ -141,6 +143,24 @@ describe('desktop macOS release signature', () => {
       .toThrow(/unsigned builds require Windows/u)
     expect(() => createElectronBuilderConfig({ ...RELEASE_ENVIRONMENT, DSH_DESKTOP_UNSIGNED: 'yes' }))
       .toThrow(/must be 0 or 1/u)
+    expect(() => createElectronBuilderConfig({ ...RELEASE_ENVIRONMENT, DSH_DESKTOP_LOCAL: 'yes' }))
+      .toThrow(/must be 0 or 1/u)
+  })
+
+  it('isolates ad-hoc macOS test artifacts from release signing and updates', async () => {
+    const { createElectronBuilderConfig } = await import('../electron-builder.config.mjs')
+    const config = createElectronBuilderConfig({
+      DSH_DESKTOP_APP_ID: RELEASE_ENVIRONMENT.DSH_DESKTOP_APP_ID,
+      DSH_DESKTOP_TARGET_PLATFORM: 'darwin',
+      DSH_DESKTOP_TARGET_ARCH: 'arm64',
+      DSH_DESKTOP_LOCAL: '1',
+    }, 'darwin', 'arm64')
+    expect(portablePath(config.directories.output)).toContain('/targets/mac-arm64/local-artifacts')
+    expect(config).toMatchObject({
+      mac: { identity: '-', forceCodeSigning: true, hardenedRuntime: false, notarize: false },
+      dmg: { sign: false, writeUpdateInfo: false },
+      publish: null,
+    })
   })
 
   it('accepts the configured authority and team', () => {

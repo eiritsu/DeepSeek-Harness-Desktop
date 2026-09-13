@@ -113,6 +113,7 @@ External packages installed for runtime use or distributed inside the prebuilt b
 | [`ws`](https://github.com/websockets/ws) | MIT |
 | [`yaml`](https://github.com/eemeli/yaml) | ISC |
 | [`yauzl`](https://github.com/thejoshwolfe/yauzl) | MIT |
+| [`yazl`](https://github.com/thejoshwolfe/yazl) | MIT |
 | [`zod`](https://github.com/colinhacks/zod) | MIT |
 | [`zustand`](https://github.com/pmndrs/zustand) | MIT |
 
@@ -173,6 +174,7 @@ External packages **directly declared** for development, tests, types, or toolin
 | [`@types/use-sync-external-store`](https://github.com/DefinitelyTyped/DefinitelyTyped) | MIT |
 | [`@types/ws`](https://github.com/DefinitelyTyped/DefinitelyTyped) | MIT |
 | [`@types/yauzl`](https://github.com/DefinitelyTyped/DefinitelyTyped) | MIT |
+| [`@types/yazl`](https://github.com/DefinitelyTyped/DefinitelyTyped) | MIT |
 | [`@vitejs/plugin-react`](https://github.com/vitejs/vite-plugin-react) | MIT |
 | [`@vitest/coverage-v8`](https://github.com/vitest-dev/vitest) | MIT |
 | [`@vitest/spy`](https://github.com/vitest-dev/vitest) | MIT |

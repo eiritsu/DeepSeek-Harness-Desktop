@@ -12,6 +12,7 @@ export const DESKTOP_IPC = {
   pluginsRemove: 'dsh-desktop:plugins-remove',
   pluginsUpdate: 'dsh-desktop:plugins-update',
   pluginsToggle: 'dsh-desktop:plugins-toggle',
+  pluginsOpenManager: 'dsh-desktop:plugins-open-manager',
   pluginsDisableAll: 'dsh-desktop:plugins-disable-all',
   backendStatus: 'dsh-desktop:backend-status',
   backendRetry: 'dsh-desktop:backend-retry',
@@ -20,6 +21,8 @@ export const DESKTOP_IPC = {
   sessionBackupExport: 'dsh-desktop:session-backup-export',
   sessionBackupImport: 'dsh-desktop:session-backup-import',
   sessionDataReset: 'dsh-desktop:session-data-reset',
+  configurationBackupExport: 'dsh-desktop:configuration-backup-export',
+  configurationBackupImport: 'dsh-desktop:configuration-backup-import',
   skillLibraryRequest: 'dsh-desktop:skill-library-request',
   backendState: 'dsh-desktop:backend-state',
   updatesCheck: 'dsh-desktop:updates-check',
@@ -62,9 +65,14 @@ export interface DshDesktopApi {
 export interface DshDesktopApplicationApi {
   readonly protocolVersion: 1
   readonly data: {
+    exportConfiguration(): Promise<{ path?: string }>
+    importConfiguration(): Promise<{ imported: boolean }>
     exportBackup(): Promise<{ path?: string }>
     importBackup(): Promise<{ imported: boolean }>
     reset(): Promise<{ reset: boolean }>
+  }
+  readonly plugins: {
+    openManager(): Promise<void>
   }
   readonly skills: {
     request(request: import('./skill-library.ts').DesktopSkillRequest): Promise<unknown>

@@ -27,7 +27,7 @@ Electron owns `$DSH_HOME/profiles/desktop`. Its `dependencies` contains only ins
 
 The local startup page exposes startup status and available recovery actions; the loaded dsh renderer receives only the desktop protocol marker. The separate plugin window receives structured list, install, remove, update, and update-check operations; neither renderer receives filesystem access, raw Electron IPC, a shell, or arbitrary pnpm arguments.
 
-The loaded application receives three narrow operations for the authoritative Session SQLite database: export, validated import, and reset. Export and import use native file dialogs; every operation stops the Node Host before copying or replacing the database, validates schema and required tables, applies owner-only file permissions, and restarts the Host.
+The loaded application receives three narrow operations for the authoritative Session SQLite database: export, validated import, and reset. Export and import use native file dialogs; every operation stops the Node Host before copying or replacing the database, validates schema and required tables, applies owner-only file permissions, and restarts the Host. The Desktop composition also mounts the live `models.dev` metadata catalog and starts without an implicit DeepSeek provider route; routes remain user-owned settings.
 
 The application also receives a typed SkillHub request bridge. Catalog responses and archives have byte limits; archive installation rejects invalid identifiers, symbolic links, excessive entries, missing `SKILL.md`, and existing destinations. Install and exact-name removal stop the Host before changing `$DSH_HOME/skills`. No general filesystem, arbitrary URL, raw IPC, shell, or package-manager capability is exposed to the Web client. The built-in Desktop composition also mounts the shared DeepSeek Files, external-tools, SkillHub, and Lark packages.
 
@@ -97,6 +97,16 @@ pnpm run package:desktop:win:x64
 The macOS arm64 command requires Apple Silicon. The macOS x64 command runs on Intel macOS or Apple Silicon with Rosetta. The Windows x64 command requires Windows x64. Linux is not a supported Desktop release target.
 
 Each target owns its packed package inputs, prepared runtime, package set, dsh tree, pnpm preparation state, unpacked application, update metadata, and final artifacts under `apps/desktop/.desktop-build/targets/<target>/`. The Node.js archive cache remains shared under `.desktop-build/downloads` because every archive name includes its version, platform, and architecture and is verified before extraction. A target build never consumes another target's mutable preparation state.
+
+### Local macOS test package
+
+Apple Silicon development hosts without a Developer ID certificate can build an ad-hoc signed application, DMG, and ZIP for local startup and installer testing:
+
+```sh
+pnpm run package:desktop:mac:arm64:local
+```
+
+The command uses `ai.deepseek.harness.desktop.electron` unless `DSH_DESKTOP_APP_ID` supplies another identifier. The Electron product is named `DeepSeek Harness Electron`, so it can coexist with the Swift `DeepSeek Harness` and `DeepSeek Harness Lite` applications. It writes only to `.desktop-build/targets/mac-arm64/local-artifacts/`, strips ambient certificate and Apple notarization credentials, disables hardened runtime, notarization, automatic updates, and release completion metadata, and cannot be uploaded by the release command. Use `package:desktop:mac:arm64:local:dir` when only the runnable application directory is needed. These artifacts test the complete bundled runtime on their build machine; they are not distributable release artifacts and do not replace Developer ID, notarization, or Gatekeeper qualification.
 
 ### Runtime file selection
 
@@ -186,7 +196,7 @@ pnpm run prepare:desktop
 
 This diagnostic command is an alternative stopping point, not the first half of a two-command build. A later `package:desktop*` command repeats the official build and preparation so it cannot consume stale dsh packages, runtime files, or dsh content.
 
-Every package command builds the repository, packs the first-party production closures rooted at dsh and the private Desktop Host, and prepares target-specific Node and pnpm executables. `prepare:dsh` installs the production graph once at build time, copies materialized packages into `extraResources/dsh`, removes package-manager metadata, and writes `desktop-runtime.json` with shared package versions and final file hashes. On macOS it signs and verifies native files before inventory generation; electron-builder excludes this already-signed tree from nested re-signing. Resource mappings explicitly include `dsh/node_modules`, which the default root-directory filter omits; the copied inventory is checked before signing and again after signing. Signed installer, notarization, installed upgrade, and target-specific native-module qualification require the release environment.
+Every package command builds the repository, packs the first-party production closures rooted at dsh and the private Desktop Host, and prepares target-specific Node and pnpm executables. `prepare:dsh` installs the production graph once at build time, copies materialized packages into `extraResources/dsh`, removes package-manager metadata, and writes `desktop-runtime.json` with shared package versions and final file hashes. On macOS it signs and verifies native files before inventory generation; electron-builder excludes this already-signed tree from nested re-signing. Local test mode uses ad-hoc signatures, while release mode requires the configured Developer ID. Resource mappings explicitly include `dsh/node_modules`, which the default root-directory filter omits; the copied inventory is checked before signing and again after signing. Signed installer, notarization, installed upgrade, and target-specific native-module qualification require the release environment.
 
 An unpacked artifact contains Electron, the materialized dsh production tree, upstream Node.js and pnpm, and the shell application. Installer size and filesystem size differ; release qualification measures both, plus the profile’s plugin storage and first-launch latency. The runtime trades more application files for eliminating core package installation on the user’s machine.
 

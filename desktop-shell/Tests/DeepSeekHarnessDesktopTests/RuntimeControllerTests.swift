@@ -632,6 +632,50 @@ private func createSourceArchive(from source: URL, at archive: URL) throws {
   #expect(FileManager.default.fileExists(atPath: legacy.appendingPathComponent("sessions/legacy.jsonl").path))
 }
 
+@Test func legacySessionDatabaseIsCopiedToDesktopDirectoryWithoutDeletingTheSource() async throws {
+  let temporaryRoot = FileManager.default.temporaryDirectory
+    .appendingPathComponent("dsh-session-location-migration-\(UUID().uuidString)", isDirectory: true)
+  defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+  let support = temporaryRoot.appendingPathComponent("support", isDirectory: true)
+  let dshHome = temporaryRoot.appendingPathComponent("data", isDirectory: true)
+  try FileManager.default.createDirectory(at: dshHome, withIntermediateDirectories: true)
+  let legacy = dshHome.appendingPathComponent("dsh-desktop.sqlite")
+  let setup = try CommandRunner.run(
+    executable: URL(fileURLWithPath: "/usr/bin/sqlite3"),
+    arguments: [legacy.path, "CREATE TABLE dsh_session_metadata(id TEXT PRIMARY KEY, header_json TEXT NOT NULL, updated_at TEXT NOT NULL); CREATE TABLE dsh_session_events(session_id TEXT NOT NULL, seq INTEGER NOT NULL, event_json TEXT NOT NULL, PRIMARY KEY(session_id, seq)); INSERT INTO dsh_session_metadata VALUES ('legacy-session','{}','2026-09-13T00:00:00Z'); PRAGMA user_version=1;"]
+  )
+  #expect(setup.status == 0)
+  let fixture = temporaryRoot.appendingPathComponent("source", isDirectory: true)
+  try writePreparedSource(at: fixture, revision: "session-location-migration")
+  let suiteName = "dsh-session-location-migration-\(UUID().uuidString)"
+  let defaults = try #require(UserDefaults(suiteName: suiteName))
+  defer { defaults.removePersistentDomain(forName: suiteName) }
+  defaults.set(fixture.path, forKey: "activeSourceRoot")
+  let manager = SourceManager(
+    supportRoot: support,
+    defaults: defaults,
+    bootstrapArchive: nil,
+    dshHome: dshHome,
+    legacyHome: nil
+  )
+
+  _ = try await withCheckedThrowingContinuation { continuation in
+    manager.resolveAndPrepare(progress: { _ in }) { continuation.resume(with: $0) }
+  }
+
+  let migrated = dshHome.appendingPathComponent("desktop/dsh-desktop.sqlite")
+  #expect(FileManager.default.fileExists(atPath: legacy.path))
+  #expect(FileManager.default.fileExists(atPath: migrated.path))
+  let query = try CommandRunner.run(
+    executable: URL(fileURLWithPath: "/usr/bin/sqlite3"),
+    arguments: [migrated.path, "SELECT count(*) FROM dsh_session_metadata;"]
+  )
+  #expect(query.status == 0)
+  #expect(query.output.trimmingCharacters(in: .whitespacesAndNewlines) == "1")
+  let attributes = try FileManager.default.attributesOfItem(atPath: migrated.path)
+  #expect((attributes[.posixPermissions] as? NSNumber)?.intValue == 0o600)
+}
+
 @Test func sourceUpdateTopologyNeverTreatsDivergenceAsAnUpgrade() {
   #expect(SourceManager.updateTopology(
     sameCommit: true,

@@ -1313,6 +1313,8 @@ export interface PiAiProviderProfile {
 export interface PiAiModelProfile {
   /** Model id sent to the provider and accepted by {@link GenerateOptions.model}. */
   id: string
+  /** Upstream catalog owner retained when the configured route is an alias. */
+  ownedBy?: string
   /** Display name for selectors; defaults to the catalog name, then the id. */
   name?: string
   /** Maximum combined request and response context in tokens. */
@@ -1471,7 +1473,7 @@ export type PiAiThinkingTokenBudgetField = NonNullable<OpenAICompletionsCompat['
 
 依赖：`Api`（`@earendil-works/pi-ai`）· `CacheRetention`（`@earendil-works/pi-ai`）· `Model`（`@earendil-works/pi-ai`）· `ModelThinkingLevel`（`@earendil-works/pi-ai`）· `OpenAICompletionsCompat`（`@earendil-works/pi-ai`）· [`RetryPolicyConfig`](../packages/llm/llm/src/index.ts) · `ThinkingBudgets`（`@earendil-works/pi-ai`）· `Transport`（`@earendil-works/pi-ai`)
 
-来源：[`packages/llm/llm-pi-ai/src/config.ts:221`](../packages/llm/llm-pi-ai/src/config.ts)
+来源：[`packages/llm/llm-pi-ai/src/config.ts:227`](../packages/llm/llm-pi-ai/src/config.ts)
 
 <a id="deepseek-aidsh-llm-replay"></a>
 
@@ -1695,6 +1697,28 @@ export interface Config {
 ```
 
 来源：[`packages/feedback/message-feedback/src/index.ts:40`](../packages/feedback/message-feedback/src/index.ts)
+
+<a id="deepseek-aidsh-model-catalog"></a>
+
+## `@deepseek-ai/dsh-model-catalog`
+
+需要：`llm` · `storageDomain`
+
+```ts config-catalog
+/** Runtime configuration for dynamic model-catalog refresh. */
+export interface Config {
+  /** JSON catalog URL using the models.dev provider/model representation. */
+  catalogURL?: string
+  /** Milliseconds a successful persisted snapshot remains fresh. */
+  refreshIntervalMs?: number
+  /** Milliseconds before one remote catalog request aborts. */
+  requestTimeoutMs?: number
+  /** Maximum bytes accepted from one remote catalog response. */
+  maxResponseBytes?: number
+}
+```
+
+来源：[`packages/llm/model-catalog/src/index.ts:38`](../packages/llm/model-catalog/src/index.ts)
 
 <a id="deepseek-aidsh-permission-presets"></a>
 
@@ -3591,6 +3615,7 @@ export interface Config {
 - `@deepseek-ai/dsh-client-ui-open-in-app`（[`packages/client/ui-open-in-app/src/index.ts`](../packages/client/ui-open-in-app/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-permission-presets`（[`packages/client/ui-permission-presets/src/index.ts`](../packages/client/ui-permission-presets/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-plan`（[`packages/client/ui-plan/src/index.ts`](../packages/client/ui-plan/src/index.ts)）
+- `@deepseek-ai/dsh-client-ui-plugin-library`（[`packages/client/ui-plugin-library/src/index.ts`](../packages/client/ui-plugin-library/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-reference`（[`packages/client/ui-reference/src/index.ts`](../packages/client/ui-reference/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-renderer`（[`packages/client/ui-renderer/src/index.ts`](../packages/client/ui-renderer/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-schedule`（[`packages/client/ui-schedule/src/index.ts`](../packages/client/ui-schedule/src/index.ts)）

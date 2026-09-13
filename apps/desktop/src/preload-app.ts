@@ -23,9 +23,14 @@ const startup: DshDesktopStartupApi = {
 const application: DshDesktopApplicationApi = {
   protocolVersion: 1 as const,
   data: {
+    exportConfiguration: () => ipcRenderer.invoke(DESKTOP_IPC.configurationBackupExport) as Promise<{ path?: string }>,
+    importConfiguration: () => ipcRenderer.invoke(DESKTOP_IPC.configurationBackupImport) as Promise<{ imported: boolean }>,
     exportBackup: () => ipcRenderer.invoke(DESKTOP_IPC.sessionBackupExport) as Promise<{ path?: string }>,
     importBackup: () => ipcRenderer.invoke(DESKTOP_IPC.sessionBackupImport) as Promise<{ imported: boolean }>,
     reset: () => ipcRenderer.invoke(DESKTOP_IPC.sessionDataReset) as Promise<{ reset: boolean }>,
+  },
+  plugins: {
+    openManager: () => ipcRenderer.invoke(DESKTOP_IPC.pluginsOpenManager) as Promise<void>,
   },
   skills: {
     request: request => ipcRenderer.invoke(DESKTOP_IPC.skillLibraryRequest, request) as Promise<unknown>,

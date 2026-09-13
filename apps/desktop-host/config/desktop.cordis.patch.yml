@@ -26,6 +26,10 @@
   config:
     path: !!js dshHomePath('desktop', 'dsh-desktop.sqlite')
 
+# Desktop has no implicit DeepSeek route; model routes are user-owned settings.
+- id: llm-deepseek
+  disabled: true
+
 - id: connection
   inject:
     - credentials
@@ -43,6 +47,17 @@
 
     - id: ui-skill-library
       name: '@deepseek-ai/dsh-client-ui-skill-library'
+
+    - id: ui-plugin-library
+      name: '@deepseek-ai/dsh-client-ui-plugin-library'
+
+    - id: model-catalog
+      name: '@deepseek-ai/dsh-model-catalog'
+      config:
+        catalogURL: https://models.dev/api.json
+        refreshIntervalMs: 86400000
+        requestTimeoutMs: 15000
+        maxResponseBytes: 8388608
 
     - id: lark
       name: '@deepseek-ai/dsh-lark'

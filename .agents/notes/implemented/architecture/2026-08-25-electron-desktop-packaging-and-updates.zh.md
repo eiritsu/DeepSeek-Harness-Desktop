@@ -20,7 +20,7 @@ DeepSeek Harness 需要一个复用 Web UI 的 Electron 桌面应用。该应用
 
 Electron 拥有 `.dsh/profiles/desktop` 保留 profile。[内置运行时决策](2026-09-08-desktop-bundled-runtime-and-external-plugins.zh.md)负责核心资源存储、外部插件依赖、共享包链接和 profile 协调。私有 Desktop Host 保持独立于公共 CLI 包，且不会发布到 npm。
 
-一个 Desktop 发布号同时标识 Electron 产物及其精确的 `@deepseek-ai/dsh` 与 `@deepseek-ai/dsh-desktop-host` 依赖。发布不能在构建或运行时选择不同的核心版本。因此，即使壳代码没有变化，更新 dsh 也必须产生新的 Electron 发布。
+一个 Desktop 发布号同时标识 Electron 产物及其精确的 `@deepseek-ai/dsh` 与 `@deepseek-ai/dsh-desktop-host` 依赖。发布不能在构建或运行时选择不同的核心版本。因此，即使壳代码没有变化，更新 dsh 也必须产生新的 Electron 发布。Electron 应用和产物使用 `DeepSeek Harness Electron` 产品名；本地测试标识符为 `ai.deepseek.harness.desktop.electron`，使其启动注册和安装位置均与两个 Swift 应用隔离。
 
 浏览器 Web UI、dsh 后端、现有 `dsh plugin` CLI、用户 npm 和用户 pnpm 都不能修改该 profile。CLI 保留 `desktop` 名称的所有大小写变体，并拒绝针对它的启动、配置 dump 和插件管理请求。Electron 在项目恢复或 Host 启动前获取进程生命周期单实例锁；后续启动只会聚焦或重建主窗口，不会接触 profile 状态。Electron-only GUI 通过 preload 发送结构化安装、删除和更新请求；Electron 只调用其内置 pnpm。
 
@@ -85,6 +85,8 @@ Electron 更新只使用一个 `electron-updater` 发布流和签名 `electron-b
 
 Electron 发布产物必须签名；macOS 产物必须公证。发布自动化必须通过明确的环境变量提供应用 ID、macOS Developer ID 限定名、预期 Team ID 与一套完整的 notarytool 凭据。配置加载会拒绝缺失或格式错误的标识符和不完整的公证凭据，macOS 打包还会强制签名，避免证书发现过程静默选择其他已安装身份或生成未签名发布。运行时准备会验证每个内嵌 Mach-O 文件的精确 Authority 与 Team ID，以及时间戳和 hardened-runtime 标记。签名后钩子会执行 Apple 的深度严格应用验证，并要求同一叶证书 Authority 与 Team ID 完全匹配，验证通过后才继续生成产物。固定目标安装包命令使用[隔离的 App 副本并行公证](../process/2026-09-09-parallel-macos-notarization.zh.md)：ZIP 包含已钉票的 App，签名 DMG 则携带覆盖其中未钉票 App 的票据。DMG 的 artifact-completion hook 要求其使用配置的身份、具备有效票据并通过 Gatekeeper。只有两条产物流都成功，命令才会移入其输出并写入发布完成记录；仅生成目录的命令仍会公证 App 并钉票。macOS 更新使用签名 ZIP，因此 DMG 不生成 blockmap；否则钉票会让已经生成的 DMG blockmap 失效。自定义协议提供已安装的前端分发目录和活跃模块图点名的客户端文件，并拒绝路径穿越或访问这些根目录之外的内容。插件安装器 API 只对 Electron 拥有的管理 GUI 可用，不存在于浏览器应用或后端 RPC 中。
 
+显式的本地 macOS 测试调用会对内嵌 Mach-O 文件和 Electron 应用使用 ad-hoc 签名，不启用 hardened runtime；它会清除环境中的证书与公证凭据，把输出隔离在 `local-artifacts`，省略更新器配置与发布完成记录，而且不会进入上传路径。产物 smoke 会验证当前 POSIX flock 原生绑定，不再引用已移除的 `fs-ext` 依赖。它可以在构建主机上运行完整打包运行时，但不能取得可分发发布资格。
+
 [固定版本的 osx-sign 补丁](../../../../patches/@electron__osx-sign@1.3.3.patch)在两种已发布模块构建中使用 `lstat`，因此 Framework 的文件和目录别名不会触发重复签名。选定的上游版本能够跳过这些别名前，仍需保留该补丁。PAK 文件由外层 bundle 签名记录完整性；逐个签名会增加串行时间戳请求，但不会增加资源完整性保护。Desktop 保留全部语言文件，只跳过其单独签名。可执行代码仍使用 Developer ID 签名、安全时间戳和 hardened runtime。[签名器遍历回归测试](../../../../apps/desktop/tests/macos-signing-walk.spec.ts)使用真实 Framework 别名执行已安装依赖；发布验收仍要求严格应用验证、公证和启动。
 
 Windows 发布打包通过 `/f` 向已配置且与 SafeNet 兼容的 SignTool 提供 `DSH_DESKTOP_WINDOWS_CER_FILE` 指定的公开 EV 叶证书，并通过必需的 `DSH_DESKTOP_WINDOWS_KEY_CONTAINER` 标识匹配的私钥。证书文件保留在源码仓库之外，私钥仍留在 USB Token 上。electron-builder hook 把每个产物交给采用 CRLF 的 `windows-sign.cmd`；该 CMD 只调用一次 SignTool，并指定 SafeNet `/kc "[{{PIN}}]=容器"` 值与 CSP、SHA-256 文件摘要和 DigiCert SHA-256 RFC 3161 时间戳。hook 不会改用其他 SignTool，也不会重试失败的请求。打包编排不会把任何 `DSH_DESKTOP_WINDOWS_*` 字段传给构建与 运行时准备子进程，只会把证书路径、SignTool 路径、密钥容器和 PIN 传入 electron-builder。签名器在已清理的 CMD 环境中只提供经过校验的签名字段；CMD 会禁用延迟展开，在 SignTool 启动前清除这些字段，并仅在 SignTool 必需的命令行中保留 PIN。所有对外诊断都会替换 PIN，而且只能允许专用构建账号和管理员检查该 runner。签名器会在企业 Code Integrity 检查 electron-builder 的临时 NSIS bootstrap 前先为该可执行文件签名；对于生成的可执行文件，只有证书表条目指向文件末尾之外时，才会在最终签名前清除该条目。SignTool、证书、容器、PIN、Token 或签名不可用时，打包会在产生未签名产物前失败。自定义协议提供已安装的前端分发目录和活跃模块图点名的客户端文件，并拒绝路径穿越或访问这些根目录之外的内容。插件安装器 API 只对 Electron 持有的管理 GUI 可用，不存在于浏览器应用或后端 RPC 中。
@@ -111,6 +113,8 @@ NSIS 先解压到私有的 `7z-out` 目录，再把文件复制到应用目录�
 | 资格验证 | macOS 打包要求已配置的公司身份与公证凭据可用，在生成清单前验证每个原生运行时文件，验证完整应用签名，并要求应用和 DMG 都完成公证且通过 Gatekeeper。Windows 打包要求已配置的公开证书、SafeNet 私钥容器、Token Password 与 SignTool，并验证生成的每个签名。更新托管、跨上一版本的已安装产物测试和各平台 GUI 录制仍是发布环境门槛。 |
 
 `dev:desktop` 会构建当前 workspace，把已构建 CLI 包、私有 Desktop Host 包及其依赖链接投影为一次性项目，使用隔离的 Harness home，打开 Main、Renderer 和 Host 调试器，并在不准备发布资源的情况下启动未打包 Electron。该模式的链接依赖图不是由 pnpm 安装的桌面项目，因此会禁用包修改。固定的 macOS arm64、macOS x64 与 Windows x64 打包命令会把同一目标传给运行时准备、dsh 准备和 electron-builder；每条命令还提供未封装安装器的变体，用于在生成安装器前验证发布路径。
+
+macOS arm64 本地命令让同一目标和内置资源通过准备流程，只应用 ad-hoc 签名，并在发布产物目录之外生成 DMG、ZIP 或可运行目录。
 
 ## 考虑过的替代方案
 
@@ -149,6 +153,7 @@ NSIS 先解压到私有的 `7z-out` 目录，再把文件复制到应用目录�
 - 共享 `.dsh` 数据在迁移或修改前拒绝不兼容的读取方。
 - 不打开回环监听端口，沙箱渲染进程不能访问任意文件系统或 Electron API。
 - Workspace 开发无需下载发布资源即可运行当前已构建代码，未封装安装器的应用验证仍保留生产安装路径。
+- Apple Silicon 开发主机无需发布凭据即可验证打包应用，而本地产物始终不能进入上传流程。
 - Windows 发布打包要求已验证的 SignTool、EV Token、匹配的公开叶证书、Token Password 和明确的密钥容器，绝不会回退到未签名产物或可导出的密钥文件。
 - 目标更新只有在已完成签名的构建及其引用的每个产物通过发布校验后才能暴露新频道元数据；保留的历史产物继续供差分更新使用。
 - 每个发布阻断平台上的签名已安装产物均能从上一个受支持版本成功更新。

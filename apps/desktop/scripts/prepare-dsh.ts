@@ -134,7 +134,10 @@ async function main(): Promise<void> {
       }
     }
     if (process.platform === 'darwin') {
-      await signMacOSRuntime(DSH_OUTPUT_ROOT, resolveDesktopAppId(process.env), resolveMacOSSigningEnvironment(process.env))
+      const signing = process.env.DSH_DESKTOP_LOCAL === '1'
+        ? 'ad-hoc'
+        : resolveMacOSSigningEnvironment(process.env)
+      await signMacOSRuntime(DSH_OUTPUT_ROOT, resolveDesktopAppId(process.env), signing)
     }
     writeDesktopRuntime(DSH_OUTPUT_ROOT, release, packageSet.packages.map(entry => entry.name), target)
     const descriptor = await verifyDesktopRuntime(DSH_OUTPUT_ROOT, release.version, target)

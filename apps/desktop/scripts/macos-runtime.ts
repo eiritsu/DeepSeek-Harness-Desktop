@@ -5,7 +5,12 @@ import { closeSync, openSync, readSync } from 'node:fs'
 import { join } from 'node:path'
 import { inventoryDesktopRuntime } from '../src/runtime-tree.ts'
 import type { MacOSSigningEnvironment } from './desktop-release-environment.mjs'
-import { signMacOSRuntimeCode, verifyMacOSRuntimeCode } from './verify-macos-signature.mjs'
+import {
+  signMacOSRuntimeAdHocCode,
+  signMacOSRuntimeCode,
+  verifyMacOSRuntimeAdHocCode,
+  verifyMacOSRuntimeCode,
+} from './verify-macos-signature.mjs'
 
 const MACH_O_MAGICS = new Set(['cafebabe', 'cafebabf', 'cefaedfe', 'cffaedfe', 'feedface', 'feedfacf', 'bebafeca', 'bfbafeca'])
 
@@ -21,10 +26,14 @@ function isMachO(path: string): boolean {
  * Sign and verify every materialized Mach-O file, awaiting all signers on failure.
  * @param root - Self-contained production runtime without symlinks.
  * @param appId - Release application identifier.
- * @param expected - Required signing identity.
+ * @param expected - Release identity or the explicit local ad-hoc mode.
  * @returns Number of signed native files.
  */
-export async function signMacOSRuntime(root: string, appId: string, expected: MacOSSigningEnvironment): Promise<number> {
+export async function signMacOSRuntime(
+  root: string,
+  appId: string,
+  expected: MacOSSigningEnvironment | 'ad-hoc',
+): Promise<number> {
   const files = inventoryDesktopRuntime(root).map(file => file.path).filter(path => isMachO(join(root, path)))
   let next = 0
   const workers = Array.from({ length: Math.min(4, files.length) }, async () => {
@@ -32,8 +41,13 @@ export async function signMacOSRuntime(root: string, appId: string, expected: Ma
       const path = files[next++]
       if (path === undefined) return
       const identifier = `${appId}.runtime.${createHash('sha256').update(path).digest('hex')}`
-      await signMacOSRuntimeCode(join(root, path), identifier, expected)
-      verifyMacOSRuntimeCode(join(root, path), expected)
+      if (expected === 'ad-hoc') {
+        await signMacOSRuntimeAdHocCode(join(root, path), identifier)
+        verifyMacOSRuntimeAdHocCode(join(root, path))
+      } else {
+        await signMacOSRuntimeCode(join(root, path), identifier, expected)
+        verifyMacOSRuntimeCode(join(root, path), expected)
+      }
     }
   })
   const results = await Promise.allSettled(workers)

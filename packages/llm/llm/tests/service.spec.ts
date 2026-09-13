@@ -456,7 +456,6 @@ describe('LlmRuntime', () => {
           [Symbol.asyncIterator](): AsyncIterator<StreamChunk> {
             return {
               // Third-party adapters can reject with arbitrary values.
-              // oxlint-disable-next-line typescript/prefer-promise-reject-errors
               next: () => Promise.reject('plain provider failure'),
             }
           },
@@ -952,6 +951,40 @@ describe('LlmRuntime', () => {
         },
       },
     })
+  })
+
+  it('applies dynamic model metadata to prepared calls', async () => {
+    const ctx = new Context()
+    await ctx.plugin(LlmRuntime)
+    const adapter = new class extends ScriptedAdapter {
+      override prepareCall(provider: string, model: string) {
+        return Promise.resolve({
+          model: {
+            provider,
+            id: model,
+            name: model,
+            inputModalities: ['text'] as const,
+            context: { contextWindow: 32_000 },
+          },
+          stream: (options: GenerateOptions) => super.stream(options),
+        })
+      }
+    }(SCRIPT)
+    ctx.llm.registerAdapter(['route'], adapter)
+    ctx.llm.registerModelMetadataEnricher('test-dynamic-catalog', () => Promise.resolve({
+      authoritative: true,
+      inputModalities: ['text', 'image'],
+      contextWindow: 128_000,
+      reasoning: {
+        efforts: [{ id: ReasoningEffortId('high'), name: 'High' }],
+        defaultEffort: ReasoningEffortId('high'),
+      },
+    }))
+
+    const prepared = await ctx.llm.prepareCall({ provider: 'route', model: 'model' })
+    expect(prepared.inputModalities).toEqual(['text', 'image'])
+    expect(prepared.context).toEqual({ contextWindow: 128_000 })
+    expect(prepared.config.reasoningEffort).toBe(ReasoningEffortId('high'))
   })
 
   it('reuses one exact-model lookup for prepared config and context metadata', async () => {

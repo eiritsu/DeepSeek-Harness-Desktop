@@ -38,6 +38,7 @@ describe('desktop package target', () => {
     expect(parseDesktopPackageInvocation(['mac-arm64', '--dir'], 'darwin', 'arm64').directory).toBe(true)
     expect(parseDesktopPackageInvocation([], 'darwin', 'arm64').target.name).toBe('mac-arm64')
     expect(parseDesktopPackageInvocation(['--prepare-only'], 'darwin', 'arm64').prepareOnly).toBe(true)
+    expect(parseDesktopPackageInvocation(['mac-arm64', '--local'], 'darwin', 'arm64').local).toBe(true)
     expect(() => parseDesktopPackageInvocation(['mac-arm64', 'mac-x64'], 'darwin', 'arm64'))
       .toThrow(/at most one target/u)
   })
@@ -69,6 +70,16 @@ describe('desktop package target', () => {
       .toThrow(/cannot use --prepare-only/u)
   })
 
+  it('limits local ad-hoc artifacts to macOS and keeps them distinct from unsigned Windows output', () => {
+    expect(parseDesktopPackageInvocation(['mac-arm64', '--local', '--dir'], 'darwin', 'arm64')).toMatchObject({
+      local: true, directory: true, unsigned: false,
+    })
+    expect(() => parseDesktopPackageInvocation(['win-x64', '--local'], 'win32', 'x64'))
+      .toThrow(/requires macOS/u)
+    expect(() => parseDesktopPackageInvocation(['win-x64', '--local', '--unsigned'], 'win32', 'x64'))
+      .toThrow(/requires macOS/u)
+  })
+
   it('removes ambient certificate inputs for unsigned builds and overrides an inherited signing mode', () => {
     const environment = {
       DSH_DESKTOP_APP_ID: 'com.example.desktop',
@@ -82,9 +93,29 @@ describe('desktop package target', () => {
     expect(desktopElectronBuilderEnvironment(environment, true)).toEqual({
       DSH_DESKTOP_APP_ID: 'com.example.desktop',
       CSC_IDENTITY_AUTO_DISCOVERY: 'false',
+      DSH_DESKTOP_LOCAL: '0',
       DSH_DESKTOP_UNSIGNED: '1',
     })
-    expect(desktopElectronBuilderEnvironment(environment, false)).toEqual({ ...environment, DSH_DESKTOP_UNSIGNED: '0' })
+    expect(desktopElectronBuilderEnvironment(environment, false)).toEqual({
+      ...environment, DSH_DESKTOP_LOCAL: '0', DSH_DESKTOP_UNSIGNED: '0',
+    })
+  })
+
+  it('removes macOS release credentials from local ad-hoc builds', () => {
+    expect(desktopElectronBuilderEnvironment({
+      DSH_DESKTOP_APP_ID: 'com.example.desktop',
+      DSH_DESKTOP_TARGET_PLATFORM: 'darwin',
+      DSH_DESKTOP_MACOS_SIGNING_IDENTITY: 'Release Identity',
+      DSH_DESKTOP_MACOS_TEAM_ID: 'TEAMID1234',
+      APPLE_API_KEY: '/private/key.p8',
+      CSC_LINK: '/private/certificate.p12',
+    }, false, true)).toEqual({
+      DSH_DESKTOP_APP_ID: 'com.example.desktop',
+      DSH_DESKTOP_TARGET_PLATFORM: 'darwin',
+      DSH_DESKTOP_LOCAL: '1',
+      DSH_DESKTOP_UNSIGNED: '0',
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false',
+    })
   })
 
   it.each([false, true])('pins the Windows archive filter for the NSIS decoder (unsigned: %s)', (unsigned) => {

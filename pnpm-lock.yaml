@@ -516,6 +516,9 @@ importers:
       semver:
         specifier: ^7.8.5
         version: 7.8.5
+      yazl:
+        specifier: ^3.3.1
+        version: 3.3.1
     devDependencies:
       '@aws-sdk/client-s3':
         specifier: 3.1067.0
@@ -535,6 +538,9 @@ importers:
       '@types/semver':
         specifier: ^7.8.0
         version: 7.8.0
+      '@types/yazl':
+        specifier: ^3.3.0
+        version: 3.3.1
       app-builder-lib:
         specifier: 26.15.3
         version: 26.15.3(dmg-builder@26.15.3)(electron-builder-squirrel-windows@26.15.3)
@@ -589,6 +595,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-lark':
         specifier: workspace:^
         version: link:../../packages/client/ui-lark
+      '@deepseek-ai/dsh-client-ui-plugin-library':
+        specifier: workspace:^
+        version: link:../../packages/client/ui-plugin-library
       '@deepseek-ai/dsh-client-ui-skill-library':
         specifier: workspace:^
         version: link:../../packages/client/ui-skill-library
@@ -613,6 +622,9 @@ importers:
       '@deepseek-ai/dsh-launch-environment':
         specifier: workspace:^
         version: link:../../packages/util/launch-environment
+      '@deepseek-ai/dsh-model-catalog':
+        specifier: workspace:^
+        version: link:../../packages/llm/model-catalog
       '@deepseek-ai/dsh-session-persistence-sqlite':
         specifier: workspace:^
         version: link:../../packages/session/session-persistence-sqlite
@@ -1680,6 +1692,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-lark':
         specifier: workspace:^
         version: link:../../client/ui-lark
+      '@deepseek-ai/dsh-client-ui-plugin-library':
+        specifier: workspace:^
+        version: link:../../client/ui-plugin-library
       '@deepseek-ai/dsh-client-ui-skill-library':
         specifier: workspace:^
         version: link:../../client/ui-skill-library
@@ -1692,6 +1707,9 @@ importers:
       '@deepseek-ai/dsh-lark':
         specifier: workspace:^
         version: link:../../lark/lark
+      '@deepseek-ai/dsh-model-catalog':
+        specifier: workspace:^
+        version: link:../../llm/model-catalog
       '@deepseek-ai/dsh-session-persistence-sqlite':
         specifier: workspace:^
         version: link:../../session/session-persistence-sqlite
@@ -3498,6 +3516,45 @@ importers:
       react:
         specifier: ^18.2.0
         version: 18.3.1
+
+  packages/client/ui-plugin-library:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-client-locale':
+        specifier: workspace:^
+        version: link:../locale
+      '@deepseek-ai/dsh-client-ui-layout':
+        specifier: workspace:^
+        version: link:../ui-layout
+      '@deepseek-ai/dsh-client-ui-primitives':
+        specifier: workspace:^
+        version: link:../ui-primitives
+      '@deepseek-ai/dsh-client-ui-renderer':
+        specifier: workspace:^
+        version: link:../ui-renderer
+      '@deepseek-ai/dsh-client-ui-sidebar':
+        specifier: workspace:^
+        version: link:../ui-sidebar
+      '@deepseek-ai/dsh-client-ui-slots':
+        specifier: workspace:^
+        version: link:../ui-slots
+      '@deepseek-ai/dsh-invariants':
+        specifier: workspace:^
+        version: link:../../runtime-diagnostics/invariants
+      '@testing-library/react':
+        specifier: ^16.1.0
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@types/react':
+        specifier: ~18.3.1
+        version: 18.3.31
+      react:
+        specifier: ^18.2.0
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.2.0
+        version: 18.3.1(react@18.3.1)
 
   packages/client/ui-primitives:
     devDependencies:
@@ -7527,6 +7584,52 @@ importers:
       '@deepseek-ai/dsh-tools':
         specifier: workspace:^
         version: link:../../core/tools
+
+  packages/llm/model-catalog:
+    dependencies:
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+      '@earendil-works/pi-ai':
+        specifier: ^0.85.1
+        version: 0.85.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.21.0)(zod@4.4.3)
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/cordis-plugin-include':
+        specifier: workspace:^
+        version: link:../../../vendor/include
+      '@deepseek-ai/cordis-plugin-loader':
+        specifier: workspace:^
+        version: link:../../../vendor/loader
+      '@deepseek-ai/dsh-invariants':
+        specifier: workspace:^
+        version: link:../../runtime-diagnostics/invariants
+      '@deepseek-ai/dsh-llm':
+        specifier: workspace:^
+        version: link:../llm
+      '@deepseek-ai/dsh-llm-pi-ai':
+        specifier: workspace:^
+        version: link:../llm-pi-ai
+      '@deepseek-ai/dsh-storage':
+        specifier: workspace:^
+        version: link:../../storage/storage
+      '@deepseek-ai/dsh-storage-domain':
+        specifier: workspace:^
+        version: link:../../storage/storage-domain
+      '@deepseek-ai/dsh-storage-json':
+        specifier: workspace:^
+        version: link:../../storage/storage-json
+      '@types/js-yaml':
+        specifier: ^4.0.9
+        version: 4.0.9
+      js-yaml:
+        specifier: ^4.2.0
+        version: 4.3.1
 
   packages/llm/plugin-package-inventory-deepseek:
     dependencies:
@@ -14713,6 +14816,9 @@ packages:
   '@types/yauzl@2.10.3':
     resolution: {integrity: sha512-oJoftv0LSuaDZE3Le4DbKX+KS9G36NzOeSap90UIK0yMA/NhKJhqlSGtNDORNRaIbQfzjXDrQa0ytJ6mNRGz/Q==}
 
+  '@types/yazl@3.3.1':
+    resolution: {integrity: sha512-DIWfCKpsTp6hE5BDBHV3+fIL/bLUF9Bv13iDrWnMlmhQpH67buNvI291ZauQ1xcccxK3FqQ9honnXpq4R8NMuQ==}
+
   '@typescript-eslint/types@8.61.0':
     resolution: {integrity: sha512-9QTQpZ5Iin4CdIodfbDQFSeiSJKidgYJYug1P9CC2xWgUTvlmixViqDZNciMjwLBZyJnG4tGmPl97rVAFb1AJg==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
@@ -15190,6 +15296,10 @@ packages:
 
   buffer-crc32@0.2.13:
     resolution: {integrity: sha512-VO9Ht/+p3SN7SKWqcrgEzjGbRSJYTx+Q1pTQC0wrWqHx0vpJraQ6GtHx8tvcg1rlK1byhU5gccxgOgj7B0TDkQ==}
+
+  buffer-crc32@1.0.0:
+    resolution: {integrity: sha512-Db1SbgBS/fg/392AblrMJk97KggmvYhr4pB5ZIMTWtaivCPMWLkmb7m21cJvpvgK+J3nsU2CmmixNBZx4vFj/w==}
+    engines: {node: '>=8.0.0'}
 
   buffer-equal-constant-time@1.0.1:
     resolution: {integrity: sha512-zRpUiDwd/xk6ADqPMATG8vc9VPrkck7T07OIx0gnjmJAnHnTVXNQG3vfvWNuiZIkwu9KrKdA1iJKfsfTVxE6NA==}
@@ -18692,6 +18802,9 @@ packages:
     resolution: {integrity: sha512-jIH9yLR9wqr0wOS0TpBvo/g/2UgZH5qePVbjgRliiF0BYvOZyaBknKsF+x9Iht0O6sqgnB93rCICdOZFecJuDw==}
     engines: {node: '>=12'}
 
+  yazl@3.3.1:
+    resolution: {integrity: sha512-BbETDVWG+VcMUle37k5Fqp//7SDOK2/1+T7X8TD96M3D9G8jK5VLUdQVdVjGi8im7FGkazX7kk5hkU8X4L5Bng==}
+
   yocto-queue@0.1.0:
     resolution: {integrity: sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==}
     engines: {node: '>=10'}
@@ -21424,6 +21537,10 @@ snapshots:
     dependencies:
       '@types/node': 22.20.0
 
+  '@types/yazl@3.3.1':
+    dependencies:
+      '@types/node': 22.20.0
+
   '@typescript-eslint/types@8.61.0': {}
 
   '@ungap/structured-clone@1.3.3': {}
@@ -21999,6 +22116,8 @@ snapshots:
       update-browserslist-db: 1.2.3(browserslist@4.28.6)
 
   buffer-crc32@0.2.13: {}
+
+  buffer-crc32@1.0.0: {}
 
   buffer-equal-constant-time@1.0.1: {}
 
@@ -26024,6 +26143,10 @@ snapshots:
   yauzl@3.4.0:
     dependencies:
       pend: 1.2.0
+
+  yazl@3.3.1:
+    dependencies:
+      buffer-crc32: 1.0.0
 
   yocto-queue@0.1.0: {}
 

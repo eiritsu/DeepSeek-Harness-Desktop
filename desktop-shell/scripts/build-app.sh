@@ -49,9 +49,11 @@ const path = require('node:path')
 const [root, harnessCommit, pluginCommit] = process.argv.slice(2)
 const packagePaths = [
   'packages/client/ui-deepseek-files',
+  'packages/client/ui-plugin-library',
   'packages/client/ui-skill-library',
   'packages/attachment/file-recognizer-office',
   'packages/extensions/external-tools',
+  'packages/llm/model-catalog',
   'packages/session/session-persistence-sqlite',
   'packages/bundle/desktop-lite',
 ]

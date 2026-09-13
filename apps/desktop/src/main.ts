@@ -25,6 +25,7 @@ import { startupFailureDocument } from './startup-document.ts'
 import { exportSessionBackup, importSessionBackup, resetSessionDatabase } from './session-backup.ts'
 import { claimDesktopDataLock } from './data-lock.ts'
 import { DesktopSkillLibrary, parseDesktopSkillRequest } from './skill-library.ts'
+import { exportConfigurationBackup, importConfigurationBackup } from './configuration-backup.ts'
 
 const SCHEME = 'dsh-app'
 let focusPrimaryWindow = (): void => {}
@@ -377,6 +378,11 @@ async function main(): Promise<void> {
     }
   })
   const sessionDatabase = join(paths.root, 'dsh-desktop.sqlite')
+  const configurationPaths = {
+    profile: paths.profile,
+    skills: resolve(paths.root, '..', 'skills'),
+    settings: resolve(paths.root, '..', 'settings.yaml'),
+  }
   const runBackendMutation = async <T>(operation: () => Promise<T>): Promise<T> => {
     await startup?.catch(() => undefined)
     await navigateMain(startupUrl)
@@ -425,6 +431,29 @@ async function main(): Promise<void> {
     if (confirmation.response !== 0) return { reset: false }
     await runBackendMutation(() => resetSessionDatabase(sessionDatabase))
     return { reset: true }
+  })
+  ipcMain.handle(DESKTOP_IPC.configurationBackupExport, async (event) => {
+    assertDesktopSender(event, ['app'])
+    const selection = await dialog.showSaveDialog({
+      title: messages.sessionBackupExportTitle,
+      defaultPath: 'dsh-desktop-configuration.dshbackup.zip',
+      filters: [{ name: 'DSH configuration backup', extensions: ['zip'] }],
+    })
+    if (selection.canceled) return {}
+    await runBackendMutation(() => exportConfigurationBackup(configurationPaths, selection.filePath))
+    return { path: selection.filePath }
+  })
+  ipcMain.handle(DESKTOP_IPC.configurationBackupImport, async (event) => {
+    assertDesktopSender(event, ['app'])
+    const selection = await dialog.showOpenDialog({
+      title: messages.sessionBackupImportTitle,
+      properties: ['openFile'],
+      filters: [{ name: 'DSH configuration backup', extensions: ['zip', 'dshbackup'] }],
+    })
+    const source = selection.filePaths[0]
+    if (selection.canceled || source === undefined) return { imported: false }
+    await runBackendMutation(() => importConfigurationBackup(configurationPaths, source))
+    return { imported: true }
   })
   ipcMain.handle(DESKTOP_IPC.skillLibraryRequest, async (event, input: unknown) => {
     assertDesktopSender(event, ['app'])
@@ -497,6 +526,10 @@ async function main(): Promise<void> {
     pluginWindow.once('closed', () => { pluginWindow = undefined })
     void pluginWindow.loadURL(`${SCHEME}://shell/plugin-manager.html`)
   }
+  ipcMain.handle(DESKTOP_IPC.pluginsOpenManager, (event) => {
+    assertDesktopSender(event, ['app'])
+    openPluginWindow()
+  })
 
   Menu.setApplicationMenu(Menu.buildFromTemplate([{
     label: process.platform === 'darwin' ? app.name : messages.application,
@@ -557,9 +590,7 @@ async function main(): Promise<void> {
   mainWindow = createMainWindow()
   await reconcileBackend().catch(() => undefined)
   // Window lifecycle callbacks run while backend startup is pending.
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   if (quitting) return
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   if (mainWindow !== undefined && development !== undefined && process.env.DSH_DESKTOP_OPEN_DEVTOOLS !== '0') {
     mainWindow.webContents.openDevTools({ mode: 'detach' })
   }

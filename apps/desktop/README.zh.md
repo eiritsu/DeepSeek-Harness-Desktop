@@ -27,7 +27,7 @@ Electron 拥有 `$DSH_HOME/profiles/desktop`。其 `dependencies` 只包含已�
 
 本地启动页提供启动状态和可用恢复操作；加载后的 dsh 渲染进程仅接收桌面协议标记。独立插件窗口接收结构化的列表、安装、删除、更新和更新检查操作；两个渲染进程都无法访问文件系统、原始 Electron IPC、shell 或任意 pnpm 参数。
 
-加载后的应用还会获得三个仅针对权威 Session SQLite 数据库的窄接口：导出、经验证的导入和清空。导出与导入使用原生文件对话框；每个操作都会先停止 Node Host，再复制或替换数据库，同时验证 schema 和必需数据表、设置仅 owner 可读写权限，最后重新启动 Host。
+加载后的应用还会获得三个仅针对权威 Session SQLite 数据库的窄接口：导出、经验证的导入和清空。导出与导入使用原生文件对话框；每个操作都会先停止 Node Host，再复制或替换数据库，同时验证 schema 和必需数据表、设置仅 owner 可读写权限，最后重新启动 Host。Desktop 组合还会挂载实时 `models.dev` 模型 metadata catalog，并且不会隐式创建 DeepSeek provider 路由；路由继续由用户设置拥有。
 
 应用还会获得类型化 SkillHub 请求 bridge。目录响应与压缩包都有字节上限；安装会拒绝非法标识符、符号链接、条目过多、缺少 `SKILL.md` 和目标已存在的压缩包。安装和按精确名称移除会先停止 Host，再修改 `$DSH_HOME/skills`。Web Client 不会获得通用文件系统、任意 URL、原始 IPC、shell 或 package-manager 能力。内置 Desktop 组合也会挂载共享的 DeepSeek Files、external-tools、SkillHub 和 Lark 包。
 
@@ -97,6 +97,16 @@ pnpm run package:desktop:win:x64
 macOS arm64 命令要求 Apple Silicon。macOS x64 命令可以在 Intel macOS 或带 Rosetta 的 Apple Silicon 上运行。Windows x64 命令要求 Windows x64。Linux 不是受支持的 Desktop 发布目标。
 
 每个目标都在 `apps/desktop/.desktop-build/targets/<target>/` 下持有自己的打包输入、已准备运行时、包集合、dsh 依赖树、pnpm 准备状态、未打包应用、更新元数据和最终产物。Node.js 归档缓存继续由 `.desktop-build/downloads` 共享，因为每个归档文件名都包含版本、平台和架构，并且在解包前经过验证。目标构建绝不读取其他目标的可变准备状态。
+
+### 本地 macOS 测试包
+
+没有 Developer ID 证书的 Apple Silicon 开发主机可以构建 ad-hoc 签名的应用、DMG 和 ZIP，用于本机启动与安装测试：
+
+```sh
+pnpm run package:desktop:mac:arm64:local
+```
+
+未提供 `DSH_DESKTOP_APP_ID` 时，该命令使用 `ai.deepseek.harness.desktop.electron`。Electron 产品名为 `DeepSeek Harness Electron`，可以与 Swift 的 `DeepSeek Harness` 和 `DeepSeek Harness Lite` 应用并存。它只向 `.desktop-build/targets/mac-arm64/local-artifacts/` 写入产物，清除环境中的证书与 Apple 公证凭据，禁用 hardened runtime、公证、自动更新和发布完成记录，因此发布上传命令不能接受这些产物。只需要可运行应用目录时使用 `package:desktop:mac:arm64:local:dir`。这些产物用于在构建机器上测试完整内置运行时，不是可分发的发布产物，也不能替代 Developer ID、公证或 Gatekeeper 验收。
 
 ### 运行时文件筛选
 
@@ -186,7 +196,7 @@ pnpm run prepare:desktop
 
 这条诊断命令是另一种停止位置，并非两条命令构建流程的前半段。之后执行 `package:desktop*` 时仍会重新完成正式构建与准备，避免使用陈旧的 dsh 包、运行时文件或 dsh 内容。
 
-每条打包命令都会构建仓库，打包以 dsh 和私有 Desktop Host 为根的第一方生产依赖闭包，并准备目标专用的 Node 与 pnpm 可执行文件。`prepare:dsh` 在构建时安装一次生产依赖图，把物化包复制到 `extraResources/dsh`，移除包管理器元数据，并生成包含共享包版本和最终文件哈希的 `desktop-runtime.json`。在 macOS 上，它先签名并验证原生文件，再生成清单；electron-builder 不对已签名的此目录重复进行嵌套签名。资源映射明确包含默认根目录过滤器会忽略的 `dsh/node_modules`；复制后的清单在签名前及签名后分别验证。签名安装包、公证、已安装应用升级和各目标原生模块的验收需要发布环境。
+每条打包命令都会构建仓库，打包以 dsh 和私有 Desktop Host 为根的第一方生产依赖闭包，并准备目标专用的 Node 与 pnpm 可执行文件。`prepare:dsh` 在构建时安装一次生产依赖图，把物化包复制到 `extraResources/dsh`，移除包管理器元数据，并生成包含共享包版本和最终文件哈希的 `desktop-runtime.json`。在 macOS 上，它先签名并验证原生文件，再生成清单；electron-builder 不对已签名的此目录重复进行嵌套签名。本地测试模式使用 ad-hoc 签名，发布模式要求配置的 Developer ID。资源映射明确包含默认根目录过滤器会忽略的 `dsh/node_modules`；复制后的清单在签名前及签名后分别验证。签名安装包、公证、已安装应用升级和各目标原生模块的验收需要发布环境。
 
 未压缩产物包含 Electron、物化后的 dsh 生产依赖树、上游 Node.js 与 pnpm，以及壳应用。安装包大小与文件系统占用不同；发布验收需要测量两者，以及 profile 插件存储和首次启动耗时。此布局用更多应用内文件换取消除用户机器上的核心包安装过程。
 

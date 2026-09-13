@@ -51,8 +51,10 @@ if rg -n -I -F "$HOME" "$AUDIT_ROOT" >/dev/null \
 fi
 for PACKAGE in \
   packages/client/ui-deepseek-files \
+  packages/client/ui-plugin-library \
   packages/attachment/file-recognizer-office \
   packages/extensions/external-tools \
+  packages/llm/model-catalog \
   packages/session/session-persistence-sqlite \
   packages/bundle/desktop-lite
 do

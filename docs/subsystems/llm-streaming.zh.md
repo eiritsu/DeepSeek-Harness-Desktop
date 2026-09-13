@@ -696,12 +696,18 @@ interface LlmModelDiscoveryRequest {
 interface LlmDiscoveredModel {
   /** Model id the endpoint accepts. */
   id: string
+  /** Provider owner identifier when the endpoint discloses one. */
+  ownedBy?: string
   /** Human-readable name when the endpoint supplies one. */
   name?: string
   /** Maximum combined request and response context, when disclosed. */
   contextWindow?: number
   /** Maximum output tokens, when disclosed. */
   maxTokens?: number
+  /** Accepted request modalities when the endpoint or a catalog discloses them. */
+  inputModalities?: readonly LegacyModelModality[]
+  /** Whether catalog fields replace stale endpoint metadata instead of filling omissions. */
+  authoritative?: true
 }
 ```
 
@@ -895,6 +901,16 @@ The abstract `llm` service: an adapter registry plus a streaming model-call API,
 
 ```ts cordis-catalog
 /**
+ * Register one exact-route metadata enricher after adapter-owned resolution.
+ * Capacity and modality fields fill omissions; reasoning may replace stale
+ * adapter metadata because the external catalog is refreshed independently.
+ * @param id - stable non-empty registration identity.
+ * @param enrich - asynchronous exact-route metadata lookup.
+ * @returns disposer withdrawing this enricher.
+ */
+registerModelMetadataEnricher(id: string, enrich: LlmModelMetadataEnricher): () => void
+
+/**
  * Register an adapter for the given provider routes. Throws `LlmError` with code
  * `DUPLICATE_ADAPTER` if any provider already has an adapter (all-or-nothing).
  * Disposed with the fiber.
@@ -937,6 +953,68 @@ registerConfigurableProviders(entries: readonly LlmConfigurableProvider[]): Dire
  * @returns the disposer that withdraws the offer.
  */
 registerModelDiscovery( settingsNs: string, discover: ( request: LlmModelDiscoveryRequest, signal?: AbortSignal, ) => Promise<readonly LlmDiscoveredModel[]>, ): () => void
+
+/**
+ * Register an ordered enricher for provider discovery results.
+ * Existing provider fields win and patches for unknown ids are ignored.
+ * @param enrich - candidate metadata lookup.
+ * @returns disposer withdrawing this registration.
+ */
+registerModelDiscoveryEnricher(enrich: LlmModelDiscoveryEnricher): () => void
+
+/**
+ * Register an ordered exact-model modality resolver.
+ * @param resolve - effect-scoped external catalog lookup.
+ * @returns disposer withdrawing this resolver.
+ */
+registerModelInputResolver(resolve: LlmModelInputResolver): () => void
+
+/**
+ * Resolve exact modalities from the first external catalog with an answer.
+ * @param provider - configured route key.
+ * @param model - exact model id.
+ * @param signal - optional cancellation for external lookup.
+ * @param ownedBy - upstream provider identity when known.
+ * @param baseURL - exact configured endpoint when known.
+ * @returns detached modalities, or `undefined` when no resolver covers the model.
+ */
+async resolveModelInput( provider: string, model: string, signal?: AbortSignal, ownedBy?: string, baseURL?: string, ): Promise<readonly import('./types.ts').LegacyModelModality[] | undefined>
+
+/**
+ * Register an ordered exact-model capacity resolver.
+ * @param resolve - effect-scoped external catalog lookup.
+ * @returns disposer withdrawing this resolver.
+ */
+registerModelCapacityResolver(resolve: LlmModelCapacityResolver): () => void
+
+/**
+ * Resolve and validate capacities from the first external catalog with an answer.
+ * @param provider - configured route key.
+ * @param model - exact model id.
+ * @param signal - optional cancellation for external lookup.
+ * @param ownedBy - upstream provider identity when known.
+ * @param baseURL - exact configured endpoint when known.
+ * @returns detached positive capacities, or `undefined` when no resolver covers the model.
+ */
+async resolveModelCapacity( provider: string, model: string, signal?: AbortSignal, ownedBy?: string, baseURL?: string, ): Promise<LlmModelCapacity | undefined>
+
+/**
+ * Register an ordered exact-model reasoning resolver.
+ * @param resolve - effect-scoped external catalog lookup.
+ * @returns disposer withdrawing this resolver.
+ */
+registerModelReasoningResolver(resolve: LlmModelReasoningResolver): () => void
+
+/**
+ * Resolve reasoning levels from the first external catalog with an answer.
+ * @param provider - configured route key.
+ * @param model - exact model id.
+ * @param signal - optional cancellation for external lookup.
+ * @param ownedBy - upstream provider identity when known.
+ * @param baseURL - exact configured endpoint when known.
+ * @returns detached reasoning level ids, or `undefined` when no resolver covers the model.
+ */
+async resolveModelReasoning( provider: string, model: string, signal?: AbortSignal, ownedBy?: string, baseURL?: string, ): Promise<readonly string[] | undefined>
 
 /**
  * Interrogate one provider endpoint for the models it advertises. The

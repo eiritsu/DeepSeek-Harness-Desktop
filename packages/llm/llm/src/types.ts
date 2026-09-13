@@ -209,6 +209,9 @@ export interface ModelModalityMap {
 /** Any declared provider model modality. */
 export type ModelModality = ModelModalityMap[keyof ModelModalityMap]
 
+/** Catalog vocabulary retained while external metadata is narrowed for requests. */
+export type LegacyModelModality = ModelModality | 'audio' | 'video' | 'pdf'
+
 /**
  * One provider route an adapter plugin can activate through configuration,
  * whether or not the route is currently registered. Configuration surfaces
@@ -289,13 +292,71 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
 export interface LlmDiscoveredModel {
   /** Model id the endpoint accepts. */
   id: string
+  /** Provider owner identifier when the endpoint discloses one. */
+  ownedBy?: string
   /** Human-readable name when the endpoint supplies one. */
   name?: string
   /** Maximum combined request and response context, when disclosed. */
   contextWindow?: number
   /** Maximum output tokens, when disclosed. */
   maxTokens?: number
+  /** Accepted request modalities when the endpoint or a catalog discloses them. */
+  inputModalities?: readonly LegacyModelModality[]
+  /** Whether catalog fields replace stale endpoint metadata instead of filling omissions. */
+  authoritative?: true
 }
+
+/** Input presented to one model-discovery enrichment plugin. */
+export interface LlmModelDiscoveryEnrichmentRequest {
+  /** Settings namespace whose discovery produced the candidates. */
+  settingsNs: string
+  /** Original provider draft with operation-local cancellation. */
+  request: LlmModelDiscoveryOperation
+  /** Detached candidates after earlier enrichers filled missing metadata. */
+  models: readonly LlmDiscoveredModel[]
+}
+
+/** Plugin that fills missing fields on already-discovered model ids. */
+export type LlmModelDiscoveryEnricher = (
+  request: LlmModelDiscoveryEnrichmentRequest,
+) => Promise<readonly LlmDiscoveredModel[]>
+
+/** Exact model capacities supplied by an external catalog. */
+export interface LlmModelCapacity {
+  /** Maximum combined request and response context in tokens. */
+  contextWindow?: number
+  /** Maximum generated output in tokens. */
+  maxOutputTokens?: number
+}
+
+/** Exact route/model identity presented to catalog resolvers. */
+export interface LlmModelCatalogRequest {
+  /** Configured provider route. */
+  provider: string
+  /** Exact model id. */
+  model: string
+  /** Upstream model owner when disclosed. */
+  ownedBy?: string
+  /** Exact configured endpoint when available. */
+  baseURL?: string
+  /** Operation-local cancellation. */
+  signal?: AbortSignal
+}
+
+/** External lookup for exact model modalities. */
+export type LlmModelInputResolver = (
+  request: LlmModelCatalogRequest,
+) => Promise<readonly LegacyModelModality[] | undefined>
+
+/** External lookup for exact model capacities. */
+export type LlmModelCapacityResolver = (
+  request: LlmModelCatalogRequest,
+) => Promise<LlmModelCapacity | undefined>
+
+/** External lookup for exact model reasoning levels. */
+export type LlmModelReasoningResolver = (
+  request: LlmModelCatalogRequest,
+) => Promise<readonly string[] | undefined>
 
 /** One adapter-discovered model; catalog membership is advisory, not request validation. */
 export interface LlmModelInfo {
@@ -357,6 +418,37 @@ export interface LlmResolvedModelInfo extends LlmModelInfo {
   /** Declared mid-conversation system prompt handling; absent means only a leading system message is read. */
   systemPromptUpdate?: SystemPromptUpdate
 }
+
+/** Metadata fields an effect-scoped catalog may supply for one exact model route. */
+export interface LlmModelMetadataPatch {
+  /** Whether supplied fields replace stale adapter metadata. */
+  authoritative?: true
+  /** Accepted request modalities when the owning adapter leaves them unknown. */
+  inputModalities?: readonly ModelModality[]
+  /** Maximum combined request and response context in tokens. */
+  contextWindow?: number
+  /** Adapter-default output cap when the owning adapter leaves it unknown. */
+  maxTokens?: number
+  /** Selectable reasoning levels supplied by a fresher authoritative catalog. */
+  reasoning?: LlmModelReasoningInfo
+}
+
+/** Exact route/model lookup presented to a metadata enricher. */
+export interface LlmModelMetadataEnrichmentRequest {
+  /** Registered provider route. */
+  provider: string
+  /** Exact model id requested from the route. */
+  model: string
+  /** Metadata resolved by the adapter and earlier enrichers. */
+  metadata: LlmResolvedModelInfo
+  /** Operation-local cancellation. */
+  signal?: AbortSignal
+}
+
+/** Effect-scoped exact-model metadata lookup. */
+export type LlmModelMetadataEnricher = (
+  request: LlmModelMetadataEnrichmentRequest,
+) => Promise<LlmModelMetadataPatch | undefined>
 
 /**
  * Adapter-private lossless-JSON state for replaying a successful response,

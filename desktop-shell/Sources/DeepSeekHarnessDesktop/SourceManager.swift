@@ -31,9 +31,11 @@ final class SourceManager: @unchecked Sendable {
     "packages/attachment/attachment",
     "packages/extensions/tool-cordis",
     "packages/client/ui-deepseek-files",
+    "packages/client/ui-plugin-library",
     "packages/client/ui-skill-library",
     "packages/attachment/file-recognizer-office",
     "packages/extensions/external-tools",
+    "packages/llm/model-catalog",
     "packages/bundle/desktop-lite",
     "apps/cli/package.json",
   ]
@@ -134,6 +136,7 @@ final class SourceManager: @unchecked Sendable {
         try dataStore.initialize(legacyHome: self.legacyHome)
         defer { dataStore.close() }
         try self.migrateLegacyHome(progress: progress, dataStore: dataStore)
+        try self.migrateSessionDatabaseLocation(progress: progress)
         try dataStore.synchronizePayloads(from: self.dshHome)
         let source = try self.resolveSource(progress: progress)
         try self.prepare(source, progress: progress)
@@ -143,6 +146,29 @@ final class SourceManager: @unchecked Sendable {
         completion(.failure(error))
       }
     }
+  }
+
+  /// Copy the pre-0.1.16 Session database into the profile-owned Desktop directory.
+  private func migrateSessionDatabaseLocation(progress: @escaping @Sendable (String) -> Void) throws {
+    let fileManager = FileManager.default
+    let source = dshHome.appendingPathComponent("dsh-desktop.sqlite")
+    let target = dshHome.appendingPathComponent("desktop/dsh-desktop.sqlite")
+    guard fileManager.fileExists(atPath: source.path), !fileManager.fileExists(atPath: target.path) else { return }
+    try fileManager.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+    let staged = target.deletingLastPathComponent()
+      .appendingPathComponent(".session-location-import-\(UUID().uuidString).sqlite")
+    defer { try? fileManager.removeItem(at: staged) }
+    let result = try CommandRunner.run(
+      executable: URL(fileURLWithPath: "/usr/bin/sqlite3"),
+      arguments: [source.path, ".backup '\(staged.path.replacingOccurrences(of: "'", with: "''"))'"]
+    )
+    guard result.status == 0 else {
+      throw DesktopError.message("旧版 Session 数据库迁移失败：\(result.output)")
+    }
+    try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: staged.path)
+    try fileManager.moveItem(at: staged, to: target)
+    progress("已复制旧版 Session 数据库；原文件继续保留。\n")
+    LogStore.shared.append("copied legacy Session database from \(source.path) to \(target.path)")
   }
 
   /// Preserve the legacy Harness home while moving its durable data into Application Support.
@@ -593,7 +619,11 @@ final class SourceManager: @unchecked Sendable {
   }
 
   private func gitOutput(_ arguments: [String]) throws -> String {
-    let result = try CommandRunner.run(executable: URL(fileURLWithPath: "/usr/bin/git"), arguments: arguments)
+    let result = try CommandRunner.run(
+      executable: URL(fileURLWithPath: "/usr/bin/git"),
+      arguments: arguments,
+      directory: supportRoot
+    )
     guard result.status == 0 else { throw DesktopError.message("git 命令失败：\n\(result.output)") }
     return result.output.trimmingCharacters(in: .whitespacesAndNewlines)
   }

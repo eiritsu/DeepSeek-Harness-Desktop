@@ -23,13 +23,13 @@ The Electron application targets macOS 13 through macOS 26 because its Electron 
 
 ## Shared data and preserved features
 
-The production Lite shell uses `~/.dsh` as `DSH_HOME`, matching Electron and the CLI. The `desktop-lite` and Electron compositions both use `$DSH_HOME/desktop/dsh-desktop.sqlite` as authoritative Session persistence. This preserves Session history, Session IDs, cross-Session references, attachment metadata, and SQLite migration behavior across shells. Both profiles mount DeepSeek Files recognition, external-search provider settings, SkillHub, and Lark. The current `llm-pi-ai` catalog remains the only model-metadata source.
+The production Lite shell uses `~/.dsh` as `DSH_HOME`, matching Electron and the CLI. The `desktop-lite` and Electron compositions both use `$DSH_HOME/desktop/dsh-desktop.sqlite` as authoritative Session persistence. This preserves Session history, Session IDs, cross-Session references, attachment metadata, and SQLite migration behavior across shells. Both profiles mount DeepSeek Files recognition, external-search provider settings, SkillHub, the native plugin library, Lark, and `dsh-model-catalog`. The model catalog refreshes complete upstream declarations from `models.dev` and enriches discovery and actual calls without creating an implicit provider route.
 
 The Swift shell keeps its source/update audit catalog under `~/Library/Application Support/DeepSeek Harness Lite`; that auxiliary database is not Session authority. First launch can migrate data from the previous `~/Library/Application Support/DeepSeek Harness Desktop/data` location without deleting the old directory.
 
 The `dsh web:` startup line is the shell's readiness signal: the Web profile emits it only after plugin loading has settled and the local server is available. Lite navigates once after that signal instead of probing a private plugin route. When legacy migration copies `.credentials.yaml`, Lite narrows its permissions to `0600`; malformed credential files still fail startup, but the failure screen identifies the file and recovery action without displaying credential values.
 
-Configuration export is desensitized: credentials, Session transcripts, attachment bytes, logs, and machine identity are excluded. Import and reset stop the Node runtime before replacing data. Packaging must enforce a single active desktop writer before both shells are distributed together.
+Configuration export is desensitized: credentials, Session transcripts, attachment bytes, logs, and machine identity are excluded. Import merges profiles and Skills, restores settings without replacing the authoritative Session database, migrates the legacy `llm-dsh-ai` namespace to `llm-pi-ai`, and carries old Web-profile third-party plugins into `desktop-lite`. Reset stops the Node runtime before clearing owned data. Packaging must enforce a single active desktop writer before both shells are distributed together.
 
 ## Develop
 

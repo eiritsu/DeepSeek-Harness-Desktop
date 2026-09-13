@@ -104,8 +104,10 @@ describe('DeepseekFilesSection', () => {
 })
 
 describe('DesktopDataSection', () => {
-  it('labels Electron Session database backups as unredacted', async () => {
+  it('keeps Electron configuration and Session database backups separate', async () => {
     const bridge = {
+      exportConfiguration: vi.fn(() => Promise.resolve({})),
+      importConfiguration: vi.fn(() => Promise.resolve({ imported: true })),
       exportBackup: vi.fn(() => Promise.resolve({})),
       importBackup: vi.fn(() => Promise.resolve({ imported: true })),
       reset: vi.fn(() => Promise.resolve({ reset: true })),
@@ -115,10 +117,14 @@ describe('DesktopDataSection', () => {
 
     expect(screen.getByRole('heading', { name: en.sessionBackupTitle })).toBeTruthy()
     expect(screen.getByText(en.sessionBackupIntro)).toBeTruthy()
-    expect(screen.queryByRole('heading', { name: en.configBackupTitle })).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: en.exportData }))
+    expect(screen.getByRole('heading', { name: en.configBackupTitle })).toBeTruthy()
+    fireEvent.click(screen.getAllByRole('button', { name: en.exportData })[0]!)
+    await waitFor(() => { expect(bridge.exportConfiguration).toHaveBeenCalledOnce() })
+    fireEvent.click(screen.getAllByRole('button', { name: en.importData })[0]!)
+    await waitFor(() => { expect(bridge.importConfiguration).toHaveBeenCalledOnce() })
+    fireEvent.click(screen.getAllByRole('button', { name: en.exportData })[1]!)
     await waitFor(() => { expect(bridge.exportBackup).toHaveBeenCalledOnce() })
-    fireEvent.click(screen.getByRole('button', { name: en.importData }))
+    fireEvent.click(screen.getAllByRole('button', { name: en.importData })[1]!)
     await waitFor(() => { expect(bridge.importBackup).toHaveBeenCalledOnce() })
     fireEvent.click(screen.getByRole('button', { name: en.resetSessions }))
     await waitFor(() => { expect(bridge.reset).toHaveBeenCalledOnce() })

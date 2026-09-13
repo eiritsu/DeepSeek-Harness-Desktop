@@ -78,6 +78,7 @@
     { "path": "./packages/client/ui-conversation" },
     { "path": "./packages/client/ui-deepseek-files" },
     { "path": "./packages/client/ui-skill-library" },
+    { "path": "./packages/client/ui-plugin-library" },
     { "path": "./packages/client/ui-lark" },
     { "path": "./packages/client/ui-tool" },
     { "path": "./packages/client/ui-deliverables/tsconfig.client.json" },

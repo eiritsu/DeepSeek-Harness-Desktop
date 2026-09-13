@@ -2037,6 +2037,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     slotInject: '',
     declaredBy: 'an entry in \'root\' (client-ui-layout), so it exists while that entry is mounted',
     occupants: [
+      'client-ui-plugin-library PluginLibraryOverlay id \'plugin-library\'',
       'client-ui-skill-library SkillLibraryOverlay id \'skill-library\'',
     ],
     replaceRisk: 'none',
@@ -2176,6 +2177,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     slotInject: '',
     declaredBy: 'an entry in \'sidebar\' (client-ui-sidebar), so it exists while that entry is mounted',
     occupants: [
+      'client-ui-plugin-library PluginLibraryTrigger id \'plugin-library\'',
       'client-ui-skill-library SkillLibraryTrigger id \'skill-library\'',
       'client-ui-cordis CordisPanel id \'cordis-panel\'',
     ],

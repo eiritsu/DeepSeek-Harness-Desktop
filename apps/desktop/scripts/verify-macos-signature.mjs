@@ -124,6 +124,34 @@ export async function signMacOSRuntimeCode(path, identifier, expected) {
 }
 
 /**
+ * Ad-hoc sign one runtime executable for a local macOS package.
+ * @param {string} path - Writable standalone Mach-O file.
+ * @param {string} identifier - Stable code-signing identifier derived from the app ID and CAS digest.
+ * @returns {Promise<void>} Resolves after codesign exits successfully.
+ */
+export async function signMacOSRuntimeAdHocCode(path, identifier) {
+  await runAppleCommandAsync('/usr/bin/codesign', [
+    '--force',
+    '--sign', '-',
+    '--identifier', identifier,
+    path,
+  ], 'codesign')
+}
+
+/**
+ * Verify an ad-hoc signed runtime executable without qualifying it for release.
+ * @param {string} path - Mach-O file to inspect.
+ * @returns {void}
+ */
+export function verifyMacOSRuntimeAdHocCode(path) {
+  runCodeSign(['--verify', '--strict', '--verbose=2', path])
+  const details = runCodeSign(['--display', '--verbose=4', path])
+  if (!details.split(/\r?\n/u).map(line => line.trim()).includes('Signature=adhoc')) {
+    throw new Error('desktop macOS signing: local runtime signature is not ad-hoc')
+  }
+}
+
+/**
  * Verify one Mach-O file embedded in the runtime tree.
  * @param {string} path - Mach-O file to inspect.
  * @param {{ signingIdentity: string, teamId: string }} expected - Public release identity.
@@ -145,6 +173,19 @@ export function verifyMacOSSignature(appPath, expected) {
   runCodeSign(['--verify', '--deep', '--strict', '--verbose=2', appPath])
   const details = runCodeSign(['--display', '--verbose=4', appPath])
   assertMacOSSignatureDetails(details, expected)
+}
+
+/**
+ * Verify a local application's deep ad-hoc signature without qualifying it for release.
+ * @param {string} appPath - Path to the packaged `.app` directory.
+ * @returns {void}
+ */
+export function verifyMacOSAdHocSignature(appPath) {
+  runCodeSign(['--verify', '--deep', '--strict', '--verbose=2', appPath])
+  const details = runCodeSign(['--display', '--verbose=4', appPath])
+  if (!details.split(/\r?\n/u).map(line => line.trim()).includes('Signature=adhoc')) {
+    throw new Error('desktop macOS signing: local application signature is not ad-hoc')
+  }
 }
 
 /**
