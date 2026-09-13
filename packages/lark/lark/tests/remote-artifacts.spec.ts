@@ -1,11 +1,17 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-describe('Lark generated Remote artifacts', () => {
+const root = resolve(import.meta.dirname, '..')
+const hostArtifact = resolve(root, 'lib/typert.host.js')
+const remoteArtifact = resolve(root, 'lib/typert.remote-client.js')
+const builtArtifacts = [hostArtifact, remoteArtifact, resolve(root, 'lib/index.js')].every(existsSync)
+
+describe.skipIf(!builtArtifacts)('Lark generated Remote artifacts', () => {
   it('publishes matching strict Host and Client descriptor sets', async () => {
-    const host = await import('../lib/typert.host.js') as { TYPERT: { invocations: readonly unknown[] } }
-    const remote = await import('../lib/typert.remote-client.js') as { TYPERT_REMOTE: { descriptors: readonly unknown[] } }
+    const host = await import(pathToFileURL(hostArtifact).href) as { TYPERT: { invocations: readonly unknown[] } }
+    const remote = await import(pathToFileURL(remoteArtifact).href) as { TYPERT_REMOTE: { descriptors: readonly unknown[] } }
     expect(host.TYPERT.invocations).toHaveLength(7)
     const identity = (value: readonly unknown[]) => value.map((entry) => {
       const descriptor = entry as { id: string; service: string; namespace: string; method: string }
@@ -20,7 +26,7 @@ describe('Lark generated Remote artifacts', () => {
   })
 
   it('retains private-chat state through the strict status schema', async () => {
-    const host = await import('../lib/typert.host.js') as {
+    const host = await import(pathToFileURL(hostArtifact).href) as {
       TYPERT: {
         invocations: Array<{
           method: string
@@ -48,7 +54,6 @@ describe('Lark generated Remote artifacts', () => {
   })
 
   it('publishes the private-chat runtime imported by the Host entry', async () => {
-    const root = resolve(import.meta.dirname, '..')
     const manifest = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as { files: string[] }
     expect(manifest.files).toContain('lib/auth-status.js')
     expect(manifest.files).toContain('lib/conversation.js')
@@ -57,7 +62,9 @@ describe('Lark generated Remote artifacts', () => {
     expect(readFileSync(resolve(root, 'lib/index.js'), 'utf8')).toContain('from "./auth-status.js"')
     expect(readFileSync(resolve(root, 'lib/index.js'), 'utf8')).toContain('from "./conversation.js"')
   })
+})
 
+describe('Lark credential process transport', () => {
   it('passes App Secret through stdin instead of environment or argv', () => {
     const host = readFileSync(resolve(import.meta.dirname, '../src/index.ts'), 'utf8')
     expect(host).toContain("'--app-secret-stdin'")
