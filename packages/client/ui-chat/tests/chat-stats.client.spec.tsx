@@ -254,9 +254,8 @@ describe('StatsPills', () => {
     expect(dialog.firstChild?.textContent).toBe('Token usage105 tok')
     const tokens = dialog.querySelector('[data-session-stats-usage]') as HTMLElement
     expect(tokens).toBeTruthy()
-    expect(tokens.textContent).toContain('Cache hit90%')
+    expect(tokens.textContent).toContain('Cache hit90% · 90 tok')
     expect(tokens.textContent).toContain('Uncached input10 tok')
-    expect(tokens.textContent).toContain('Cached input90 tok')
     // A session that never wrote cache drops the row rather than showing 0.
     expect(tokens.textContent).not.toContain('Cache write')
     expect(tokens.textContent).toContain('Output5 tok')
@@ -436,7 +435,7 @@ describe('StatsPills', () => {
     expect(dialog.textContent).not.toContain('Cached input')
   })
 
-  it('shows confirmed cache reads without claiming an exact hit rate', () => {
+  it('shows the conservative cache-hit rate and exact read count for incomplete accounting', () => {
     const { source } = makeSource({ nodes: [assistant(1, 1)] })
     const view = render(<StatsPills {...props(source, {
       tokenUsage: {
@@ -448,13 +447,12 @@ describe('StatsPills', () => {
       },
     })} />)
     const usagePill = view.getAllByRole('button')[0]!
-    expect(usagePill.textContent).toContain('Confirmed hit 1,024 tok')
-    expect(usagePill.textContent).not.toContain('Cache hit')
+    expect(usagePill.textContent).toContain('Cache hit 1%')
+    expect(usagePill.textContent).not.toContain('Confirmed')
     fireEvent.click(usagePill)
     const dialog = view.getByRole('dialog')
-    expect(dialog.textContent).toContain('Confirmed cached input1,024 tok')
-    expect(dialog.textContent).not.toContain('Cache hit')
-    expect(dialog.textContent).not.toContain('Cached input1,024 tok')
+    expect(dialog.textContent).toContain('Cache hit1% · 1,024 tok')
+    expect(dialog.textContent).not.toContain('Confirmed')
   })
 
   it('includes cache writes in the total and the cache-hit denominator', () => {

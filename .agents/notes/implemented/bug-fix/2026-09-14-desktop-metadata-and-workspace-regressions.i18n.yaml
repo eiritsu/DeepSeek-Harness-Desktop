@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-14-desktop-metadata-and-workspace-regressions.md
-2026-09-14-desktop-metadata-and-workspace-regressions.md: 8ed4f2c044b5e6bdd905c0cc7374117c803ac66d
-2026-09-14-desktop-metadata-and-workspace-regressions.zh.md: 1312a0788ebd464e559d8bc5071aae446513a196
+2026-09-14-desktop-metadata-and-workspace-regressions.md: 35ade9f36438c47a028f0f297a61ba5f172bce6c
+2026-09-14-desktop-metadata-and-workspace-regressions.zh.md: 43a75bdc3d29cc089e661abcb2e2c09ac1d5bc49

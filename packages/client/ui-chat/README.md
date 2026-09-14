@@ -39,7 +39,7 @@ Each nonempty appended `system/message` owns a collapsed prompt row, including a
 
 A completed Turn shows an expandable usage row only when the loaded window includes `turn/start` and every started model attempt reports safe, exact usage. The row omits unavailable optional buckets. Incomplete or contradictory accounting hides the complete disclosure instead of presenting a partial total.
 
-The Session-level token pill uses the durable `tokenUsage` projection. When any provider attempt omits cache-read accounting, the pill and dialog withhold the exact cache-hit percentage. They show confirmed positive cache reads when present, and otherwise say `Cache not reported`; missing accounting never becomes a `0%` claim.
+The Session-level token pill uses the durable `tokenUsage` projection. It labels known positive cache reads as `Cache hit`, shows their conservative share of all billed input in the pill, and includes the exact read count beside that percentage in the dialog. Attempts that omit cache-read accounting remain in uncached input, so missing accounting cannot inflate the displayed rate; when no attempt reports a positive read, the UI says `Cache not reported` instead of claiming `0%`.
 
 <a id="completed-turn-footer"></a>
 ## Completed-turn footer

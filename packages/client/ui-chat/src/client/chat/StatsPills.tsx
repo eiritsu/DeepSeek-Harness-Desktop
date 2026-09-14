@@ -101,13 +101,15 @@ export function formatDuration(ms: number, t: ChatViewSlotProps['t']): string {
 
 /**
  * Display-ready cache-hit share of prompt-side input over the whole durable log.
+ * Missing cache-read samples remain in uncached input, so an incomplete
+ * projection produces a conservative percentage from its known reads.
  * @param usage - the session's token-usage projection value.
  * @returns integer text when integer rounding stays below 100, otherwise the
  * minimum decimal precision that still rounds below 100; a full hit returns
  * 100, and no billed input returns null.
  */
 export function cacheHitPercent(usage: TokenUsageProjection): string | null {
-  if (usage.cacheReadTokens === undefined || usage.cacheReadIncomplete === true) return null
+  if (usage.cacheReadTokens === undefined) return null
   const denominator = billedInputTokens(usage)
   return formatCacheHitPercent(usage.cacheReadTokens, denominator)
 }
@@ -244,13 +246,9 @@ function UsagePill({ usage, t, dialog }: {
   const total = billedInputTokens(usage) + usage.outputTokens
   const totalText = t('message.turnUsage.count', { count: formatTokens(total, t) })
   const cacheHit = cacheHitPercent(usage)
-  const cacheHitText = usage.cacheReadIncomplete === true && usage.cacheReadTokens !== undefined
-    ? t('stats.cacheReadConfirmed', {
-      count: exactCount(usage.cacheReadTokens, t),
-    })
-    : usage.cacheReadTokens === undefined
-      ? t('stats.cacheUnreported')
-      : cacheHit !== null ? t('stats.cacheHit', { percent: cacheHit }) : null
+  const cacheHitText = usage.cacheReadTokens === undefined
+    ? t('stats.cacheUnreported')
+    : cacheHit !== null ? t('stats.cacheHit', { percent: cacheHit }) : null
   return (
     <span ref={rootRef} className={css.anchor}>
       <button
@@ -288,19 +286,12 @@ function UsagePill({ usage, t, dialog }: {
             <span className={dialogCss.titleValue}>{exactCount(total, t)}</span>
           </div>
           <div className={dialogCss.titleRule} aria-hidden />
-          {/* jscpd:ignore-start -- the session-total bucket rows deliberately mirror
-              TurnUsagePanel's per-turn dl: same skin, different data contract (the
-              buckets are always present here; per-turn fields are optional). A
-              session whose providers reported cache usage drops the row only
-              when the known value is zero; omitted provider cache accounting is
-              shown explicitly instead of being presented as a measured zero. */}
+          {/* jscpd:ignore-start -- the session-total rows deliberately mirror
+              TurnUsagePanel's per-turn dl skin while combining the cache rate
+              and exact read count. Omitted provider cache accounting is shown
+              explicitly instead of being presented as a measured zero. */}
           <dl className={dialogCss.details} data-session-stats-usage>
-            {usage.cacheReadIncomplete === true && usage.cacheReadTokens !== undefined ? (
-              <>
-                <dt>{t('message.turnUsage.cacheReadConfirmed')}</dt>
-                <dd>{exactCount(usage.cacheReadTokens, t)}</dd>
-              </>
-            ) : usage.cacheReadTokens === undefined ? (
+            {usage.cacheReadTokens === undefined ? (
               <>
                 <dt>{t('message.turnUsage.cacheHit')}</dt>
                 <dd>{t('stats.cacheUnreported')}</dd>
@@ -308,17 +299,11 @@ function UsagePill({ usage, t, dialog }: {
             ) : cacheHit !== null && (
               <>
                 <dt>{t('message.turnUsage.cacheHit')}</dt>
-                <dd>{`${cacheHit}%`}</dd>
+                <dd>{`${cacheHit}% · ${exactCount(usage.cacheReadTokens, t)}`}</dd>
               </>
             )}
             <dt>{t('message.turnUsage.input')}</dt>
             <dd>{exactCount(usage.uncachedInputTokens, t)}</dd>
-            {usage.cacheReadTokens !== undefined && usage.cacheReadIncomplete !== true && (
-              <>
-                <dt>{t('message.turnUsage.cacheRead')}</dt>
-                <dd>{exactCount(usage.cacheReadTokens, t)}</dd>
-              </>
-            )}
             {usage.cacheWriteTokens !== 0 && (
               <>
                 <dt>{t('message.turnUsage.cacheWrite')}</dt>

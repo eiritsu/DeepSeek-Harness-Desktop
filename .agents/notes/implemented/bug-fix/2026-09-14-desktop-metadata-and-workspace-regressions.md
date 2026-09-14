@@ -10,7 +10,7 @@ Desktop retained the dynamic model catalog but `llm-pi-ai` no longer consumed it
 
 ## Decision
 
-`llm-pi-ai` asks the effect-scoped reasoning resolver only for models whose profile does not declare `reasoningEfforts`, then materializes the returned levels into the same pi-ai descriptor used by inspection and prepared calls. The models.dev parser recognizes `none` and `toggle` as the canonical `off` level. An owner-less exact model ID uses the intersection of reasoning levels across matching declarations, preserving shared levels without combining provider-specific capabilities. Cache-read usage remains optional through the durable projection. One unreported contributing attempt marks the aggregate incomplete instead of converting the missing value to zero; confirmed positive cache reads remain visible, while Chat withholds an exact cache-hit percentage.
+`llm-pi-ai` asks the effect-scoped reasoning resolver only for models whose profile does not declare `reasoningEfforts`, then materializes the returned levels into the same pi-ai descriptor used by inspection and prepared calls. The models.dev parser recognizes `none` and `toggle` as the canonical `off` level. An owner-less exact model ID uses the intersection of reasoning levels across matching declarations, preserving shared levels without combining provider-specific capabilities. Cache-read usage remains optional through the durable projection. One unreported contributing attempt marks the aggregate incomplete instead of converting the missing value to zero. Chat labels known positive reads as `Cache hit`, calculates their conservative share of all billed input, and shows the exact read count in the detail dialog; attempts without cache accounting remain in uncached input and cannot inflate that share.
 
 The Open In apps response carries a configured client request deadline. The browser aborts a launch at that deadline, releases its in-flight guard in `finally`, and aborts outstanding launches when its plugin unloads. Lark and Feishu use `$DSH_HOME/workspaces/lark` when `conversationCwd` is empty, create that directory before the bridge starts, and give a newly created Workspace a brand-owned title. Explicit directories and persisted Session directories remain unchanged.
 
@@ -24,7 +24,7 @@ The Open In apps response carries a configured client request deadline. The brow
 
 ## Consequences
 
-Custom models again expose upstream reasoning controls when the catalog has safe evidence, while explicit profile declarations continue to win. Token totals include known input, output, and confirmed cache-read usage; an incomplete cache numerator displays as a confirmed amount without an exact hit percentage. A stalled local-launch transport becomes a recoverable click failure. New Feishu Sessions stay grouped across application upgrades; existing Sessions remain readable at their committed directory.
+Custom models again expose upstream reasoning controls when the catalog has safe evidence, while explicit profile declarations continue to win. Token totals include known input, output, and cache-read usage; the cache label stays concise while the pill shows a conservative hit percentage and the dialog retains the exact count. A stalled local-launch transport becomes a recoverable click failure. New Feishu Sessions stay grouped across application upgrades; existing Sessions remain readable at their committed directory.
 
 ## Verification
 
