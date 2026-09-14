@@ -25,7 +25,7 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
-The Web application mounts this package, but the entry is visible only inside a matching Swift or Electron shell. Open **Skill Library** from the sidebar to browse SkillHub skills, narrow results by source, scene, or API key, install a package into the desktop-managed skill root, or remove one exact installed Skill.
+The Web application mounts this package, but the entry is visible only inside a matching Swift or Electron shell. Open **Skill Library** from the sidebar to browse SkillHub skills, narrow results by source, scene, or API key, install a package into the desktop-managed skill root, or remove one exact installed Skill. The installed toolbar remains visible while its card list scrolls inside the overlay.
 
 ### Mount in another Web composition
 

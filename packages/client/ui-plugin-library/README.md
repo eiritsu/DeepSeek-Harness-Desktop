@@ -25,7 +25,7 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
-The shipped Web application mounts this package, but it becomes visible only inside a supported desktop shell. Open **Plugin library** from the sidebar footer or the Electron application menu to inspect profile dependencies, check public npm updates, review a source, remove a dependency, or read the shell audit log.
+The shipped Web application mounts this package, but it becomes visible only inside a supported desktop shell. Open **Plugin library** from the sidebar footer or the Electron application menu to inspect profile dependencies, check public npm updates, review a source, remove a dependency, or read the shell audit log. The installed toolbar remains visible while its card list scrolls inside the overlay.
 
 ### Review and install a source
 

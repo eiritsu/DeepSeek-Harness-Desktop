@@ -25,7 +25,7 @@ kind: "package-bundle"
 <a id="use-this-package"></a>
 ## 使用这个包
 
-Web 应用会挂载这个包，但入口只在配套 Swift 或 Electron 桌面壳内可见。从侧边栏打开“技能库”，即可浏览 SkillHub 技能，按来源、场景或 API Key 缩小结果范围，把 package 安装到桌面管理的技能根目录，或按精确名称移除一个已安装 Skill。
+Web 应用会挂载这个包，但入口只在配套 Swift 或 Electron 桌面壳内可见。从侧边栏打开“技能库”，即可浏览 SkillHub 技能，按来源、场景或 API Key 缩小结果范围，把 package 安装到桌面管理的技能根目录，或按精确名称移除一个已安装 Skill。已安装工具栏保持可见，卡片列表在覆盖层内部滚动。
 
 ### 挂载到其他 Web 组合
 

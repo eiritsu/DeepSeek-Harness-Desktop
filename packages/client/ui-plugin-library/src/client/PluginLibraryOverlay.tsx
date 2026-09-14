@@ -445,49 +445,51 @@ export function PluginLibraryOverlay({ bridge, controller, t }: PluginLibraryOve
                   <button type="button" aria-pressed={cardView === 'compact'} onClick={() => { setCardView('compact') }}>{t('compact')}</button>
                 </div>
               </div>
-              {busy === 'load' ? <p className={css.note}>{t('loading')}</p> : null}
-              {busy !== 'load' && plugins.length === 0 ? <p className={css.note}>{t('empty')}</p> : null}
-              {filtered.length > 0 ? (
-                <ul className={css.pluginGrid} data-view={cardView}>
-                  {filtered.map((plugin) => {
-                    const title = installedPluginTitle(plugin)
-                    const identifier = installedPluginIdentifier(plugin)
-                    return <li key={plugin.name} className={css.pluginCard}>
-                      <span className={css.pluginIcon} aria-hidden="true"><IconCordisPluginOutline14 size={18} /></span>
-                      <div className={css.pluginIdentity}>
-                        <strong title={plugin.name}>{title}</strong>
-                        {title !== identifier ? <span>{identifier}</span> : null}
-                        <span>{plugin.version}</span>
-                      </div>
-                      <div className={css.pluginActions}>
-                        {plugin.latestVersion !== undefined ? (
-                          <button
-                            type="button"
-                            className={css.update}
-                            disabled={busy !== undefined}
-                            onClick={() => { void reviewUpdate(plugin) }}
-                          >
-                            {busy === `update:${plugin.name}`
-                              ? t('reviewingUpdate')
-                              : t('update', { version: plugin.latestVersion })}
-                          </button>
-                        ) : null}
-                        {installedPluginRemovable(plugin) ? (
-                          <button
-                            type="button"
-                            className={css.remove}
-                            disabled={busy !== undefined}
-                            onClick={() => { void remove(plugin) }}
-                          >
-                            <IconTrashOutline16 size={14} />
-                            {busy === `remove:${plugin.name}` ? t('removing') : t('remove')}
-                          </button>
-                        ) : <span className={css.defaultInstalled}>{t('defaultInstalled')}</span>}
-                      </div>
-                    </li>
-                  })}
-                </ul>
-              ) : null}
+              <div className={css.installedViewport} data-installed-list-scroll>
+                {busy === 'load' ? <p className={css.note}>{t('loading')}</p> : null}
+                {busy !== 'load' && plugins.length === 0 ? <p className={css.note}>{t('empty')}</p> : null}
+                {filtered.length > 0 ? (
+                  <ul className={css.pluginGrid} data-view={cardView}>
+                    {filtered.map((plugin) => {
+                      const title = installedPluginTitle(plugin)
+                      const identifier = installedPluginIdentifier(plugin)
+                      return <li key={plugin.name} className={css.pluginCard}>
+                        <span className={css.pluginIcon} aria-hidden="true"><IconCordisPluginOutline14 size={18} /></span>
+                        <div className={css.pluginIdentity}>
+                          <strong title={plugin.name}>{title}</strong>
+                          {title !== identifier ? <span>{identifier}</span> : null}
+                          <span>{plugin.version}</span>
+                        </div>
+                        <div className={css.pluginActions}>
+                          {plugin.latestVersion !== undefined ? (
+                            <button
+                              type="button"
+                              className={css.update}
+                              disabled={busy !== undefined}
+                              onClick={() => { void reviewUpdate(plugin) }}
+                            >
+                              {busy === `update:${plugin.name}`
+                                ? t('reviewingUpdate')
+                                : t('update', { version: plugin.latestVersion })}
+                            </button>
+                          ) : null}
+                          {installedPluginRemovable(plugin) ? (
+                            <button
+                              type="button"
+                              className={css.remove}
+                              disabled={busy !== undefined}
+                              onClick={() => { void remove(plugin) }}
+                            >
+                              <IconTrashOutline16 size={14} />
+                              {busy === `remove:${plugin.name}` ? t('removing') : t('remove')}
+                            </button>
+                          ) : <span className={css.defaultInstalled}>{t('defaultInstalled')}</span>}
+                        </div>
+                      </li>
+                    })}
+                  </ul>
+                ) : null}
+              </div>
             </section>
           )}
 

@@ -145,19 +145,21 @@ export function SkillLibraryOverlay({ controller, bridge, t }: SkillLibraryOverl
               <button type="button" aria-pressed={installedView === 'compact'} onClick={() => { setInstalledView('compact') }}>{t('compact')}</button>
             </div>
           </div>
-          {installedSkills.length === 0 ? <p className={css.note}>{t('installedEmpty')}</p> : filteredInstalledSkills.length === 0 ? <p className={css.note}>{t('empty')}</p> : <ul className={css.skillGrid} data-view={installedView}>
-            {filteredInstalledSkills.map(skill => <li key={skill} className={css.skillCard}>
-              <span className={css.skillIcon} aria-hidden="true"><IconSkillOutline16 size={18} /></span>
-              <div className={css.skillIdentity}><strong title={skill}>{skill}</strong><span>{t('installedLocation')}</span></div>
-              <div className={css.skillActions}>
-                <span className={css.defaultInstalled}>{t('installedStatus')}</span>
-                <button type="button" className={css.remove} disabled={removing !== undefined} onClick={() => { void removeSkill(skill) }}>
-                  <IconTrashOutline16 size={14} />
-                  {removing === skill ? t('removing') : t('remove')}
-                </button>
-              </div>
-            </li>)}
-          </ul>}
+          <div className={css.installedViewport} data-installed-list-scroll>
+            {installedSkills.length === 0 ? <p className={css.note}>{t('installedEmpty')}</p> : filteredInstalledSkills.length === 0 ? <p className={css.note}>{t('empty')}</p> : <ul className={css.skillGrid} data-view={installedView}>
+              {filteredInstalledSkills.map(skill => <li key={skill} className={css.skillCard}>
+                <span className={css.skillIcon} aria-hidden="true"><IconSkillOutline16 size={18} /></span>
+                <div className={css.skillIdentity}><strong title={skill}>{skill}</strong><span>{t('installedLocation')}</span></div>
+                <div className={css.skillActions}>
+                  <span className={css.defaultInstalled}>{t('installedStatus')}</span>
+                  <button type="button" className={css.remove} disabled={removing !== undefined} onClick={() => { void removeSkill(skill) }}>
+                    <IconTrashOutline16 size={14} />
+                    {removing === skill ? t('removing') : t('remove')}
+                  </button>
+                </div>
+              </li>)}
+            </ul>}
+          </div>
         </section> : null}
         {tab === 'review' ? <section className={css.panel}><h2>{t('review')}</h2><p>{t('reviewEmpty')}</p></section> : null}
         {tab === 'logs' ? <section className={css.panel}><h2>{t('logs')}</h2><p>{t('logsEmpty')}</p></section> : null}

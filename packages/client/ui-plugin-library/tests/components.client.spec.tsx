@@ -140,6 +140,7 @@ describe('PluginLibraryOverlay', () => {
     expect(await screen.findByText('Fixture plugin')).toBeTruthy()
     expect(screen.getByText('@legacy/dsh-plugin')).toBeTruthy()
     expect(screen.getAllByRole('button', { name: en.remove })).toHaveLength(2)
+    expect(view.container.querySelector('[data-installed-list-scroll]')).toBeTruthy()
     const grid = view.container.querySelector('[data-view="detailed"]')
     expect(grid).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: en.compact }))

@@ -58,6 +58,7 @@ describe('SkillLibraryOverlay', () => {
     })
     const test = overlay({ request } as unknown as SkillHubBridge)
     await waitFor(() => { expect(screen.getByText('office-reader')).toBeTruthy() })
+    expect(test.view.container.querySelector('[data-installed-list-scroll]')).toBeTruthy()
     fireEvent.change(screen.getByRole('searchbox', { name: en.installed }), { target: { value: 'missing' } })
     expect(screen.getByText(en.empty)).toBeTruthy()
     fireEvent.change(screen.getByRole('searchbox', { name: en.installed }), { target: { value: 'OFFICE' } })

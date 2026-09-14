@@ -137,6 +137,22 @@
   gap: 14px;
 }
 
+.installed {
+  height: 100%;
+  min-height: 0;
+}
+
+.installedViewport {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 6px;
+  scrollbar-gutter: stable;
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
 .discoveryPage {
   min-height: 0;
 }
