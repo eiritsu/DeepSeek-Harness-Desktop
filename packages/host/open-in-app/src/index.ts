@@ -65,6 +65,8 @@ export interface Config {
    * long an application may live.
    */
   readonly launchWatchMs: number
+  /** Browser-side deadline for one complete launch HTTP request. */
+  readonly clientRequestTimeoutMs: number
 }
 
 const boundedMs = (): z<number> => z.number().step(1).min(1).max(600_000).required()
@@ -73,6 +75,7 @@ export const Config: z<Config> = z.object({
   probeTimeoutMs: boundedMs(),
   iconTimeoutMs: boundedMs(),
   launchWatchMs: boundedMs(),
+  clientRequestTimeoutMs: boundedMs(),
 })
 
 /** Trust surface consumed here; the browser-side connection package owns the full type. */
@@ -199,7 +202,10 @@ export function apply(ctx: Context, config: Config): void {
         sendMethodNotAllowed(res, 'GET')
         return
       }
-      sendJson(res, 200, { apps: [...(await availability()).keys()] })
+      sendJson(res, 200, {
+        apps: [...(await availability()).keys()],
+        requestTimeoutMs: config.clientRequestTimeoutMs,
+      })
     },
   }), `open-in-app: GET ${OPEN_IN_APP_APPS_ROUTE}`)
 

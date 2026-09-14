@@ -75,7 +75,7 @@ const providerSchema = z.object({
   api: z.string().min(1).optional(),
 })
 const catalogCacheSchema = z.object({
-  format: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
+  format: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).optional(),
   checkedAt: z.number().int().nonnegative(),
   providers: z.array(providerSchema).optional(),
   declarations: z.array(declarationSchema),
@@ -85,12 +85,16 @@ type CatalogCache = z.infer<typeof catalogCacheSchema>
 type CatalogProvider = z.infer<typeof providerSchema>
 type CatalogModality = z.infer<typeof modalitySchema>
 
-const reasoningLevelOrder = ['off', 'low', 'medium', 'high', 'xhigh', 'max'] as const
+const reasoningLevelOrder = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
 const reasoningLevelSet = new Set<string>(reasoningLevelOrder)
 
-/** Compare two canonical, ordered model-effort lists. */
-function sameReasoningEfforts(left: readonly string[], right: readonly string[]): boolean {
-  return left.length === right.length && left.every((value, index) => value === right[index])
+/** Return only reasoning levels supported by every matching upstream route. */
+function sharedReasoningEfforts(values: readonly (readonly string[])[]): string[] | undefined {
+  const first = values[0]
+  if (first === undefined) return undefined
+  const shared = reasoningLevelOrder.filter(level => first.includes(level)
+    && values.every(candidate => candidate.includes(level)))
+  return shared.length === 0 ? undefined : [...shared]
 }
 
 /** Extract supported effort names from models.dev's reasoning_options field. */
@@ -100,13 +104,18 @@ function supportedReasoningEfforts(value: unknown): string[] | undefined {
   for (const option of value) {
     if (typeof option !== 'object' || option === null || Array.isArray(option)) continue
     const candidate = option as { type?: unknown; values?: unknown }
+    if (candidate.type === 'toggle') {
+      values.add('off')
+      continue
+    }
     if (candidate.type !== 'effort' || !Array.isArray(candidate.values)) continue
     for (const effort of candidate.values) {
-      if (typeof effort === 'string' && reasoningLevelSet.has(effort)) values.add(effort)
+      if (effort === 'none') values.add('off')
+      else if (typeof effort === 'string' && reasoningLevelSet.has(effort)) values.add(effort)
     }
   }
   const ordered = reasoningLevelOrder.filter(level => values.has(level))
-  return ordered.length === 0 ? undefined : [...ordered]
+  return ordered.some(level => level !== 'off') ? [...ordered] : undefined
 }
 
 interface CatalogModelRef {
@@ -120,7 +129,7 @@ const catalogDomainSpec = defineDomain({
   version: 0,
   global: {
     schema: catalogCacheSchema,
-    initial: { format: 3 as const, checkedAt: 0, providers: [], declarations: [] },
+    initial: { format: 4 as const, checkedAt: 0, providers: [], declarations: [] },
   },
   tables: {},
 })
@@ -284,7 +293,7 @@ class DynamicCatalog {
     private readonly config: Required<Config>,
   ) {
     const persisted = global.get()
-    this.cache = persisted.format === 3
+    this.cache = persisted.format === 4
       ? persisted
       : { ...persisted, checkedAt: 0, providers: persisted.providers ?? [] }
   }
@@ -323,7 +332,7 @@ class DynamicCatalog {
       remote,
       owners,
       candidate => candidate.reasoningEfforts,
-      values => this.consensus(values, sameReasoningEfforts),
+      sharedReasoningEfforts,
     )
     const builtin = this.builtin(model, owners)
     const resolvedInput = input.covered ? supportedModalities(input.value) : builtin.input
@@ -397,7 +406,7 @@ class DynamicCatalog {
     const { providers, declarations } = parseCatalog(
       await readBoundedJson(response, this.config.maxResponseBytes),
     )
-    const cache = { format: 3 as const, checkedAt: Date.now(), providers, declarations }
+    const cache = { format: 4 as const, checkedAt: Date.now(), providers, declarations }
     await this.global.set(cache)
     this.cache = cache
   }
@@ -479,13 +488,10 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     const currentReasoning = resolved.reasoningEfforts === undefined
       ? undefined
       : {
-        efforts: [
-          { id: ReasoningEffortId('off'), name: 'Off' },
-          ...resolved.reasoningEfforts.map(level => ({
-            id: ReasoningEffortId(level),
-            name: `${level.charAt(0).toUpperCase()}${level.slice(1)}`,
-          })),
-        ],
+        efforts: resolved.reasoningEfforts.map(level => ({
+          id: ReasoningEffortId(level),
+          name: `${level.charAt(0).toUpperCase()}${level.slice(1)}`,
+        })),
       } satisfies LlmModelReasoningInfo
     const patch = {
       authoritative: true,

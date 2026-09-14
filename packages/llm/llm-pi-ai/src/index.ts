@@ -204,6 +204,9 @@ export function apply(ctx: Context, config: Config): void {
     resolveModelCapacity: (provider, model, signal, ownedBy, baseURL) => (
       ctx.llm.resolveModelCapacity(provider, model, signal, ownedBy, baseURL)
     ),
+    resolveReasoningEfforts: (provider, model, signal, ownedBy, baseURL) => (
+      ctx.llm.resolveModelReasoning(provider, model, signal, ownedBy, baseURL)
+    ),
     auth,
     resolveAttachments: () => ctx.get('attachments'),
     resolveImageAccess: (attachments, ref) => resolveImageAttachmentAccess(

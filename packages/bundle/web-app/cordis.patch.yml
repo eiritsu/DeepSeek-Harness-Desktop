@@ -68,6 +68,7 @@
         probeTimeoutMs: 10000
         iconTimeoutMs: 10000
         launchWatchMs: 1000
+        clientRequestTimeoutMs: 10000
 
     - id: ui-open-in-app
       name: '@deepseek-ai/dsh-client-ui-open-in-app'

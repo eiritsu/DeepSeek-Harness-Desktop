@@ -221,6 +221,8 @@ export interface ResolvedPiAiProviderProfile
   modelOwners: ReadonlyMap<string, string>
   /** Model ids whose configuration permits external catalog enrichment. */
   externallyResolvableInputModels: ReadonlySet<string>
+  /** Model ids whose reasoning capabilities may come from an external catalog. */
+  externallyResolvableReasoningModels: ReadonlySet<string>
 }
 
 /** Plugin configuration: the provider routes this instance owns. */
@@ -507,6 +509,7 @@ export function resolveProfiles(
       inputModalities: catalog?.inputModalities ?? new Map(),
       modelOwners: catalog?.modelOwners ?? new Map(),
       externallyResolvableInputModels: catalog?.externallyResolvableInputModels ?? new Set(),
+      externallyResolvableReasoningModels: catalog?.externallyResolvableReasoningModels ?? new Set(),
       modelErrors: catalog?.modelErrors ?? new Map(),
       ...piProvider === undefined ? {} : { piProvider },
       ...catalogError === undefined ? {} : { catalogError },

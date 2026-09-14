@@ -28,6 +28,8 @@ export class OpenInAppController {
   })
 
   private loading: Promise<void> | undefined
+  private requestTimeoutMs: number | undefined
+  private readonly launches = new Set<AbortController>()
 
   /**
    * @param fetcher - HTTP carrier for the apps read and the launch POST.
@@ -59,13 +61,29 @@ export class OpenInAppController {
    * @returns after the host acknowledged the launch; rejects on any failure.
    */
   async launch(appId: string, path: string): Promise<void> {
+    if (this.requestTimeoutMs === undefined) throw new Error('open failed: availability is not ready')
     const body: OpenInAppOpenPayload = { app: appId, path }
-    const response = await this.fetcher(new URL(OPEN_IN_APP_OPEN_ROUTE, hostBase()), {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    if (!response.ok) throw new Error(`open failed: HTTP ${String(response.status)}`)
+    const controller = new AbortController()
+    this.launches.add(controller)
+    const timeout = setTimeout(() => { controller.abort(new Error('open failed: request timed out')) }, this.requestTimeoutMs)
+    try {
+      const response = await this.fetcher(new URL(OPEN_IN_APP_OPEN_ROUTE, hostBase()), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      })
+      if (!response.ok) throw new Error(`open failed: HTTP ${String(response.status)}`)
+    } finally {
+      clearTimeout(timeout)
+      this.launches.delete(controller)
+    }
+  }
+
+  /** Abort outstanding launch requests when the client plugin unmounts. */
+  dispose(): void {
+    for (const controller of this.launches) controller.abort(new Error('open failed: controller disposed'))
+    this.launches.clear()
   }
 
   private async run(): Promise<void> {
@@ -76,7 +94,12 @@ export class OpenInAppController {
       })
       if (response.ok) {
         const payload = await response.json() as OpenInAppAppsPayload
-        if (Array.isArray(payload.apps)) apps = payload.apps.filter(id => typeof id === 'string')
+        if (Array.isArray(payload.apps)
+          && Number.isSafeInteger(payload.requestTimeoutMs)
+          && payload.requestTimeoutMs > 0) {
+          apps = payload.apps.filter(id => typeof id === 'string')
+          this.requestTimeoutMs = payload.requestTimeoutMs
+        }
       }
     } catch {
       // Swallows network failures: an unreachable host reads as no apps, and

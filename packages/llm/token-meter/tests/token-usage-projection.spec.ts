@@ -243,8 +243,21 @@ describe('tokenUsage session projection', () => {
     expect(projected(ctx, session)).toEqual({
       uncachedInputTokens: 30,
       outputTokens: 15,
-      cacheReadTokens: 2,
       cacheWriteTokens: 4,
+    })
+  })
+
+  it('restores known cache usage when a same-step final sample reports it', async () => {
+    const { ctx, session } = await harness()
+    startStep(session, 1, 1)
+    usageChunk(session, { inputTokens: 10, outputTokens: 2 }, 1, 1)
+    finalUsage(session, { inputTokens: 10, outputTokens: 3, cacheReadTokens: 7 }, 1, 1)
+
+    expect(projected(ctx, session)).toEqual({
+      uncachedInputTokens: 10,
+      outputTokens: 3,
+      cacheReadTokens: 7,
+      cacheWriteTokens: 0,
     })
   })
 
@@ -256,7 +269,6 @@ describe('tokenUsage session projection', () => {
     expect(projected(ctx, session)).toEqual({
       uncachedInputTokens: 9,
       outputTokens: 1,
-      cacheReadTokens: 0,
       cacheWriteTokens: 0,
     })
   })
@@ -282,7 +294,6 @@ describe('tokenUsage session projection', () => {
     expect(projected(ctx, session)).toEqual({
       uncachedInputTokens: 12,
       outputTokens: 3,
-      cacheReadTokens: 0,
       cacheWriteTokens: 0,
     })
   })

@@ -18,7 +18,7 @@ describe('OpenInAppController availability', () => {
   })
 
   it('shares one availability read across concurrent loads', async () => {
-    const fetcher = vi.fn(async () => jsonResponse({ apps: ['finder'] }))
+    const fetcher = vi.fn(async () => jsonResponse({ apps: ['finder'], requestTimeoutMs: 1000 }))
     const controller = new OpenInAppController(fetcher)
     await Promise.all([controller.load(), controller.load()])
     await controller.load()
@@ -69,16 +69,43 @@ describe('OpenInAppController launching', () => {
   })
 
   it('posts the launch body and surfaces HTTP failures', async () => {
-    const fetcher = vi.fn(async (input: string | URL, init?: RequestInit) => { void input; void init; return jsonResponse({ ok: true }) })
+    const fetcher = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      void init
+      return String(input).includes('/apps')
+        ? jsonResponse({ apps: ['cursor'], requestTimeoutMs: 1000 })
+        : jsonResponse({ ok: true })
+    })
     const controller = new OpenInAppController(fetcher)
+    await controller.load()
     await controller.launch('cursor', '/w/dir')
-    expect(fetcher.mock.calls[0]?.[1]).toMatchObject({
+    expect(fetcher.mock.calls[1]?.[1]).toMatchObject({
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ app: 'cursor', path: '/w/dir' }),
     })
 
-    const failing = new OpenInAppController(async () => jsonResponse({}, 404))
+    const failing = new OpenInAppController(async input => String(input).includes('/apps')
+      ? jsonResponse({ apps: ['cursor'], requestTimeoutMs: 1000 })
+      : jsonResponse({}, 404))
+    await failing.load()
     await expect(failing.launch('cursor', '/w/dir')).rejects.toThrow('open failed: HTTP 404')
+  })
+
+  it('aborts a stuck launch at the host-supplied deadline and permits a retry', async () => {
+    let attempts = 0
+    const fetcher = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      if (String(input).includes('/apps')) return jsonResponse({ apps: ['finder'], requestTimeoutMs: 5 })
+      attempts += 1
+      if (attempts > 1) return jsonResponse({ ok: true })
+      return await new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          reject(init.signal?.reason instanceof Error ? init.signal.reason : new Error('aborted'))
+        }, { once: true })
+      })
+    })
+    const controller = new OpenInAppController(fetcher)
+    await controller.load()
+    await expect(controller.launch('finder', '/w')).rejects.toThrow('timed out')
+    await expect(controller.launch('finder', '/w')).resolves.toBeUndefined()
   })
 })

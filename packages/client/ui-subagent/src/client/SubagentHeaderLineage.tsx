@@ -81,7 +81,7 @@ function tokenTotal(
   return usage === undefined
     ? undefined
     : usage.uncachedInputTokens + usage.outputTokens
-      + usage.cacheReadTokens + usage.cacheWriteTokens
+      + (usage.cacheReadTokens ?? 0) + usage.cacheWriteTokens
 }
 
 /** Exact whole-second active-turn duration for one catalog row. */

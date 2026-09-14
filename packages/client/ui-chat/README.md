@@ -39,6 +39,8 @@ Each nonempty appended `system/message` owns a collapsed prompt row, including a
 
 A completed Turn shows an expandable usage row only when the loaded window includes `turn/start` and every started model attempt reports safe, exact usage. The row omits unavailable optional buckets. Incomplete or contradictory accounting hides the complete disclosure instead of presenting a partial total.
 
+The Session-level token pill uses the durable `tokenUsage` projection. When a provider omits cache-read accounting, the pill and dialog say `Cache not reported`; they never convert the unknown bucket into a `0%` cache-hit claim.
+
 <a id="completed-turn-footer"></a>
 ## Completed-turn footer
 

@@ -10,7 +10,7 @@ Desktop 迁移到上游 Electron 基线时删除了动态模型 catalog 与原�
 
 ## 决策
 
-两个 Desktop profile 都挂载 `@deepseek-ai/dsh-model-catalog`，并禁用隐式 `llm-deepseek` 路由。catalog 持久化 last-good `models.dev` 快照，为模型发现提供权威 metadata，并为运行时提供输入、容量与推理事实。不透明网关路由会采用同 ID 精确声明中的最小容量与共同输入模态，避免 provider 用不同单位表达等价限制时触发回退；推理等级仍要求完全一致。只有模型条目没有显式声明输入模态时，`llm-pi-ai` 才会查询 catalog；显式路由配置继续拥有最高优先级。prepared call 与单独模型检查使用同一条 effect-scoped metadata 链。
+两个 Desktop profile 都挂载 `@deepseek-ai/dsh-model-catalog`，并禁用隐式 `llm-deepseek` 路由。catalog 持久化 last-good `models.dev` 快照，为模型发现提供权威 metadata，并为运行时提供输入、容量与推理事实。不透明网关路由会采用同 ID 精确声明中的最小容量、共同输入模态与共同推理等级，避免 provider 用不同单位表达等价限制时触发回退；provider 专属扩展绝不合并。只有模型条目没有显式声明对应输入模态或推理等级时，`llm-pi-ai` 才会查询 catalog；显式路由配置继续拥有最高优先级。prepared call 与单独模型检查使用同一条 effect-scoped metadata 链。
 
 Swift Lite 还会挂载 `@deepseek-ai/dsh-client-ui-plugin-library`，并把两个恢复的 package 纳入受管理源码集合。配置导入器保留实时 Session SQLite 数据库、合并 profile 与 Skill、把旧 `llm-dsh-ai` 设置映射为 `llm-pi-ai`，并且只把旧 Web profile 的第三方依赖与 Bundle 带入 `desktop-lite`。导出在脱敏前使用 SQLite backup 操作，并包含不含密钥的 settings 文件。导入后的 settings 权限仅允许 owner 读写。
 

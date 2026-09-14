@@ -46,6 +46,10 @@ describe('pi-ai model-discovery catalog', () => {
             reasoning: true,
             reasoning_options: [{ type: 'effort', values: ['low', 'medium', 'xhigh'] }],
           },
+          'toggle-only': {
+            reasoning: true,
+            reasoning_options: [{ type: 'toggle' }],
+          },
         },
       },
     })))))
@@ -68,7 +72,6 @@ describe('pi-ai model-discovery catalog', () => {
     await expect(ctx.llm.resolveModelInfo('amd', 'Qwen3.8-Flash-Next')).resolves.toMatchObject({
       reasoning: {
         efforts: [
-          { id: 'off', name: 'Off' },
           { id: 'low', name: 'Low' },
           { id: 'medium', name: 'Medium' },
           { id: 'xhigh', name: 'Xhigh' },
@@ -77,9 +80,10 @@ describe('pi-ai model-discovery catalog', () => {
     })
     await expect(ctx.llm.resolveModelReasoning('amd', 'Qwen3.8-Flash-Next'))
       .resolves.toEqual(['low', 'medium', 'xhigh'])
+    await expect(ctx.llm.resolveModelReasoning('amd', 'toggle-only')).resolves.toBeUndefined()
   })
 
-  it('uses exact owners or exact-id consensus and withdraws enrichment on disposal', async () => {
+  it('uses exact owners or conservative exact-id intersections and withdraws enrichment on disposal', async () => {
     const ctx = new Context()
     context = ctx
     await mountRuntime(ctx)
@@ -104,9 +108,11 @@ describe('pi-ai model-discovery catalog', () => {
       } } },
       'provider-a': { models: { 'shared-vision': {
         modalities: { input: ['text', 'image', 'pdf'] },
+        reasoning_options: [{ type: 'effort', values: ['none', 'low', 'medium', 'high'] }],
       } } },
       'provider-b': { models: { 'shared-vision': {
         modalities: { input: ['text', 'image'] },
+        reasoning_options: [{ type: 'toggle' }, { type: 'effort', values: ['low', 'high', 'max'] }],
       } } },
     })))))
     ctx.llm.registerModelDiscovery('llm-example', () => Promise.resolve([
@@ -196,6 +202,8 @@ describe('pi-ai model-discovery catalog', () => {
     await expect(ctx.llm.resolveModelInput('openai-codex', 'gpt-5.3-codex-spark'))
       .resolves.toEqual(['text'])
     await expect(ctx.llm.resolveModelInput('gateway', 'unknown-model')).resolves.toBeUndefined()
+    await expect(ctx.llm.resolveModelReasoning('gateway', 'shared-vision'))
+      .resolves.toEqual(['off', 'low', 'high'])
     await expect(ctx.llm.resolveModelCapacity('zai-coding-cn', 'glm-5.3-flash'))
       .resolves.toEqual({ contextWindow: 1_000_000, maxOutputTokens: 131_072 })
     const persisted = JSON.parse(await readFile(join(storageRoot!, 'model_catalog_pi_ai.json'), 'utf8')) as {
@@ -250,7 +258,7 @@ describe('pi-ai model-discovery catalog', () => {
       global: { format?: number; providers?: unknown[]; declarations: unknown[] }
     }
     expect(persisted.global).toMatchObject({
-      format: 3,
+      format: 4,
       providers: [{ id: 'zai' }],
       declarations: [{
         provider: 'zai',

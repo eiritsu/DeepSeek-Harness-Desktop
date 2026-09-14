@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -10,6 +10,7 @@ const channelMocks = vi.hoisted(() => ({
   register: vi.fn(),
   connect: vi.fn(async () => {}),
   dispose: vi.fn(async () => {}),
+  bridgeOptions: [] as Array<Record<string, unknown>>,
 }))
 
 vi.mock('@larksuite/channel', async importOriginal => ({
@@ -20,6 +21,9 @@ vi.mock('@larksuite/channel', async importOriginal => ({
 
 vi.mock('../src/conversation.ts', () => ({
   LarkConversationBridge: class {
+    constructor(_ctx: unknown, _channel: unknown, options: Record<string, unknown>) {
+      channelMocks.bridgeOptions.push(options)
+    }
     connect = channelMocks.connect
     dispose = channelMocks.dispose
   },
@@ -55,6 +59,8 @@ const roots: string[] = []
 
 afterEach(async () => {
   vi.clearAllMocks()
+  channelMocks.bridgeOptions.length = 0
+  vi.unstubAllEnvs()
   await Promise.all(roots.splice(0).map(async (root) => { await rm(root, { recursive: true, force: true }) }))
 })
 
@@ -448,6 +454,27 @@ describe('LarkManagementGateway', () => {
     await internals.replaceConversation()
     expect(channelMocks.dispose).toHaveBeenCalled()
     await ready.ctx.fiber.dispose()
+  })
+
+  it('creates and names the stable default conversation workspace', async () => {
+    const dshHome = await mkdtemp(join(tmpdir(), 'dsh-lark-home-'))
+    roots.push(dshHome)
+    vi.stubEnv('DSH_HOME', dshHome)
+    const runtime = await makeHarness([], {
+      appId: 'cli_app',
+      brand: 'feishu',
+      conversationEnabled: true,
+      conversationUserOpenId: 'ou_user',
+      conversationCwd: '',
+    })
+    runtime.credentials.set(String(LARK_APP_SECRET_REF), 'secret')
+    const internals = runtime.gateway as unknown as { replaceConversation(): Promise<void> }
+    await internals.replaceConversation()
+
+    const cwd = join(dshHome, 'workspaces', 'lark')
+    await expect(stat(cwd)).resolves.toMatchObject({})
+    expect(channelMocks.bridgeOptions.at(-1)).toMatchObject({ cwd, workspaceTitle: '飞书' })
+    await runtime.ctx.fiber.dispose()
   })
 
   it('records conversation connection errors and disposes the failed bridge', async () => {

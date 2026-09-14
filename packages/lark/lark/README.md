@@ -33,7 +33,7 @@ Mount the package in a composition and open **Lark Management** in Settings. Off
 
 Application permission grants and current-user OAuth are separate. The Settings page reports both identities and missing scopes. Its copy action writes the batch permission template directly to the clipboard without rendering the JSON. A self-built application must enable long-connection event subscriptions and subscribe to `im.message.receive_v1`.
 
-Private-chat ingestion is enabled by default. `conversationUserOpenId` restricts it to the authorized user; group messages and other senders do not reach an Agent. `conversationCwd`, `conversationTimeZone`, handshake/response timeouts, CLI deadlines, output limits, and connection enablement are validated Cordis configuration fields.
+Private-chat ingestion is enabled by default. `conversationUserOpenId` restricts it to the authorized user; group messages and other senders do not reach an Agent. `conversationCwd`, `conversationTimeZone`, handshake/response timeouts, CLI deadlines, output limits, and connection enablement are validated Cordis configuration fields. An empty `conversationCwd` uses and creates `$DSH_HOME/workspaces/lark`, so new conversations do not inherit an application bundle or source checkout as their Workspace.
 
 -----
 
@@ -45,7 +45,7 @@ Private-chat ingestion is enabled by default. `conversationUserOpenId` restricts
 
 The Host exposes a typed `larkManagement` Remote service and keeps App Secret plus unfinished OAuth state in Credentials. Read-only official CLI commands proceed directly; commands not proven read-only enter the normal DSH approval flow. CLI secrets use stdin and never enter argv, renderer responses, or logs.
 
-Each `(App ID, chat ID)` maps to one stable Session. Incoming text, downloaded files, and recognized attachment text are logged with Lark message and sender identifiers, so a repeated platform message ID is not resubmitted. New chats use `conversationCwd` and the current default model; restored chats retain their persisted cwd, Workspace membership, Session ID, and model. Text and structured file/image attachment replies return to the originating message. Teardown stops intake, waits for in-flight work, disconnects the channel, and releases plugin-owned Agents.
+Each `(App ID, chat ID)` maps to one stable Session. Incoming text, downloaded files, and recognized attachment text are logged with Lark message and sender identifiers, so a repeated platform message ID is not resubmitted. New chats use `conversationCwd` and the current default model; when the stable default Workspace is first created it is titled `Feishu` or `Lark` for the configured brand. Restored chats retain their persisted cwd, Workspace membership, Session ID, and model. Text and structured file/image attachment replies return to the originating message. Teardown stops intake, waits for in-flight work, disconnects the channel, and releases plugin-owned Agents.
 
 | File | Role |
 |---|---|

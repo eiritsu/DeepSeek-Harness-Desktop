@@ -39,6 +39,7 @@ Choose it for a Web deployment whose users work beside a local editor, Git GUI, 
     probeTimeoutMs: 10000
     iconTimeoutMs: 10000
     launchWatchMs: 1000
+    clientRequestTimeoutMs: 10000
 ```
 
 | Field | Default | Meaning |
@@ -46,8 +47,9 @@ Choose it for a Web deployment whose users work beside a local editor, Git GUI, 
 | `probeTimeoutMs` | required | Per-command deadline in milliseconds for catalog-resolution host commands (`xcode-select`, the Windows registry reads). |
 | `iconTimeoutMs` | required | Per-command deadline in milliseconds for icon-extraction host commands (`plutil`/`sips` on macOS, the PowerShell extraction on Windows). |
 | `launchWatchMs` | required | Early-failure watch window per launch: a launcher still running when the window closes counts as launched and keeps running, so this bounds how long the open route holds a successful launch. |
+| `clientRequestTimeoutMs` | required | Browser deadline for the complete launch request; expiry aborts the request and allows the button to be used again. |
 
-The three deadlines are independent so tuning one operation never changes another's response time; timeouts are failure bounds, not latency budgets, so the conservative resolution/icon values cost nothing when commands are healthy. The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-host-open-in-app) is the exhaustive source for every accepted field.
+The four deadlines are independent so tuning one operation never changes another's response time; timeouts are failure bounds, not latency budgets, so the conservative resolution/icon values cost nothing when commands are healthy. The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-host-open-in-app) is the exhaustive source for every accepted field.
 
 ### The catalog and how it resolves
 

@@ -1,6 +1,7 @@
 /** Host integration for Lark/Feishu credentials, permissions, OAuth, and CLI tools. */
 
 import { existsSync } from 'node:fs'
+import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
@@ -89,7 +90,7 @@ export interface Config {
   conversationHandshakeTimeoutMs?: number
   /** Maximum duration to wait for one Harness turn response. */
   conversationResponseTimeoutMs?: number
-  /** Workspace assigned to newly created private-chat sessions; empty uses the runtime directory. */
+  /** Workspace assigned to newly created private-chat sessions; empty uses the stable Harness Lark directory. */
   conversationCwd?: string
   /** IANA time zone used to interpret otherwise-unqualified Lark dates and times. */
   conversationTimeZone?: string
@@ -546,6 +547,9 @@ export default class LarkManagementGateway extends TypertRemoteService {
     }
 
     this.conversationState = { status: 'connecting' }
+    const configuredConversationCwd = config.conversationCwd.trim()
+    const conversationCwd = configuredConversationCwd || join(resolveDshHome(), 'workspaces', 'lark')
+    if (configuredConversationCwd === '') await mkdir(conversationCwd, { recursive: true })
     const bridge = new LarkConversationBridge(this.ctx, createLarkChannel({
       appId: config.appId,
       appSecret: secret.value,
@@ -561,13 +565,13 @@ export default class LarkManagementGateway extends TypertRemoteService {
       appId: config.appId,
       allowedSenderId,
       responseTimeoutMs: config.conversationResponseTimeoutMs,
-      cwd: config.conversationCwd.trim() || process.cwd(),
+      cwd: conversationCwd,
+      workspaceTitle: config.brand === 'feishu' ? '飞书' : 'Lark',
       timeZone: config.conversationTimeZone,
     })
     try {
       await bridge.connect()
       // Disposal can run while the connection promise is pending.
-      // oxlint-disable-next-line typescript/no-unnecessary-condition
       if (this.disposed) {
         await bridge.dispose()
         return

@@ -126,6 +126,7 @@ function harness(options: {
   readonly attached: SessionId[]
   readonly workspaceResolves: string[]
   readonly workspaceCreates: string[]
+  readonly workspaceCreateTitles: Array<string | undefined>
   readonly disposed: ReturnType<typeof vi.fn>
   readonly scopedDisposed: ReturnType<typeof vi.fn>
   readonly savedImages: ReturnType<typeof vi.fn>
@@ -149,6 +150,7 @@ function harness(options: {
   const attached: SessionId[] = []
   const workspaceResolves: string[] = []
   const workspaceCreates: string[] = []
+  const workspaceCreateTitles: Array<string | undefined> = []
   const disposed = vi.fn(async () => {})
   const scopedDisposed = vi.fn(async () => {})
   const savedImages = vi.fn(async () => [IMAGE_REF])
@@ -319,8 +321,9 @@ function harness(options: {
         workspaceResolves.push(path)
         return options.workspaceExists === false ? undefined : workspace
       }),
-      create: vi.fn(async (path: string) => {
+      create: vi.fn(async (path: string, title?: string) => {
         workspaceCreates.push(path)
+        workspaceCreateTitles.push(title)
         return workspace
       }),
     },
@@ -335,6 +338,7 @@ function harness(options: {
     attached,
     workspaceResolves,
     workspaceCreates,
+    workspaceCreateTitles,
     disposed,
     scopedDisposed,
     savedImages,
@@ -470,6 +474,25 @@ describe('LarkConversationBridge', () => {
     expect(runtime.setupTimeZones).toEqual(['Asia/Shanghai'])
     expect(runtime.attached).toEqual([larkSessionId('cli_app', 'oc_chat')])
     expect(runtime.followups).toHaveLength(1)
+    await bridge.dispose()
+  })
+
+  it('names a newly created Feishu workspace', async () => {
+    const runtime = harness({ workspaceExists: false })
+    const channel = new FakeChannel()
+    const bridge = new LarkConversationBridge(runtime.ctx, channel as unknown as LarkChannel, {
+      appId: 'cli_app',
+      allowedSenderId: 'ou_allowed',
+      responseTimeoutMs: 1_000,
+      cwd: '/stable-lark-workspace',
+      workspaceTitle: '飞书',
+      timeZone: 'Asia/Shanghai',
+    })
+    await bridge.connect()
+    await channel.emitMessage(inbound())
+
+    expect(runtime.workspaceCreates).toEqual(['/stable-lark-workspace'])
+    expect(runtime.workspaceCreateTitles).toEqual(['飞书'])
     await bridge.dispose()
   })
 

@@ -16,6 +16,8 @@ export const OPEN_IN_APP_OPEN_ROUTE = '/open-in-app/open'
 /** Apps-route response: catalog ids probed as installed, in menu order. */
 export interface OpenInAppAppsPayload {
   readonly apps: readonly string[]
+  /** Browser-side deadline for one launch request. */
+  readonly requestTimeoutMs: number
 }
 
 /** Open-route request body. */

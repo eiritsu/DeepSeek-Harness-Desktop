@@ -594,6 +594,62 @@ describe('provider profile lifecycle', () => {
     })
   })
 
+  it('serves external catalog reasoning for a model without a local declaration', async () => {
+    const adapter = new PiAiAdapter({
+      profiles: () => resolveProfiles({
+        'acme-gateway': {
+          api: 'openai-completions',
+          baseURL: 'https://acme.test/v1',
+          models: [{ id: 'acme-think', contextWindow: 65_536, maxTokens: 4096 }],
+        },
+      }),
+      resolveApiKey: () => Promise.resolve('test-key'),
+      resolveReasoningEfforts: () => Promise.resolve(['off', 'low', 'high']),
+      auth: memoryAuth(),
+    })
+
+    await expect(adapter.resolveModel('acme-gateway', 'acme-think')).resolves.toMatchObject({
+      reasoning: {
+        efforts: [
+          { id: ReasoningEffortId('off'), name: 'Off' },
+          { id: ReasoningEffortId('low'), name: 'Low' },
+          { id: ReasoningEffortId('high'), name: 'High' },
+        ],
+      },
+    })
+  })
+
+  it('keeps explicit reasoning authoritative over the external catalog', async () => {
+    const resolveReasoningEfforts = vi.fn(() => Promise.resolve(['low', 'medium']))
+    const adapter = new PiAiAdapter({
+      profiles: () => resolveProfiles({
+        'acme-gateway': {
+          api: 'openai-completions',
+          baseURL: 'https://acme.test/v1',
+          models: [{
+            id: 'acme-think',
+            contextWindow: 65_536,
+            maxTokens: 4096,
+            reasoningEfforts: { off: null, high: 'ultra' },
+          }],
+        },
+      }),
+      resolveApiKey: () => Promise.resolve('test-key'),
+      resolveReasoningEfforts,
+      auth: memoryAuth(),
+    })
+
+    await expect(adapter.resolveModel('acme-gateway', 'acme-think')).resolves.toMatchObject({
+      reasoning: {
+        efforts: [
+          { id: ReasoningEffortId('off'), name: 'Off' },
+          { id: ReasoningEffortId('high'), name: 'High' },
+        ],
+      },
+    })
+    expect(resolveReasoningEfforts).not.toHaveBeenCalled()
+  })
+
   it('sends the declared wire spelling and refuses undeclared levels before network I/O', async () => {
     vi.stubEnv('PI_TEST_KEY', 'test-key')
     const server = await mockServer([{ events: textEvents }])

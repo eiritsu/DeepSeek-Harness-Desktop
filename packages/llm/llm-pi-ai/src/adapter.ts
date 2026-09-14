@@ -36,6 +36,7 @@ import type {
   ModelThinkingLevel,
   MutableModels,
   SimpleStreamOptions,
+  ThinkingLevelMap,
   ThinkingLevel,
 } from '@earendil-works/pi-ai'
 import {
@@ -107,6 +108,14 @@ export interface PiAiAdapterOptions {
     ownedBy?: string,
     baseURL?: string,
   ) => Promise<LlmModelCapacity | undefined>
+  /** Resolve authoritative reasoning levels for models without a local declaration. */
+  resolveReasoningEfforts?: (
+    provider: string,
+    model: string,
+    signal?: AbortSignal,
+    ownedBy?: string,
+    baseURL?: string,
+  ) => Promise<readonly string[] | undefined>
   /**
    * How every collection this adapter builds resolves auth the request-level
    * `apiKey` override does not cover. Required rather than optional: a
@@ -225,6 +234,17 @@ function reasoningInfo(
   }
 }
 
+/** Apply exact external catalog levels to one pi-ai model descriptor. */
+function modelForCatalogReasoning(model: Model<Api>, efforts: readonly string[]): Model<Api> {
+  const supported = new Set(efforts)
+  const thinkingLevelMap: ThinkingLevelMap = {}
+  for (const level of ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const) {
+    if (!supported.has(level)) thinkingLevelMap[level] = null
+    else if (level !== 'off') thinkingLevelMap[level] = level
+  }
+  return { ...model, reasoning: true, thinkingLevelMap }
+}
+
 /** Merge deployment headers while removing case-insensitive attribution collisions. */
 function requestHeaders(headers: Readonly<Record<string, string>> | undefined): Record<string, string> {
   const attribution = attributionHeaders()
@@ -297,21 +317,27 @@ export class PiAiAdapter extends LlmAdapter {
     const resolved = this.modelOf(snapshot, provider, model)
     const fallback = profile.inputModalities.get(model) ?? resolved.input
     const ownedBy = profile.modelOwners.get(model)
-    const [externalInput, externalCapacity] = await Promise.all([
+    const [externalInput, externalCapacity, externalReasoning] = await Promise.all([
       profile.externallyResolvableInputModels.has(model)
         ? this.config.resolveInputModalities?.(provider, model, signal, ownedBy, resolved.baseUrl)
         : undefined,
       this.config.resolveModelCapacity?.(provider, model, signal, ownedBy, resolved.baseUrl),
+      profile.externallyResolvableReasoningModels.has(model)
+        ? this.config.resolveReasoningEfforts?.(provider, model, signal, ownedBy, resolved.baseUrl)
+        : undefined,
     ])
     const inputModalities = [...(externalInput ?? fallback)]
     const inputUnchanged = inputModalities.length === resolved.input.length
       && inputModalities.every((modality, index) => modality === resolved.input[index])
     const contextWindow = externalCapacity?.contextWindow ?? resolved.contextWindow
     const maxTokens = externalCapacity?.maxOutputTokens ?? resolved.maxTokens
+    const withCapacity = inputUnchanged && contextWindow === resolved.contextWindow && maxTokens === resolved.maxTokens
+      ? resolved
+      : { ...resolved, input: inputModalities, contextWindow, maxTokens }
     return {
-      model: inputUnchanged && contextWindow === resolved.contextWindow && maxTokens === resolved.maxTokens
-        ? resolved
-        : { ...resolved, input: inputModalities, contextWindow, maxTokens },
+      model: externalReasoning === undefined || externalReasoning.length === 0
+        ? withCapacity
+        : modelForCatalogReasoning(withCapacity, externalReasoning),
       inputModalities,
     }
   }

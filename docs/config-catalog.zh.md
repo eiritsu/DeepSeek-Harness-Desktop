@@ -1013,6 +1013,8 @@ export interface Config {
    * long an application may live.
    */
   readonly launchWatchMs: number
+  /** Browser-side deadline for one complete launch HTTP request. */
+  readonly clientRequestTimeoutMs: number
 }
 ```
 
@@ -1108,14 +1110,14 @@ export interface Config {
   conversationHandshakeTimeoutMs?: number
   /** Maximum duration to wait for one Harness turn response. */
   conversationResponseTimeoutMs?: number
-  /** Workspace assigned to newly created private-chat sessions; empty uses the runtime directory. */
+  /** Workspace assigned to newly created private-chat sessions; empty uses the stable Harness Lark directory. */
   conversationCwd?: string
   /** IANA time zone used to interpret otherwise-unqualified Lark dates and times. */
   conversationTimeZone?: string
 }
 ```
 
-来源：[`packages/lark/lark/src/index.ts:67`](../packages/lark/lark/src/index.ts)
+来源：[`packages/lark/lark/src/index.ts:68`](../packages/lark/lark/src/index.ts)
 
 <a id="deepseek-aidsh-llm-deepseek"></a>
 
@@ -1479,7 +1481,7 @@ export type PiAiThinkingTokenBudgetField = NonNullable<OpenAICompletionsCompat['
 
 依赖：`Api`（`@earendil-works/pi-ai`）· `CacheRetention`（`@earendil-works/pi-ai`）· `Model`（`@earendil-works/pi-ai`）· `ModelThinkingLevel`（`@earendil-works/pi-ai`）· `OpenAICompletionsCompat`（`@earendil-works/pi-ai`）· [`RetryPolicyConfig`](../packages/llm/llm/src/index.ts) · `ThinkingBudgets`（`@earendil-works/pi-ai`）· `Transport`（`@earendil-works/pi-ai`)
 
-来源：[`packages/llm/llm-pi-ai/src/config.ts:227`](../packages/llm/llm-pi-ai/src/config.ts)
+来源：[`packages/llm/llm-pi-ai/src/config.ts:229`](../packages/llm/llm-pi-ai/src/config.ts)
 
 <a id="deepseek-aidsh-llm-replay"></a>
 

@@ -107,6 +107,7 @@ export function formatDuration(ms: number, t: ChatViewSlotProps['t']): string {
  * 100, and no billed input returns null.
  */
 export function cacheHitPercent(usage: TokenUsageProjection): string | null {
+  if (usage.cacheReadTokens === undefined) return null
   const denominator = billedInputTokens(usage)
   return formatCacheHitPercent(usage.cacheReadTokens, denominator)
 }
@@ -117,7 +118,7 @@ export function cacheHitPercent(usage: TokenUsageProjection): string | null {
  * @returns billed input tokens.
  */
 export function billedInputTokens(usage: TokenUsageProjection): number {
-  return usage.uncachedInputTokens + usage.cacheReadTokens + usage.cacheWriteTokens
+  return usage.uncachedInputTokens + (usage.cacheReadTokens ?? 0) + usage.cacheWriteTokens
 }
 
 /** Props: the conversation-snapshot selector plus the projection read seat. */
@@ -243,7 +244,9 @@ function UsagePill({ usage, t, dialog }: {
   const total = billedInputTokens(usage) + usage.outputTokens
   const totalText = t('message.turnUsage.count', { count: formatTokens(total, t) })
   const cacheHit = cacheHitPercent(usage)
-  const cacheHitText = cacheHit !== null ? t('stats.cacheHit', { percent: cacheHit }) : null
+  const cacheHitText = usage.cacheReadTokens === undefined
+    ? t('stats.cacheUnreported')
+    : cacheHit !== null ? t('stats.cacheHit', { percent: cacheHit }) : null
   return (
     <span ref={rootRef} className={css.anchor}>
       <button
@@ -284,10 +287,16 @@ function UsagePill({ usage, t, dialog }: {
           {/* jscpd:ignore-start -- the session-total bucket rows deliberately mirror
               TurnUsagePanel's per-turn dl: same skin, different data contract (the
               buckets are always present here; per-turn fields are optional). A
-              session that never wrote cache drops the row, as the per-turn panel
-              drops its absent fields. */}
+              session whose providers reported cache usage drops the row only
+              when the known value is zero; omitted provider cache accounting is
+              shown explicitly instead of being presented as a measured zero. */}
           <dl className={dialogCss.details} data-session-stats-usage>
-            {cacheHit !== null && (
+            {usage.cacheReadTokens === undefined ? (
+              <>
+                <dt>{t('message.turnUsage.cacheHit')}</dt>
+                <dd>{t('stats.cacheUnreported')}</dd>
+              </>
+            ) : cacheHit !== null && (
               <>
                 <dt>{t('message.turnUsage.cacheHit')}</dt>
                 <dd>{`${cacheHit}%`}</dd>
@@ -295,8 +304,12 @@ function UsagePill({ usage, t, dialog }: {
             )}
             <dt>{t('message.turnUsage.input')}</dt>
             <dd>{exactCount(usage.uncachedInputTokens, t)}</dd>
-            <dt>{t('message.turnUsage.cacheRead')}</dt>
-            <dd>{exactCount(usage.cacheReadTokens, t)}</dd>
+            {usage.cacheReadTokens !== undefined && (
+              <>
+                <dt>{t('message.turnUsage.cacheRead')}</dt>
+                <dd>{exactCount(usage.cacheReadTokens, t)}</dd>
+              </>
+            )}
             {usage.cacheWriteTokens !== 0 && (
               <>
                 <dt>{t('message.turnUsage.cacheWrite')}</dt>

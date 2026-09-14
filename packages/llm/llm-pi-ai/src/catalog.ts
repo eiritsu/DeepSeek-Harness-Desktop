@@ -822,6 +822,8 @@ export interface RouteCatalog {
   modelOwners: ReadonlyMap<string, string>
   /** Serviceable model ids whose configuration permits external catalog enrichment. */
   externallyResolvableInputModels: ReadonlySet<string>
+  /** Serviceable model ids whose configuration permits external reasoning enrichment. */
+  externallyResolvableReasoningModels: ReadonlySet<string>
 }
 
 /**
@@ -890,6 +892,7 @@ export function resolveRouteModels(
   const inputModalities = new Map<string, readonly PiAiModality[]>()
   const modelOwners = new Map<string, string>()
   const externallyResolvableInputModels = new Set<string>()
+  const externallyResolvableReasoningModels = new Set<string>()
   const resolveEntry = (entry: PiAiModelProfile): Model<Api> => {
     assertOfferedCompatFields(provider, `model "${entry.id}"`, entry.compat)
     if (entry.id.length === 0) invalid(provider, 'has a model with an empty id')
@@ -925,6 +928,7 @@ export function resolveRouteModels(
     inputModalities.set(entry.id, [...input])
     if (entry.ownedBy !== undefined) modelOwners.set(entry.id, entry.ownedBy)
     if (declared === undefined) externallyResolvableInputModels.add(entry.id)
+    if (entry.reasoningEfforts === undefined) externallyResolvableReasoningModels.add(entry.id)
     return {
       // The installed entry lays the floor, and the fields below override it.
       // Enumerating instead would silently drop every `Model` field this
@@ -965,6 +969,9 @@ export function resolveRouteModels(
   for (const id of externallyResolvableInputModels) {
     if (!serviceableIds.has(id)) externallyResolvableInputModels.delete(id)
   }
+  for (const id of externallyResolvableReasoningModels) {
+    if (!serviceableIds.has(id)) externallyResolvableReasoningModels.delete(id)
+  }
   // Per field, not per block: a route may default a switch its completions
   // models take beside one only its anthropic models do, and neither should
   // fail for the other's sake. What is refused is a route default no model on
@@ -982,5 +989,6 @@ export function resolveRouteModels(
     inputModalities,
     modelOwners,
     externallyResolvableInputModels,
+    externallyResolvableReasoningModels,
   }
 }

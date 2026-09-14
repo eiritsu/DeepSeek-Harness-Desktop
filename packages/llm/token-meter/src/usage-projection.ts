@@ -11,54 +11,81 @@ import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import type { ContextPressureProjection, TokenUsageProjection } from './projection.ts'
 import { foldSurfaceProjection } from './surface-projection.ts'
 
-const zeroBuckets = (): TokenUsageProjection => ({
+interface UsageBuckets {
+  uncachedInputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+  cacheReadUnreported: number
+}
+
+const zeroBuckets = (): UsageBuckets => ({
   uncachedInputTokens: 0,
   outputTokens: 0,
   cacheReadTokens: 0,
   cacheWriteTokens: 0,
+  cacheReadUnreported: 0,
 })
 
-const bucketsFrom = (usage: TokenUsage): TokenUsageProjection => ({
+const bucketsFrom = (usage: TokenUsage): UsageBuckets => ({
   uncachedInputTokens: usage.inputTokens,
   outputTokens: usage.outputTokens,
   cacheReadTokens: usage.cacheReadTokens ?? 0,
   cacheWriteTokens: usage.cacheWriteTokens ?? 0,
+  cacheReadUnreported: usage.cacheReadTokens === undefined ? 1 : 0,
 })
 
-const bucketsEqual = (left: TokenUsageProjection, right: TokenUsageProjection): boolean =>
+const bucketsEqual = (left: UsageBuckets, right: UsageBuckets): boolean =>
   left.uncachedInputTokens === right.uncachedInputTokens
   && left.outputTokens === right.outputTokens
   && left.cacheReadTokens === right.cacheReadTokens
   && left.cacheWriteTokens === right.cacheWriteTokens
+  && left.cacheReadUnreported === right.cacheReadUnreported
 
 const addReplacing = (
-  totals: TokenUsageProjection,
-  previous: TokenUsageProjection | undefined,
-  next: TokenUsageProjection,
-): TokenUsageProjection => ({
+  totals: UsageBuckets,
+  previous: UsageBuckets | undefined,
+  next: UsageBuckets,
+): UsageBuckets => ({
   uncachedInputTokens: totals.uncachedInputTokens - (previous?.uncachedInputTokens ?? 0) + next.uncachedInputTokens,
   outputTokens: totals.outputTokens - (previous?.outputTokens ?? 0) + next.outputTokens,
   cacheReadTokens: totals.cacheReadTokens - (previous?.cacheReadTokens ?? 0) + next.cacheReadTokens,
   cacheWriteTokens: totals.cacheWriteTokens - (previous?.cacheWriteTokens ?? 0) + next.cacheWriteTokens,
+  cacheReadUnreported: totals.cacheReadUnreported
+    - (previous?.cacheReadUnreported ?? 0)
+    + next.cacheReadUnreported,
 })
 
-const projectionSchema = z.object({
+const bucketSchema = z.object({
   uncachedInputTokens: z.number().int().nonnegative(),
   outputTokens: z.number().int().nonnegative(),
   cacheReadTokens: z.number().int().nonnegative(),
   cacheWriteTokens: z.number().int().nonnegative(),
+  cacheReadUnreported: z.number().int().nonnegative(),
 }).strict()
+
+const projectionSchema: z.ZodType<TokenUsageProjection> = z.object({
+  uncachedInputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  cacheReadTokens: z.number().int().nonnegative().optional(),
+  cacheWriteTokens: z.number().int().nonnegative(),
+}).strict().transform(({ uncachedInputTokens, outputTokens, cacheReadTokens, cacheWriteTokens }) => ({
+  uncachedInputTokens,
+  outputTokens,
+  ...cacheReadTokens === undefined ? {} : { cacheReadTokens },
+  cacheWriteTokens,
+}))
 
 /**
  * The token-usage unit's state schema — the one definition of the state
  * shape; the state type is inferred from it.
  */
 const tokenUsageStateSchema = z.object({
-  totals: projectionSchema,
+  totals: bucketSchema,
   last: z.object({
     turn: z.number().int().nonnegative(),
     step: z.number().int().nonnegative(),
-    buckets: projectionSchema,
+    buckets: bucketSchema,
   }).nullable(),
 }).strict()
 
@@ -116,7 +143,7 @@ type ContextPressureState = z.infer<typeof contextPressureStateSchema>
  */
 export const tokenUsageProjectionDefinition = {
   key: 'tokenUsage',
-  stateVersion: 2,
+  stateVersion: 3,
   stateSchema: tokenUsageStateSchema,
   init: () => ({ totals: zeroBuckets(), last: null }),
   apply: (state, event) => {
@@ -146,7 +173,15 @@ export const tokenUsageProjectionDefinition = {
       last: { turn, step, buckets },
     }
   },
-  wire: { viewSchema: projectionSchema, view: state => state.totals },
+  wire: {
+    viewSchema: projectionSchema,
+    view: ({ totals }) => ({
+      uncachedInputTokens: totals.uncachedInputTokens,
+      outputTokens: totals.outputTokens,
+      ...totals.cacheReadUnreported === 0 ? { cacheReadTokens: totals.cacheReadTokens } : {},
+      cacheWriteTokens: totals.cacheWriteTokens,
+    }),
+  },
 } satisfies ProjectionDefinition<'tokenUsage', TokenUsageState>
 
 /**

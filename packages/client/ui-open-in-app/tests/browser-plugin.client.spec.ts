@@ -45,7 +45,7 @@ describe('open-in-app browser half', () => {
   })
 
   it('registers the header split button, and fiber teardown removes it (HMR safety)', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ apps: [] }), { status: 200 })))
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ apps: [], requestTimeoutMs: 1000 }), { status: 200 })))
     const { ctx, fiber } = await bench()
     const entry = ctx.slots.entries('conversation.session.header.utilities')[0]
     expect(entry?.component).toBe(OpenInAppAction)
@@ -59,7 +59,7 @@ describe('open-in-app browser half', () => {
       void init
       const url = String(input)
       if (url.includes('/open-in-app/apps')) {
-        return new Response(JSON.stringify({ apps: ['finder', 'cursor', 7] }), { status: 200 })
+        return new Response(JSON.stringify({ apps: ['finder', 'cursor', 7], requestTimeoutMs: 1000 }), { status: 200 })
       }
       return new Response(JSON.stringify({ ok: true }), { status: 200 })
     })
@@ -97,12 +97,12 @@ describe('open-in-app browser half', () => {
     await vi.waitFor(() => {
       expect(injected.hooks.openInAppApps.getSnapshot()).toEqual([])
     })
-    await expect(injected.launch('finder', '/w/dir')).rejects.toThrow('open failed: HTTP 502')
+    await expect(injected.launch('finder', '/w/dir')).rejects.toThrow('availability is not ready')
     await fiber.dispose()
   })
 
   it('registers both dictionaries under its own namespace and releases them with the fiber', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ apps: [] }), { status: 200 })))
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ apps: [], requestTimeoutMs: 1000 }), { status: 200 })))
     const { ctx, fiber } = await bench()
     ctx.locale.setLocale('zh')
     const translate = ctx.locale.bind(NS)

@@ -83,6 +83,8 @@ export interface LarkConversationOptions {
   readonly responseTimeoutMs: number
   /** Workspace used by newly created chat sessions. */
   readonly cwd: string
+  /** Display title used when the bridge creates its durable Workspace. */
+  readonly workspaceTitle?: string
   /** IANA time zone used when Lark supplies no browser time-zone provenance. */
   readonly timeZone: string
 }
@@ -498,6 +500,6 @@ export class LarkConversationBridge {
   /** Resolve the configured directory to one durable, user-renamable Workspace. */
   private async resolveWorkspace(cwd: string): Promise<Workspace> {
     return await this.ctx.workspaceRegistry.resolveByPath(cwd)
-      ?? await this.ctx.workspaceRegistry.create(cwd)
+      ?? await this.ctx.workspaceRegistry.create(cwd, this.options.workspaceTitle)
   }
 }

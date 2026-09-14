@@ -62,6 +62,7 @@ async function boot(layers: readonly LaunchEnvironmentLayerInput[] = []): Promis
     '    probeTimeoutMs: 5000',
     '    iconTimeoutMs: 5000',
     '    launchWatchMs: 1000',
+    '    clientRequestTimeoutMs: 10000',
     '',
   ].join('\n'))
 
@@ -140,7 +141,8 @@ describe('open-in-app host routes (real Loader composition)', () => {
     }
     const base = await boot([{ source, values: { SSH_CONNECTION: 'stale-connection', SSH_TTY: '/dev/pts/stale' } }])
 
-    expect(await (await fetch(`${base}/open-in-app/apps`)).json()).toEqual({ apps: ['finder', 'terminal'] })
+    expect(await (await fetch(`${base}/open-in-app/apps`)).json())
+      .toEqual({ apps: ['finder', 'terminal'], requestTimeoutMs: 10000 })
   })
 
   it.each([
@@ -155,7 +157,7 @@ describe('open-in-app host routes (real Loader composition)', () => {
 
     const apps = await fetch(`${base}/open-in-app/apps`)
     expect(apps.status).toBe(200)
-    expect(await apps.json()).toEqual({ apps: [] })
+    expect(await apps.json()).toEqual({ apps: [], requestTimeoutMs: 10000 })
     expect((await fetch(`${base}/open-in-app/icon/finder`)).status).toBe(404)
     const open = await fetch(`${base}/open-in-app/open`, {
       method: 'POST',
@@ -200,7 +202,7 @@ describe('open-in-app host routes (real Loader composition)', () => {
       const apps = await fetch(`${base}/open-in-app/apps`)
       expect(apps.status).toBe(200)
       expect(apps.headers.get('cache-control')).toBe('no-store')
-      expect(await apps.json()).toEqual({ apps: ['finder', 'cursor', 'terminal'] })
+      expect(await apps.json()).toEqual({ apps: ['finder', 'cursor', 'terminal'], requestTimeoutMs: 10000 })
 
       const icon = await fetch(`${base}/open-in-app/icon/cursor`)
       expect(icon.status).toBe(200)
@@ -295,7 +297,7 @@ describe('open-in-app host routes (real Loader composition)', () => {
       launchOutcomes = [enoent]
       expect((await openCursor()).status).toBe(502)
       expect(await (await fetch(`${base}/open-in-app/apps`)).json())
-        .toEqual({ apps: ['finder', 'terminal'] })
+        .toEqual({ apps: ['finder', 'terminal'], requestTimeoutMs: 10000 })
       // The unresolved entry also stops serving an icon.
       expect((await fetch(`${base}/open-in-app/icon/cursor`)).status).toBe(404)
       expect((await openCursor()).status).toBe(400)
@@ -387,7 +389,8 @@ describe('open-in-app host routes (real Loader composition)', () => {
     context = undefined
     internals.catalog = { platform: 'aix', resolveExecutable: pathTable() }
     const emptyBase = await boot()
-    expect(await (await fetch(`${emptyBase}/open-in-app/apps`)).json()).toEqual({ apps: [] })
+    expect(await (await fetch(`${emptyBase}/open-in-app/apps`)).json())
+      .toEqual({ apps: [], requestTimeoutMs: 10000 })
   })
 
   it('serves a Linux catalog resolved in-process and its desktop-entry SVG icon', async () => {
@@ -415,7 +418,7 @@ describe('open-in-app host routes (real Loader composition)', () => {
     const base = await boot()
     try {
       expect(await (await fetch(`${base}/open-in-app/apps`)).json())
-        .toEqual({ apps: ['filemanager', 'vscode'] })
+        .toEqual({ apps: ['filemanager', 'vscode'], requestTimeoutMs: 10000 })
       // The icon follows the desktop entry; xdg-open declares none.
       const icon = await fetch(`${base}/open-in-app/icon/vscode`)
       expect(icon.status).toBe(200)
@@ -474,7 +477,8 @@ describe('open-in-app host routes (real Loader composition)', () => {
     const base = await boot()
     // The spec host's subprocess stub rejects every lookup, which the plugin
     // reads as not-on-PATH: the catalog resolves empty instead of failing.
-    expect(await (await fetch(`${base}/open-in-app/apps`)).json()).toEqual({ apps: [] })
+    expect(await (await fetch(`${base}/open-in-app/apps`)).json())
+      .toEqual({ apps: [], requestTimeoutMs: 10000 })
   })
 
   it('removes all three routes when the plugin row is disposed (HMR safety)', async () => {
