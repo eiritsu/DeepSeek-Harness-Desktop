@@ -243,6 +243,8 @@ describe('tokenUsage session projection', () => {
     expect(projected(ctx, session)).toEqual({
       uncachedInputTokens: 30,
       outputTokens: 15,
+      cacheReadTokens: 2,
+      cacheReadIncomplete: true,
       cacheWriteTokens: 4,
     })
   })
@@ -269,6 +271,7 @@ describe('tokenUsage session projection', () => {
     expect(projected(ctx, session)).toEqual({
       uncachedInputTokens: 9,
       outputTokens: 1,
+      cacheReadIncomplete: true,
       cacheWriteTokens: 0,
     })
   })
@@ -294,6 +297,7 @@ describe('tokenUsage session projection', () => {
     expect(projected(ctx, session)).toEqual({
       uncachedInputTokens: 12,
       outputTokens: 3,
+      cacheReadIncomplete: true,
       cacheWriteTokens: 0,
     })
   })

@@ -10,7 +10,7 @@
 
 ## 决策
 
-`llm-pi-ai` 只对 profile 未声明 `reasoningEfforts` 的模型查询 effect-scoped 推理 resolver，再把返回等级写入检查与 prepared call 共用的 pi-ai 描述符。models.dev parser 将 `none` 和 `toggle` 识别为规范 `off` 等级。没有 owner 的精确模型 ID 使用全部匹配声明的推理等级交集，在不合并提供方专属能力的前提下保留共同等级。缓存读取用量在持久投影中保持可选；只要一次参与调用未报告，该聚合缓存读取值就是未知而不是零，Chat pill 会明确命名这一状态。
+`llm-pi-ai` 只对 profile 未声明 `reasoningEfforts` 的模型查询 effect-scoped 推理 resolver，再把返回等级写入检查与 prepared call 共用的 pi-ai 描述符。models.dev parser 将 `none` 和 `toggle` 识别为规范 `off` 等级。没有 owner 的精确模型 ID 使用全部匹配声明的推理等级交集，在不合并提供方专属能力的前提下保留共同等级。缓存读取用量在持久投影中保持可选。只要一次参与调用未报告，聚合就会被标记为不完整，而不会把缺失值转成零；已确认的正数缓存读取仍然可见，Chat 不再显示精确缓存命中率。
 
 “打开方式”应用响应携带配置的客户端请求 deadline。浏览器在到期时中止启动，在 `finally` 中释放 in-flight guard，并在插件卸载时中止未完成启动。空 `conversationCwd` 的 Lark 与飞书改用 `$DSH_HOME/workspaces/lark`，桥接启动前创建该目录，并按品牌为新建 Workspace 命名。显式目录和持久 Session 目录保持不变。
 
@@ -24,8 +24,8 @@
 
 ## 结果
 
-目录具备安全证据时，自定义模型重新显示上游推理控制，同时 profile 显式声明继续优先。token 总量仍包含已知输入与输出，但没有上报分子时不再计算缓存命中率。停滞的本地启动传输会变成可恢复的点击失败。新飞书 Session 在应用升级后仍保持分组；现有 Session 继续从其已提交目录读取。
+目录具备安全证据时，自定义模型重新显示上游推理控制，同时 profile 显式声明继续优先。token 总量包含已知输入、输出与已确认缓存读取；缓存分子不完整时显示已确认数值，但不显示精确命中率。停滞的本地启动传输会变成可恢复的点击失败。新飞书 Session 在应用升级后仍保持分组；现有 Session 继续从其已提交目录读取。
 
 ## 验证
 
-专项测试覆盖推理解析与交集、adapter 消费与显式优先级、未知与实测零缓存统计、启动超时恢复与卸载、带品牌名的 Workspace 创建、Tavily 原生提供方优先级、Office 识别兜底、附件拖放，以及 Electron 全平台共用的 Web 插件库桥接。类型检查、文档门禁、打包运行时审计和已安装应用 smoke 覆盖组装后的桌面 profile。
+专项测试覆盖推理解析与交集、adapter 消费与显式优先级、未知、部分确认与实测零缓存统计、启动超时恢复与卸载、带品牌名的 Workspace 创建、Tavily 原生提供方优先级、Office 识别兜底、附件拖放，以及 Electron 全平台共用的 Web 插件库桥接。类型检查、文档门禁、打包运行时审计和已安装应用 smoke 覆盖组装后的桌面 profile。

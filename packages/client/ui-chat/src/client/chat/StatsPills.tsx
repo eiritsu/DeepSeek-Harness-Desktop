@@ -107,7 +107,7 @@ export function formatDuration(ms: number, t: ChatViewSlotProps['t']): string {
  * 100, and no billed input returns null.
  */
 export function cacheHitPercent(usage: TokenUsageProjection): string | null {
-  if (usage.cacheReadTokens === undefined) return null
+  if (usage.cacheReadTokens === undefined || usage.cacheReadIncomplete === true) return null
   const denominator = billedInputTokens(usage)
   return formatCacheHitPercent(usage.cacheReadTokens, denominator)
 }
@@ -244,9 +244,13 @@ function UsagePill({ usage, t, dialog }: {
   const total = billedInputTokens(usage) + usage.outputTokens
   const totalText = t('message.turnUsage.count', { count: formatTokens(total, t) })
   const cacheHit = cacheHitPercent(usage)
-  const cacheHitText = usage.cacheReadTokens === undefined
-    ? t('stats.cacheUnreported')
-    : cacheHit !== null ? t('stats.cacheHit', { percent: cacheHit }) : null
+  const cacheHitText = usage.cacheReadIncomplete === true && usage.cacheReadTokens !== undefined
+    ? t('stats.cacheReadConfirmed', {
+      count: exactCount(usage.cacheReadTokens, t),
+    })
+    : usage.cacheReadTokens === undefined
+      ? t('stats.cacheUnreported')
+      : cacheHit !== null ? t('stats.cacheHit', { percent: cacheHit }) : null
   return (
     <span ref={rootRef} className={css.anchor}>
       <button
@@ -291,7 +295,12 @@ function UsagePill({ usage, t, dialog }: {
               when the known value is zero; omitted provider cache accounting is
               shown explicitly instead of being presented as a measured zero. */}
           <dl className={dialogCss.details} data-session-stats-usage>
-            {usage.cacheReadTokens === undefined ? (
+            {usage.cacheReadIncomplete === true && usage.cacheReadTokens !== undefined ? (
+              <>
+                <dt>{t('message.turnUsage.cacheReadConfirmed')}</dt>
+                <dd>{exactCount(usage.cacheReadTokens, t)}</dd>
+              </>
+            ) : usage.cacheReadTokens === undefined ? (
               <>
                 <dt>{t('message.turnUsage.cacheHit')}</dt>
                 <dd>{t('stats.cacheUnreported')}</dd>
@@ -304,7 +313,7 @@ function UsagePill({ usage, t, dialog }: {
             )}
             <dt>{t('message.turnUsage.input')}</dt>
             <dd>{exactCount(usage.uncachedInputTokens, t)}</dd>
-            {usage.cacheReadTokens !== undefined && (
+            {usage.cacheReadTokens !== undefined && usage.cacheReadIncomplete !== true && (
               <>
                 <dt>{t('message.turnUsage.cacheRead')}</dt>
                 <dd>{exactCount(usage.cacheReadTokens, t)}</dd>

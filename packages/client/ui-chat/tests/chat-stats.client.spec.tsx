@@ -421,7 +421,12 @@ describe('StatsPills', () => {
   it('labels cache usage as unreported when any provider sample omitted it', () => {
     const { source } = makeSource({ nodes: [assistant(1, 1)] })
     const view = render(<StatsPills {...props(source, {
-      tokenUsage: { uncachedInputTokens: 100, outputTokens: 5, cacheWriteTokens: 0 },
+      tokenUsage: {
+        uncachedInputTokens: 100,
+        outputTokens: 5,
+        cacheReadIncomplete: true,
+        cacheWriteTokens: 0,
+      },
     })} />)
     const usagePill = view.getAllByRole('button')[0]!
     expect(usagePill.textContent).toBe('105 tok·Cache not reported')
@@ -429,6 +434,27 @@ describe('StatsPills', () => {
     const dialog = view.getByRole('dialog')
     expect(dialog.textContent).toContain('Cache hitCache not reported')
     expect(dialog.textContent).not.toContain('Cached input')
+  })
+
+  it('shows confirmed cache reads without claiming an exact hit rate', () => {
+    const { source } = makeSource({ nodes: [assistant(1, 1)] })
+    const view = render(<StatsPills {...props(source, {
+      tokenUsage: {
+        uncachedInputTokens: 67_539,
+        outputTokens: 799,
+        cacheReadTokens: 1_024,
+        cacheReadIncomplete: true,
+        cacheWriteTokens: 0,
+      },
+    })} />)
+    const usagePill = view.getAllByRole('button')[0]!
+    expect(usagePill.textContent).toContain('Confirmed hit 1,024 tok')
+    expect(usagePill.textContent).not.toContain('Cache hit')
+    fireEvent.click(usagePill)
+    const dialog = view.getByRole('dialog')
+    expect(dialog.textContent).toContain('Confirmed cached input1,024 tok')
+    expect(dialog.textContent).not.toContain('Cache hit')
+    expect(dialog.textContent).not.toContain('Cached input1,024 tok')
   })
 
   it('includes cache writes in the total and the cache-hit denominator', () => {

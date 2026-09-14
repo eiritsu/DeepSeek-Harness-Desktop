@@ -13,8 +13,10 @@
 export interface TokenUsageProjection {
   uncachedInputTokens: number
   outputTokens: number
-  /** Absent when at least one contributing provider response omitted cache-read usage. */
+  /** Confirmed cache reads; present for complete accounting or any confirmed positive value. */
   cacheReadTokens?: number
+  /** Present when at least one contributing provider response omitted cache-read usage. */
+  cacheReadIncomplete?: true
   cacheWriteTokens: number
 }
 

@@ -68,11 +68,19 @@ const projectionSchema: z.ZodType<TokenUsageProjection> = z.object({
   uncachedInputTokens: z.number().int().nonnegative(),
   outputTokens: z.number().int().nonnegative(),
   cacheReadTokens: z.number().int().nonnegative().optional(),
+  cacheReadIncomplete: z.literal(true).optional(),
   cacheWriteTokens: z.number().int().nonnegative(),
-}).strict().transform(({ uncachedInputTokens, outputTokens, cacheReadTokens, cacheWriteTokens }) => ({
+}).strict().transform(({
+  uncachedInputTokens,
+  outputTokens,
+  cacheReadTokens,
+  cacheReadIncomplete,
+  cacheWriteTokens,
+}) => ({
   uncachedInputTokens,
   outputTokens,
   ...cacheReadTokens === undefined ? {} : { cacheReadTokens },
+  ...cacheReadIncomplete === undefined ? {} : { cacheReadIncomplete },
   cacheWriteTokens,
 }))
 
@@ -178,7 +186,10 @@ export const tokenUsageProjectionDefinition = {
     view: ({ totals }) => ({
       uncachedInputTokens: totals.uncachedInputTokens,
       outputTokens: totals.outputTokens,
-      ...totals.cacheReadUnreported === 0 ? { cacheReadTokens: totals.cacheReadTokens } : {},
+      ...totals.cacheReadUnreported === 0 || totals.cacheReadTokens > 0
+        ? { cacheReadTokens: totals.cacheReadTokens }
+        : {},
+      ...totals.cacheReadUnreported > 0 ? { cacheReadIncomplete: true as const } : {},
       cacheWriteTokens: totals.cacheWriteTokens,
     }),
   },
