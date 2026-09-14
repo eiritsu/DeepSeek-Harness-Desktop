@@ -26,7 +26,7 @@ export const inject = ['slots', 'locale']
 
 /** Register the SkillHub marketplace only when the desktop bridge is present. */
 export function apply(ctx: ClientContext): void {
-  const bridge = window.dshDesktopPluginBridge ?? window.dshDesktop?.skills
+  const bridge = window.dshDesktop?.skills ?? window.dshDesktopPluginBridge
   if (bridge === undefined) return
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-skill-library: dictionaries')
   const controller = new SkillLibraryController()

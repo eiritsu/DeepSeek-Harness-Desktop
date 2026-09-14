@@ -41,4 +41,17 @@ describe('ui-skill-library browser entry', () => {
     const triggerFace = trigger?.options.inject() as { controller: unknown }
     expect(overlay?.options.inject()).toEqual({ controller: triggerFace.controller, bridge })
   })
+
+  it('prefers the dedicated Electron Skill bridge when the legacy Swift bridge is also present', () => {
+    const electron = { request: vi.fn() }
+    const legacy = { request: vi.fn() }
+    Object.defineProperty(window, 'dshDesktop', { configurable: true, value: { skills: electron } })
+    Object.defineProperty(window, 'dshDesktopPluginBridge', { configurable: true, value: legacy })
+    const test = context()
+
+    apply(test.ctx as never)
+
+    const overlay = test.entries[1] as { options: { inject: () => { bridge: unknown } } }
+    expect(overlay.options.inject().bridge).toBe(electron)
+  })
 })

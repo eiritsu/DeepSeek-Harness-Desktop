@@ -43,7 +43,7 @@ Web 应用会挂载这个包，但入口只在配套 Swift 或 Electron 桌面�
 <details>
 <summary>实现内部细节 — 点击展开</summary>
 
-插件把 `window.dshDesktopPluginBridge`（Swift）或 `window.dshDesktop.skills`（Electron）作为能力信号，注册本地化文案，再通过既有 slot 注册表贡献一个 `sidebar.footer.action` 配置项与一个 `shell.overlay` 配置项。目录请求通过类型化 bridge 投影；桌面壳负责网络访问、有界下载、压缩包检查和文件系统变更。
+插件把 `window.dshDesktopPluginBridge`（Swift）或 `window.dshDesktop.skills`（Electron）作为能力信号；两者同时存在时优先使用 Electron 专用 Skill bridge。插件注册本地化文案，再通过既有 slot 注册表贡献一个 `sidebar.footer.action` 配置项与一个 `shell.overlay` 配置项。目录请求通过类型化 bridge 投影；桌面壳负责网络访问、有界下载、压缩包检查和文件系统变更。
 
 | 文件 | 作用 |
 |---|---|

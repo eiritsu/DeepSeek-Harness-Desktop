@@ -43,7 +43,7 @@ Mount the browser plugin as a normal Cordis config entry. It has no public confi
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The plugin treats `window.dshDesktopPluginBridge` (Swift) or `window.dshDesktop.skills` (Electron) as its capability signal, registers localized copy, then contributes one `sidebar.footer.action` entry and one `shell.overlay` entry through the existing slot registry. Catalog requests are projected through the typed bridge; the shell owns network access, bounded download, archive inspection, and filesystem changes.
+The plugin treats `window.dshDesktopPluginBridge` (Swift) or `window.dshDesktop.skills` (Electron) as its capability signal, preferring the dedicated Electron Skill bridge when both exist. It registers localized copy, then contributes one `sidebar.footer.action` entry and one `shell.overlay` entry through the existing slot registry. Catalog requests are projected through the typed bridge; the shell owns network access, bounded download, archive inspection, and filesystem changes.
 
 | File | Role |
 |---|---|
