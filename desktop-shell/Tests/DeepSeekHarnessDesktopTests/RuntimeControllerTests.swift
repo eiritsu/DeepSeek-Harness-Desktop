@@ -53,8 +53,26 @@ import Testing
 
   #expect(window.styleMask.contains(.titled))
   #expect(window.styleMask.contains(.fullSizeContentView))
+  #expect(window.titleVisibility == .hidden)
   #expect(window.isMovableByWindowBackground)
   #expect(region.mouseDownCanMoveWindow)
+}
+
+@Test func titlebarDragRegionLeavesBothWebToolbarEndsClickable() {
+  let frame = windowDragRegionFrame(in: NSRect(x: 0, y: 0, width: 1_240, height: 52))
+
+  #expect(frame == NSRect(x: 90, y: 0, width: 220, height: 52))
+  #expect(frame.minX == 90)
+  #expect(frame.maxX == 310)
+}
+
+@Test func titlebarDragRegionStaysAnchoredToTheBrandArea() {
+  let frame = windowDragRegionFrame(in: NSRect(x: 0, y: 0, width: 500, height: 52))
+
+  #expect(frame == NSRect(x: 90, y: 0, width: 220, height: 52))
+  #expect(windowDragRegionAutoresizingMask.contains(.maxXMargin))
+  #expect(windowDragRegionAutoresizingMask.contains(.height))
+  #expect(!windowDragRegionAutoresizingMask.contains(.width))
 }
 
 @Test func stderrIsLoggedWithoutReplacingStartupProgress() {

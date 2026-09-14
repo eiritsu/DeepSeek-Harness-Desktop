@@ -9,6 +9,8 @@ English | [中文](README.zh.md)
 
 DeepSeek Harness Lite is the low-memory native alternative to the Electron application in [`../apps/desktop`](../apps/desktop). It embeds the same current Web client in `WKWebView` and launches the official `dsh` Node host with the shipped `desktop-lite` profile. Product behavior remains in shared TypeScript packages; Swift owns only macOS lifecycle, WebView integration, source updates, downloads, and native file dialogs.
 
+The transparent titlebar hides its native title and uses only the static brand area for window dragging, leaving the Web toolbar and sidebar tab controls available to `WKWebView` click targets.
+
 ## Compatibility
 
 The package and application plist target macOS 11.0 through macOS 26 on Apple silicon. Downloads use the native `WKDownload` path on macOS 11.3 and later; the rest of the shell remains available on 11.0–11.2. Development requires Swift 6, Node.js `^22.19.0 || >=24.0.0`, Git, and `rsvg-convert` from librsvg.

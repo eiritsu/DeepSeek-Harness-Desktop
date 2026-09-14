@@ -23,6 +23,7 @@ func makeDesktopWindow() -> NSWindow {
     defer: false
   )
   window.titlebarAppearsTransparent = true
+  window.titleVisibility = .hidden
   window.isMovableByWindowBackground = true
   return window
 }
@@ -208,13 +209,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     ])
     window.contentView = content
     if let titlebar = window.standardWindowButton(.closeButton)?.superview {
-      windowDragRegion.frame = NSRect(
-        x: 300,
-        y: 0,
-        width: max(0, titlebar.bounds.width - 300),
-        height: titlebar.bounds.height
-      )
-      windowDragRegion.autoresizingMask = [.width, .height]
+      windowDragRegion.frame = windowDragRegionFrame(in: titlebar.bounds)
+      windowDragRegion.autoresizingMask = windowDragRegionAutoresizingMask
       titlebar.addSubview(windowDragRegion)
     }
     window.makeKeyAndOrderFront(nil)
