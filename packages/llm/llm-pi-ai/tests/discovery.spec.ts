@@ -208,8 +208,22 @@ describe('draft-provider model discovery', () => {
       .toEqual(['anthropic-key', 'anthropic-key', undefined])
     expect(server.headers.map(headers => headers['anthropic-version']))
       .toEqual(['2023-06-01', '2023-06-01', '2023-06-01'])
-    expect(server.headers.map(headers => headers.authorization)).toEqual([undefined, undefined, undefined])
+    expect(server.headers.map(headers => headers.authorization))
+      .toEqual(['Bearer anthropic-key', 'Bearer anthropic-key', undefined])
     expect(server.headers.map(headers => headers['user-agent'])).toEqual([userAgent(), userAgent(), userAgent()])
+  })
+
+  it('keeps the official Anthropic model listing on native x-api-key authentication', async () => {
+    const seen: Headers[] = []
+    vi.stubGlobal('fetch', vi.fn((_url: string, init: RequestInit) => {
+      seen.push(new Headers(init.headers))
+      return Promise.resolve(new Response(JSON.stringify({ data: [{ id: 'claude' }] })))
+    }))
+
+    await discoverModels({ baseURL: 'https://api.anthropic.com', api: 'anthropic-messages', apiKey: 'official-key' })
+
+    expect(seen[0]?.get('x-api-key')).toBe('official-key')
+    expect(seen[0]?.get('authorization')).toBeNull()
   })
 
   it('prefers the standard data array when both supported formats are present', async () => {

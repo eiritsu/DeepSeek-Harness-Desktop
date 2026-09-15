@@ -13,6 +13,7 @@
  */
 
 import { builtinProviders, getBuiltinModels, getBuiltinProviders } from '@earendil-works/pi-ai/providers/all'
+import { anthropicApiRoot } from './anthropic-endpoint.ts'
 import type { BuiltinProvider } from '@earendil-works/pi-ai/providers/all'
 import type {
   AnthropicMessagesCompat,
@@ -904,10 +905,11 @@ export function resolveRouteModels(
       invalid(provider, `model "${entry.id}" needs an api; the installed catalog does not describe it, so set the`
         + ' route\'s api to the wire protocol its endpoint speaks')
     }
-    const baseUrl = request.baseURL ?? base?.baseUrl ?? providerBaseUrl
-    if (baseUrl === undefined) {
+    const configuredBaseUrl = request.baseURL ?? base?.baseUrl ?? providerBaseUrl
+    if (configuredBaseUrl === undefined) {
       invalid(provider, `model "${entry.id}" needs a baseURL; the installed catalog does not describe this route`)
     }
+    const baseUrl = api === 'anthropic-messages' ? anthropicApiRoot(configuredBaseUrl) : configuredBaseUrl
     // Capacities fall back to the route's own defaults, so a model listing that
     // discloses nothing but ids still yields a serviceable route. The fallback
     // is a guess by construction, which is why it is a configurable route field

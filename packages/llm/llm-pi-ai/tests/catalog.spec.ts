@@ -95,6 +95,20 @@ describe('hand-declared providers', () => {
     expect(server.headers[0]?.authorization).toBe('Bearer test-key')
   })
 
+  it.each(['/v1', '/v1/'])(
+    'sends Anthropic messages to one versioned path from a base ending %s',
+    async (suffix) => {
+      const server = await mockServer([{ status: 401, body: JSON.stringify({ error: { message: 'mock rejection' } }) }])
+      const ctx = await harness(gateway(`${server.url}${suffix}`, { api: 'anthropic-messages' }))
+
+      const result = await assemble(ctx, { provider: 'acme-gateway', model: 'acme-large', messages: [] })
+
+      expect(result.finish.kind).toBe('error')
+      expect(server.paths.map(path => new URL(path, server.url).pathname)).toEqual(['/v1/messages'])
+      expect(server.headers[0]?.['x-api-key']).toBe('test-key')
+    },
+  )
+
   it('lists and resolves the declared models rather than a catalog', async () => {
     const server = await mockServer([])
     const ctx = await harness(gateway(`${server.url}/v1`))

@@ -25,6 +25,7 @@
 import { INVALID_CREDENTIAL_CODE, LlmError, normalizeApiKey } from '@deepseek-ai/dsh-llm'
 import type { LlmDiscoveredModel, LlmModelDiscoveryOperation } from '@deepseek-ai/dsh-llm'
 import { attributionHeaders } from '@deepseek-ai/dsh-llm'
+import { anthropicApiRoot } from './anthropic-endpoint.ts'
 import { catalogModels } from './catalog.ts'
 
 /**
@@ -112,13 +113,12 @@ function label(...candidates: readonly unknown[]): string | undefined {
  * the base without trailing slashes and without one trailing `/v1` segment:
  * gateway documentation publishes both spellings of the same root. Only this
  * listing URL normalizes that segment; model requests receive the configured
- * `baseURL` unchanged.
+ * `baseURL` normalized for Anthropic SDK requests as well.
  */
 function listingUrl(baseURL: string, api: string): string {
   const base = baseURL.replace(/\/+$/, '')
   if (api !== 'anthropic-messages') return `${base}/models`
-  const root = base.endsWith('/v1') ? base.slice(0, -3) : base
-  return `${root}/v1/models?limit=${String(ANTHROPIC_MODEL_LIMIT)}`
+  return `${anthropicApiRoot(baseURL)}/v1/models?limit=${String(ANTHROPIC_MODEL_LIMIT)}`
 }
 
 /**
@@ -318,7 +318,14 @@ export async function discoverModels(
     headers.set('accept', 'application/json')
     if (api === 'anthropic-messages') {
       headers.set('anthropic-version', ANTHROPIC_VERSION)
-      if (apiKey !== undefined) headers.set('x-api-key', apiKey)
+      if (apiKey !== undefined) {
+        headers.set('x-api-key', apiKey)
+        // Compatible gateways may require bearer auth for model listing even
+        // when their Messages endpoint accepts x-api-key.
+        if (new URL(url).hostname !== 'api.anthropic.com' && !headers.has('authorization')) {
+          headers.set('authorization', `Bearer ${apiKey}`)
+        }
+      }
     } else if (apiKey !== undefined) {
       headers.set('authorization', `Bearer ${apiKey}`)
     }
