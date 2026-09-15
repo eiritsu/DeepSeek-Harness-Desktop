@@ -195,6 +195,18 @@ function minimumCapacity(values: readonly number[]): number | undefined {
   return values.length === 0 ? undefined : Math.min(...values)
 }
 
+/** Canonical vendor prefixes to prefer when resolving un-owned or gateway-routed models. */
+const CANONICAL_VENDOR_PREFIXES: readonly [RegExp, readonly string[]][] = [
+  [/^grok(?:-|$)/i, ['xai', 'x-ai']],
+  [/^claude(?:-|$)/i, ['anthropic']],
+  [/^(?:gpt-|o[1-9](?:-|$)|chatgpt(?:-|$))/i, ['openai']],
+  [/^gemini(?:-|$)/i, ['google', 'google-vertex']],
+  [/^deepseek(?:-|$)/i, ['deepseek']],
+  [/^(?:glm-|zhipu(?:-|$))/i, ['zai', 'zhipuai', 'zhipuai-coding-plan']],
+  [/^qwen(?:-|$)/i, ['alibaba', 'qwen']],
+  [/^mistral(?:-|$)/i, ['mistral', 'mistralai']],
+]
+
 function sameModelId(left: string, right: string): boolean {
   return left.toLowerCase() === right.toLowerCase()
 }
@@ -442,10 +454,25 @@ class DynamicCatalog {
       return [model.ownedBy]
     }
     const endpoint = normalizedEndpoint(model.baseURL)
-    if (endpoint === undefined) return []
-    return (this.cache.providers ?? [])
-      .filter(provider => normalizedEndpoint(provider.api) === endpoint)
-      .map(provider => provider.id)
+    if (endpoint !== undefined) {
+      const matching = (this.cache.providers ?? [])
+        .filter(provider => normalizedEndpoint(provider.api) === endpoint)
+        .map(provider => provider.id)
+      if (matching.length > 0) return matching
+    }
+    // When no provider matches the endpoint directly (e.g. gateway/proxy), prefer
+    // the canonical upstream creator/owner if present in the matched declarations.
+    for (const [pattern, canonicalProviders] of CANONICAL_VENDOR_PREFIXES) {
+      if (pattern.test(model.id)) {
+        const canonical = declarations
+          .filter(candidate => canonicalProviders.includes(candidate.provider))
+          .map(candidate => candidate.provider)
+        if (canonical.length > 0) {
+          return [...new Set(canonical)]
+        }
+      }
+    }
+    return []
   }
 
   private consensus<T>(candidates: readonly T[], equals: (left: T, right: T) => boolean): T | undefined {

@@ -320,6 +320,32 @@ describe('pi-ai model-discovery catalog', () => {
     )).resolves.toEqual({ contextWindow: 1_000_000, maxOutputTokens: 384_000 })
   })
 
+  it('prefers canonical provider declarations over downstream resellers when resolving gateway routes', async () => {
+    const ctx = new Context()
+    context = ctx
+    await mountRuntime(ctx)
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({
+      xai: {
+        api: 'https://api.x.ai/v1',
+        models: { 'grok-4.6': { limit: { context: 500_000, output: 500_000 } } },
+      },
+      azure: {
+        api: 'https://azure.openai.com/v1',
+        models: { 'grok-4.6': { limit: { context: 200_000, output: 128_000 } } },
+      },
+    })))))
+    await ctx.plugin(ModelCatalogPiAi, { refreshIntervalMs: 60_000 })
+
+    // On an internal/gateway endpoint not matched to Azure or xAI, canonical xAI declaration wins
+    await expect(ctx.llm.resolveModelCapacity(
+      'custom-gateway',
+      'grok-4.6',
+      undefined,
+      undefined,
+      'http://192.168.1.40:8080/v1',
+    )).resolves.toEqual({ contextWindow: 500_000, maxOutputTokens: 500_000 })
+  })
+
   it('declares one parseable Profile Bundle patch', () => {
     const root = fileURLToPath(new URL('..', import.meta.url))
     const manifest = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as {

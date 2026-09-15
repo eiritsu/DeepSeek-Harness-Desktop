@@ -162,6 +162,10 @@ describe('renderToolsSdkPy', () => {
     expect(text).toContain('class ToolCallError(Exception):')
     expect(text).toContain('MAY overlap under `asyncio.gather`')
     expect(text).toContain('lossless JSON')
+    // Python bodies may import, but a nested shell/interpreter script still
+    // mis-quotes when the model escapes quote levels by hand.
+    expect(text).toContain('quote it for the interpreter that reads it, not for Python')
+    expect(text).toContain('here-document')
     expect(text).toContain('```python')
     expect(text).toContain('tools: Tools')
   })

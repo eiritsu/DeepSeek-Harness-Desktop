@@ -413,12 +413,15 @@ describe('mode-aware wire contribution', () => {
     const runCodeSchema = assembly.tools.find(tool => tool.name === RUN_CODE_NAME)
     expect(runCodeSchema?.description).toContain('Execute a TypeScript program')
     expect(runCodeSchema?.description).toContain('BODY of an')
+    // The TS flavor states the module restriction the type-strip wrapper
+    // enforces; a Python runtime must not receive this line.
+    expect(runCodeSchema?.description).toContain('no static `import`/`export` statements')
     // Both required arguments are named here, not only in the parameter
     // schema: prose that describes the call as "pass the program" is what
     // leads a model to emit `{code}` alone and fail INVALID_ARGS.
     expect(runCodeSchema?.description).toContain('`description`')
     const codeParam = (runCodeSchema?.parameters as { properties: { code: { description: string } } }).properties.code
-    expect(codeParam.description).toBe('The program: the body of an async TypeScript function.')
+    expect(codeParam.description).toBe('The program: the body of an async TypeScript function (not a module: no static `import` or `export` statements).')
   })
 
   it('emits a Python-flavored run_code schema under a python runtime (matches the SDK language)', async () => {
@@ -430,6 +433,8 @@ describe('mode-aware wire contribution', () => {
     expect(runCodeSchema?.description).toContain('`return <value>`')
     expect(runCodeSchema?.description).toContain('`description`')
     expect(runCodeSchema?.description).not.toContain('TypeScript')
+    // Python bodies may import; the TypeScript module restriction must not leak.
+    expect(runCodeSchema?.description).not.toContain('import')
     const codeParam = (runCodeSchema?.parameters as { properties: { code: { description: string } } }).properties.code
     expect(codeParam.description).toBe('The program: the body of an async Python function.')
   })
@@ -462,7 +467,7 @@ describe('mode-aware wire contribution', () => {
     const definition = ctx.tools.get(RUN_CODE_NAME)
     expect(definition?.description).toContain('Execute a TypeScript program')
     const params = definition?.parameters as { properties: { code: { description: string } } }
-    expect(params.properties.code.description).toBe('The program: the body of an async TypeScript function.')
+    expect(params.properties.code.description).toBe('The program: the body of an async TypeScript function (not a module: no static `import` or `export` statements).')
   })
 
   it("rejects the assembly when toolOrder names a native tool that mode 'ptc' no longer contributes", async () => {

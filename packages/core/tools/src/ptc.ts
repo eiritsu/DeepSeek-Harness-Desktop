@@ -43,18 +43,21 @@ interface RunCodeFlavor {
 const TYPESCRIPT_FLAVOR: RunCodeFlavor = {
   description:
     'Execute a TypeScript program against the available tools. Takes two required '
-    + 'arguments: `code`, the BODY of an async function (erasable syntax only; top-level '
-    + '`await` and `return` work), and `description`, a short summary of what the program '
-    + 'does. Call tools as `await tools.name(args)` per the declarations in the system '
-    + 'prompt. Only what you print or return is program output — curate it. Image-bearing '
-    + 'subtool results are attached after the run.',
-  codeDescription: 'The program: the body of an async TypeScript function.',
+    + 'arguments: `code`, the BODY of an async function (erasable syntax only; no static '
+    + '`import`/`export` statements; top-level `await` and `return` work), and '
+    + '`description`, a short summary of what the program does. Call tools as '
+    + '`await tools.name(args)` per the declarations in the system prompt. Only what you '
+    + 'print or return is program output — curate it. Image-bearing subtool results are '
+    + 'attached after the run.',
+  codeDescription: 'The program: the body of an async TypeScript function (not a module: no static `import` or `export` statements).',
 }
 
 /**
  * The Python flavor: the body of an async function, top-level `await` and
  * `return`, answer via `print` and/or the returned value, matching
- * {@link ./py-types.ts}'s SDK instructions.
+ * {@link ./py-types.ts}'s SDK instructions. Unlike the TypeScript flavor it
+ * permits ordinary `import` statements: a Python body executes as a module, so
+ * that distinction belongs here rather than in the shared body wording.
  */
 const PYTHON_FLAVOR: RunCodeFlavor = {
   description:

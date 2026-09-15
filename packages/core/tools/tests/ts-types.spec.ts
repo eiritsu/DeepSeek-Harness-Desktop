@@ -152,6 +152,19 @@ describe('renderToolsSdk', () => {
     expect(text).toContain('lossless JSON')
   })
 
+  it('forbids module syntax and states the nested-script quoting rule', () => {
+    // A model that writes a module is rejected by the type-strip wrapper before
+    // any worker starts, and one that escapes quote levels by hand mis-quotes a
+    // nested shell/interpreter script. Both rules are model-visible text, so
+    // they are pinned here rather than left to prose review.
+    const text = renderToolsSdk([bash])
+    expect(text).toContain('the body of an async TypeScript function, not a module')
+    expect(text).toContain('static `import` and `export` statements are syntax errors')
+    expect(text).toContain('already in scope')
+    expect(text).toContain('quote it for the interpreter that reads it, not for TypeScript')
+    expect(text).toContain('here-document')
+  })
+
   it('names both required call arguments, not just the program', () => {
     // The schema requires `code` AND `description`; instructions that mention
     // only the program let a model emit `{code}` alone and fail INVALID_ARGS.

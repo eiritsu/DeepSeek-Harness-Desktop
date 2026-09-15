@@ -739,6 +739,7 @@ const SDK_INSTRUCTIONS = `## Writing code for run_code
 - A FAILED tool call raises \`ToolCallError\`, whose \`toolName\` identifies the failed tool and whose message is human-readable — wrap in \`try/except\` to handle and continue.
 - Independent read-only calls MAY overlap under \`asyncio.gather\` (safe calls run concurrently; mutating calls run alone, in submission order). Sequence dependent work with \`await\`.
 - Emit the run's answer with \`print(...)\` and/or a top-level \`return <value>\`; the returned value must be lossless JSON. Only what you print and return is program output. A successful tool result containing an image is attached after the run so you can inspect it on the next step; every other intermediate result stays out of the conversation, so extract just what you need.
+- Pass a shell or interpreter script as one argument and quote it for the interpreter that reads it, not for Python; when the enclosing command already carries quotes, write the inner script to a file or use a here-document instead of escaping quote levels by hand.
 
 The available tools:`
 
