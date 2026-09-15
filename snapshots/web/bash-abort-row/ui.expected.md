@@ -38,6 +38,6 @@
 - button "1 turns 1 steps":
   - img
   - text: 1 turns 1 steps
-- button "20 tok · Cache hit 0%":
+- button "20 tok · Cache not reported":
   - img
-  - text: 20 tokCache hit 0%
+  - text: 20 tokCache not reported

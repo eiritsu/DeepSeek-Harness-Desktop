@@ -59,7 +59,7 @@ describe.skipIf(MODE === 'record')('web e2e: Open In under SSH', () => {
       })(),
     ])
     expect(response.status()).toBe(200)
-    expect(await response.json()).toEqual({ apps: [] })
+    expect(await response.json()).toEqual({ apps: [], requestTimeoutMs: 10_000 })
     expect(await page.getByRole('button', { name: /^Open workspace in / }).count()).toBe(0)
     expect(await page.getByRole('button', { name: 'Choose an app to open in', exact: true }).count()).toBe(0)
     expect(await page.evaluate(() => localStorage.getItem('dsh.open-in-app.choice'))).toBe('"vscode"')

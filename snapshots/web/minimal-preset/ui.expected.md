@@ -50,6 +50,6 @@
 - button "1 turns 2 steps · {{throughput}} tok/s":
   - img
   - text: 1 turns 2 steps{{throughput}} tok/s
-- button "28 tok · Cache hit 0%":
+- button "28 tok · Cache not reported":
   - img
-  - text: 28 tokCache hit 0%
+  - text: 28 tokCache not reported

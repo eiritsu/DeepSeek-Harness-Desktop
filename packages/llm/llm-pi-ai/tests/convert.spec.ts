@@ -801,6 +801,29 @@ describe('toStreamChunks', () => {
     ])
   })
 
+  it('keeps streamed arguments when a gateway omits toolcall_end arguments', async () => {
+    const partial = assistant({ content: [{ type: 'toolCall', id: 'call-1', name: 'f', arguments: {} }] })
+    const chunks = await collect(toStreamChunks(feed(
+      { type: 'toolcall_start', contentIndex: 0, partial },
+      { type: 'toolcall_delta', contentIndex: 0, delta: '{"a":1}', partial },
+      {
+        type: 'toolcall_end',
+        contentIndex: 0,
+        toolCall: {
+          type: 'toolCall', id: 'call-1', name: 'f',
+          arguments: undefined as unknown as Record<string, unknown>,
+        },
+        partial,
+      },
+      { type: 'done', reason: 'toolUse', message: assistant({ content: partial.content, stopReason: 'toolUse' }) },
+    )))
+    expect(chunks.find(chunk => chunk.type === 'block-end')).toEqual({
+      type: 'block-end',
+      index: 0,
+      block: { type: 'tool-call', id: 'call-1', name: 'f', arguments: '{"a":1}' },
+    })
+  })
+
   it('tolerates toolcall_start with a missing partial entry', async () => {
     const chunks = await collect(toStreamChunks(feed(
       { type: 'toolcall_start', contentIndex: 0, partial: assistant() },

@@ -2,8 +2,9 @@
  * pi-ai assistant event translation into the Harness streaming protocol.
  *
  * pi-ai tool-call arguments are parsed objects while the Harness keeps their
- * raw JSON representation. pi-ai also reports failures as terminal stream
- * events, which this module maps into Harness finish chunks.
+ * raw JSON representation. Provider-compatible gateways can omit or corrupt
+ * a tool-call completion field, so this module preserves the streamed JSON
+ * text and always emits a serializable block-end chunk.
  *
  * @module dsh-llm-pi-ai/stream
  */
@@ -29,6 +30,24 @@ export function mapUsage(usage: PiUsage): TokenUsage {
     ...usage.cacheRead > 0 ? { cacheReadTokens: usage.cacheRead } : {},
     ...usage.cacheWrite > 0 ? { cacheWriteTokens: usage.cacheWrite } : {},
   }
+}
+
+/**
+ * Encode parsed tool arguments without allowing a malformed provider value to
+ * abort the assistant stream before the loop can settle its attempt.
+ * @param value - parsed arguments supplied by pi-ai.
+ * @param streamed - raw argument fragments already delivered by pi-ai.
+ * @returns a raw JSON string accepted by the Harness tool-call vocabulary.
+ */
+function rawToolArguments(value: unknown, streamed: string): string {
+  try {
+    const encoded = JSON.stringify(value)
+    if (typeof encoded === 'string') return encoded
+  } catch {
+    // Keep the lossless streamed representation when provider data is cyclic
+    // or otherwise outside JSON's value domain.
+  }
+  return streamed.length > 0 ? streamed : '{}'
 }
 
 // XXX(pi-ai upstream): pi-ai flattens the caught error to `error.message`
@@ -128,9 +147,10 @@ export function mapStopReason(message: AssistantMessage, contextWindow?: number)
 }
 
 /**
- * Translate the pi-ai event stream into StreamChunks. pi-ai never throws
- * mid-stream — failures arrive as `error` events, which become error/aborted
- * `finish` chunks (the harness protocol's other error-delivery style).
+ * Translate the pi-ai event stream into StreamChunks. Failures delivered as
+ * pi-ai `error` events become error/aborted `finish` chunks; malformed
+ * tool-call arguments are normalized before they reach the durable stream
+ * validator.
  * @param events - one assistant turn's pi-ai event stream.
  * @param contextWindow - resolved catalog capacity for usage-based overflow detection.
  * @param callerSignal - caller cancellation state; an aborted caller makes any
@@ -148,6 +168,7 @@ export async function* toStreamChunks(
   // pi-ai contentIndex ↔ our block index map 1:1 (both count blocks from 0
   // in stream order), but we track ids per index for tool calls.
   const toolIds = new Map<number, { id: string; name: string }>()
+  const toolArguments = new Map<number, string>()
 
   for await (const event of events) {
     switch (event.type) {
@@ -177,11 +198,16 @@ export async function* toStreamChunks(
         const id = partial?.type === 'toolCall' ? partial.id : ''
         const name = partial?.type === 'toolCall' ? partial.name : ''
         toolIds.set(event.contentIndex, { id, name })
+        toolArguments.set(event.contentIndex, '')
         yield { type: 'block-start', index: event.contentIndex, blockType: 'tool-call' }
         break
       }
       case 'toolcall_delta': {
         const known = toolIds.get(event.contentIndex)
+        toolArguments.set(
+          event.contentIndex,
+          `${toolArguments.get(event.contentIndex) ?? ''}${event.delta}`,
+        )
         yield {
           type: 'tool-call-delta',
           index: event.contentIndex,
@@ -191,7 +217,10 @@ export async function* toStreamChunks(
         }
         break
       }
-      case 'toolcall_end':
+      case 'toolcall_end': {
+        const streamed = toolArguments.get(event.contentIndex) ?? ''
+        toolArguments.delete(event.contentIndex)
+        toolIds.delete(event.contentIndex)
         yield {
           type: 'block-end',
           index: event.contentIndex,
@@ -201,10 +230,11 @@ export async function* toStreamChunks(
             name: event.toolCall.name,
             // pi-ai hands back the PARSED arguments; the harness vocabulary
             // keeps the raw string.
-            arguments: JSON.stringify(event.toolCall.arguments),
+            arguments: rawToolArguments(event.toolCall.arguments, streamed),
           },
         }
         break
+      }
       case 'done':
         yield { type: 'usage', usage: mapUsage(event.message.usage) }
         yield {

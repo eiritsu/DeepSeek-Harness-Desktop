@@ -194,7 +194,7 @@ Settings 写入会在合并组合层与用户层后严格校验每个新增或�
 
 #### 模型看到什么
 
-pi-ai 事件变成 harness 的推理、文本、工具调用、用量与 finish 分片。适配器把解析后的工具参数以原始 JSON 字符串传给 harness。
+pi-ai 事件变成 harness 的推理、文本、工具调用、用量与 finish 分片。适配器把解析后的工具参数以原始 JSON 字符串传给 harness。OpenAI 兼容网关可能省略工具调用完成事件的 `arguments` 字段，或返回 JSON 值域之外的值；适配器会保留已经收到的参数分片，并输出无损的原始 JSON 字符串，让会话 attempt 能够结算，而不会在流持久化阶段失败。
 
 #### Token 影响
 

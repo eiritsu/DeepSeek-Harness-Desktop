@@ -194,7 +194,7 @@ Conversion preserves logical request order, while image handles and offload plac
 
 #### What the model sees
 
-pi-ai events become harness reasoning, text, tool-call, usage, and finish chunks. The adapter passes parsed tool arguments to the harness as raw JSON strings.
+pi-ai events become harness reasoning, text, tool-call, usage, and finish chunks. The adapter passes parsed tool arguments to the harness as raw JSON strings. OpenAI-compatible gateways may omit the final tool-call `arguments` field or return a value outside JSON's value domain; the adapter keeps the argument deltas already received and emits a lossless raw JSON string so the session attempt can settle instead of failing during stream persistence.
 
 #### Token effect
 

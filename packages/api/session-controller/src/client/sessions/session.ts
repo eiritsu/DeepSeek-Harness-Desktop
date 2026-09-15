@@ -697,7 +697,10 @@ export class Session implements SessionFace {
       this.notifier.markDirty()
     } else if (result?.type === 'transient') {
       this.eventSource.append(result.entry)
-      this.notifier.markDirty()
+      // Assistant chunks are cumulative view updates. Publish them on the
+      // animation-frame lane so a native WebView cannot defer every chunk
+      // behind structural microtask work.
+      this.notifier.markFrameDirty()
     }
   }
 
