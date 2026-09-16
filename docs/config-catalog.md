@@ -1889,8 +1889,9 @@ Source: [`packages/shell/pwsh-sandbox/src/index.ts:40`](../packages/shell/pwsh-s
 /**
  * Plugin config, validated by the same-named schemastery schema plus the
  * load-time checks in `apply` (misconfiguration fails loud: an empty
- * `thresholds` list, a non-integer, a value below 2, or a duplicate throws at
- * plugin load, never a silent fall-back). `include`/`exclude` entries are
+ * `thresholds` list, a non-integer, a value below 2, a duplicate, or invalid
+ * ordered INVALID_ARGS thresholds throws at plugin load, never a silent
+ * fall-back). `include`/`exclude` entries are
  * `*`-wildcard predicates over tool names at call time, not references to
  * registry entries — a pattern matching no currently registered tool is valid
  * (`exclude: [mcp_*]` must stay legal in a deployment that loads no MCP tools).
@@ -1910,10 +1911,14 @@ export interface Config {
    * always compares the FULL canonical string).
    */
   argumentsPreviewChars?: number
+  /** Repeated INVALID_ARGS count that injects a schema-correction reminder (default 2). */
+  invalidArgsReminderThreshold?: number
+  /** Repeated INVALID_ARGS count that stops the current turn after its result (default 3). */
+  invalidArgsStopThreshold?: number
 }
 ```
 
-Source: [`packages/guard/repeat-tool-reminder/src/index.ts:28`](../packages/guard/repeat-tool-reminder/src/index.ts)
+Source: [`packages/guard/repeat-tool-reminder/src/index.ts:30`](../packages/guard/repeat-tool-reminder/src/index.ts)
 
 <a id="deepseek-aidsh-sandbox-local"></a>
 

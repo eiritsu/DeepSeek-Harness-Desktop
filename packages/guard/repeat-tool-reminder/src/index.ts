@@ -1,7 +1,8 @@
 /**
- * Advisory per-agent repeat-call detector. It enriches post-execute decisions
- * with logged model context without vetoing or rewriting calls. Configuration
- * and chain semantics live in the package README; rationale lives in the
+ * Per-agent loop-hygiene guard. Exact successful/ordinary calls receive
+ * advisory reminders, while repeated schema-invalid calls receive corrective
+ * context and eventually stop the current turn. Configuration and chain
+ * semantics live in the package README; rationale lives in the
  * repeat-tool-reminder Agent Note.
  * @module @deepseek-ai/dsh-repeat-tool-reminder
  */
@@ -12,15 +13,16 @@ import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { MessageSource } from '@deepseek-ai/dsh-llm'
 import type { UserMessage } from '@deepseek-ai/dsh-session'
-import type { PostToolDecision, ToolExecution } from '@deepseek-ai/dsh-tools'
+import type { PostToolDecision, ToolExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 
 export const name = 'repeat-tool-reminder'
 
 /**
  * Plugin config, validated by the same-named schemastery schema plus the
  * load-time checks in `apply` (misconfiguration fails loud: an empty
- * `thresholds` list, a non-integer, a value below 2, or a duplicate throws at
- * plugin load, never a silent fall-back). `include`/`exclude` entries are
+ * `thresholds` list, a non-integer, a value below 2, a duplicate, or invalid
+ * ordered INVALID_ARGS thresholds throws at plugin load, never a silent
+ * fall-back). `include`/`exclude` entries are
  * `*`-wildcard predicates over tool names at call time, not references to
  * registry entries — a pattern matching no currently registered tool is valid
  * (`exclude: [mcp_*]` must stay legal in a deployment that loads no MCP tools).
@@ -40,6 +42,10 @@ export interface Config {
    * always compares the FULL canonical string).
    */
   argumentsPreviewChars?: number
+  /** Repeated INVALID_ARGS count that injects a schema-correction reminder (default 2). */
+  invalidArgsReminderThreshold?: number
+  /** Repeated INVALID_ARGS count that stops the current turn after its result (default 3). */
+  invalidArgsStopThreshold?: number
 }
 
 export const Config: z<Config> = z.object({
@@ -47,6 +53,8 @@ export const Config: z<Config> = z.object({
   include: z.array(z.string()).default([]),
   exclude: z.array(z.string()).default([]),
   argumentsPreviewChars: z.number().default(500),
+  invalidArgsReminderThreshold: z.number().default(2),
+  invalidArgsStopThreshold: z.number().default(3),
 })
 
 /**
@@ -76,6 +84,18 @@ function detailedReminder(toolName: string, count: number, canonicalArguments: s
     + 'these exact arguments again. Inspect the latest result and choose a '
     + 'different action, different arguments, or finish the task if enough '
     + 'evidence has been gathered.'
+}
+
+/** Corrective context for repeated schema-invalid calls whose arguments vary. */
+function invalidArgsReminder(toolName: string, count: number, message: string): string {
+  return 'Tool argument validation failed repeatedly:\n'
+    + `- tool: ${toolName}\n`
+    + `- consecutive_failures: ${count}\n`
+    + `- error: ${message}\n`
+    + 'Do not repeat another variant of the same invalid call. Re-read the tool schema '
+    + 'and include every required property. For a required code field, put executable '
+    + 'program text in code rather than prose in description; run_code requires both, '
+    + 'for example: {"code":"return await tools.name({})","description":"Run named tool"}.'
 }
 
 /**
@@ -169,8 +189,17 @@ export function apply(ctx: Context, config: Config): void {
   if (!Number.isInteger(argumentsPreviewChars) || argumentsPreviewChars < 1) {
     throw new Error(`repeat-tool-reminder: invalid argumentsPreviewChars ${argumentsPreviewChars} — must be an integer >= 1`)
   }
+  const invalidArgsReminderThreshold = config.invalidArgsReminderThreshold as number
+  const invalidArgsStopThreshold = config.invalidArgsStopThreshold as number
+  if (!Number.isInteger(invalidArgsReminderThreshold) || invalidArgsReminderThreshold < 1) {
+    throw new Error('repeat-tool-reminder: invalidArgsReminderThreshold must be a positive integer')
+  }
+  if (!Number.isInteger(invalidArgsStopThreshold) || invalidArgsStopThreshold <= invalidArgsReminderThreshold) {
+    throw new Error('repeat-tool-reminder: invalidArgsStopThreshold must be an integer greater than invalidArgsReminderThreshold')
+  }
 
   const chains = new WeakMap<Agent, Chain>()
+  const halted = new WeakSet<Agent>()
 
   /** Whether a tool participates in the chain (untracked calls are transparent: they neither count nor reset). */
   function tracked(toolName: string): boolean {
@@ -186,16 +215,31 @@ export function apply(ctx: Context, config: Config): void {
    * same pipeline), and a model hammering a denied call is exactly the loop
    * worth breaking.
    */
-  function observe(exec: ToolExecution): UserMessage | undefined {
+  function observe(exec: ToolExecution, result: Readonly<ToolExecutionResult>): UserMessage | undefined {
     // A direct `ctx.tools.execute()` caller has no model to remind and no id
     // to key on; only agent-loop calls participate.
     if (!exec.agent) return undefined
     if (!tracked(exec.name)) return undefined
-    const canonical = canonicalize(exec.arguments)
-    const key = JSON.stringify([exec.name, canonical])
+    const invalidArgs = result.isError && result.error.info?.code === 'INVALID_ARGS'
+      ? result.error.message
+      : undefined
+    const canonical = invalidArgs ?? canonicalize(exec.arguments)
+    const key = invalidArgs === undefined
+      ? JSON.stringify([exec.name, canonical])
+      : JSON.stringify([exec.name, 'INVALID_ARGS', canonical])
     const chain = chains.get(exec.agent)
     const count = chain !== undefined && chain.key === key ? chain.count + 1 : 1
     chains.set(exec.agent, { key, count })
+
+    if (invalidArgs !== undefined) {
+      if (count >= invalidArgsStopThreshold) halted.add(exec.agent)
+      if (count !== invalidArgsReminderThreshold) return undefined
+      return createUserMessage({
+        content: [{ type: 'text', text: invalidArgsReminder(exec.name, count, invalidArgs) }],
+        source: { ...PLUGIN_SOURCE, form: 'notice', summary: `${exec.name} invalid × ${count}` },
+      })
+    }
+
     if (!thresholdSet.has(count)) return undefined
     const text = count === thresholds[0]
       ? GENTLE_REMINDER
@@ -206,12 +250,11 @@ export function apply(ctx: Context, config: Config): void {
     })
   }
 
-  // Observe-and-enrich, never veto: count first (state advances regardless of
-  // the downstream outcome), DELEGATE so a later listener can still block or
-  // replace, then fold the reminder onto whatever came back — additionalContexts
-  // rides both decision variants, so a blocked call still gets the nudge.
-  ctx.on('tools/post-execute', async (exec, _result, next): Promise<PostToolDecision> => {
-    const reminder = observe(exec)
+  // Count before delegating so denied and invalid calls participate. A later
+  // listener may still block or replace; this guard only adds corrective
+  // context, except that repeated INVALID_ARGS stops the next model step.
+  ctx.on('tools/post-execute', async (exec, result, next): Promise<PostToolDecision> => {
+    const reminder = observe(exec, result)
     const downstream = await next()
     if (!reminder) return downstream
     if (downstream.kind === 'block') {
@@ -223,11 +266,19 @@ export function apply(ctx: Context, config: Config): void {
     }
   })
 
-  // A user interjection changes the context; repetition across it is not a
-  // loop. Pure reset hook: always delegates (attaching nothing, vetoing
-  // nothing).
+  // A user interjection resets every chain and any pending stop. Without a new
+  // user message, the stop threshold rejects the next model step and closes the
+  // current turn as blocked instead of allowing an unbounded invalid-call loop.
   ctx.on('agent/pre-step', ({ agent, messages }, next): Promise<PreStepDecision> => {
-    if (messages.some(message => message.source.kind === 'user')) chains.delete(agent)
+    if (messages.some(message => message.source.kind === 'user')) {
+      chains.delete(agent)
+      halted.delete(agent)
+      return next()
+    }
+    if (halted.delete(agent)) {
+      chains.delete(agent)
+      return Promise.resolve({ kind: 'reject' })
+    }
     return next()
   })
 }

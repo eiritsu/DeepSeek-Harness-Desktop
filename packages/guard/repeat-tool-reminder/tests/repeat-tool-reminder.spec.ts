@@ -28,6 +28,12 @@ async function harness(config: Config = {}): Promise<Context> {
   await ctx.plugin(RepeatToolGuard, config)
   ctx.tools.register(defineContentToolFixture({ name: 'probe', description: 'p', parameters: {}, async execute() { return [{ type: 'text', text: 'ok' }] } }))
   ctx.tools.register(defineContentToolFixture({ name: 'other', description: 'o', parameters: {}, async execute() { return [{ type: 'text', text: 'ok' }] } }))
+  ctx.tools.register(defineContentToolFixture({
+    name: 'needs-code',
+    description: 'requires code',
+    parameters: { code: { type: 'string', required: true } },
+    async execute() { return [{ type: 'text', text: 'ok' }] },
+  }))
   return ctx
 }
 
@@ -91,6 +97,42 @@ describe('threshold escalation', () => {
     expect(found).toHaveLength(2)
     expect(found[0]!.text).toContain('repeating the exact same tool call') // gentle at 2
     expect(found[1]!.text).toContain('consecutive_calls: 4') // detailed at 4
+  })
+})
+
+describe('invalid argument loop protection', () => {
+  it('groups changing arguments by one INVALID_ARGS signature and blocks after three failures', async () => {
+    const ctx = await harness({ invalidArgsReminderThreshold: 2, invalidArgsStopThreshold: 3 })
+    const adapter = new MockAdapter([
+      toolCallResponse('c1', 'needs-code', { description: 'first' }),
+      toolCallResponse('c2', 'needs-code', { description: 'second' }),
+      toolCallResponse('c3', 'needs-code', { description: 'third' }),
+      toolCallResponse('c4', 'needs-code', { description: 'must not run' }),
+      textResponse('must not run'),
+    ])
+    ctx.llm.registerAdapter(['mock'], adapter)
+    const agent = await ctx.agentLoop.create(SessionId('invalid-args'), { provider: 'mock', model: 'mock' })
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
+    await waitForIdle(ctx, agent)
+
+    const events = agent.session.snapshotEvents()
+    const calls = events.filter(event => event.type === 'tool/call' && event.data.name === 'needs-code')
+    const results = events.filter((event): event is SessionEvent<'tool/result'> => event.type === 'tool/result')
+    expect(calls).toHaveLength(3)
+    expect(results).toHaveLength(3)
+    expect(results.every(result => result.data.error?.code === 'INVALID_ARGS')).toBe(true)
+
+    const found = reminders(agent)
+    expect(found).toHaveLength(1)
+    expect(found[0]!.text).toContain('consecutive_failures: 2')
+    expect(found[0]!.text).toContain('missing required property "code"')
+    expect(found[0]!.text).toContain('run_code requires both')
+    expect(found[0]!.source).toEqual({
+      kind: 'plugin', plugin: 'repeat-tool-reminder', form: 'notice', summary: 'needs-code invalid × 2',
+    })
+
+    const ended = events.findLast((event): event is SessionEvent<'turn/end'> => event.type === 'turn/end')
+    expect(ended?.data.reason).toEqual({ kind: 'blocked' })
   })
 })
 
@@ -392,6 +434,19 @@ describe('config validation fails loud', () => {
   it('rejects duplicate thresholds', async () => {
     const ctx = await spine()
     await expect(ctx.plugin(RepeatToolGuard, { thresholds: [3, 3] })).rejects.toThrow(/duplicates/)
+  })
+
+  it('rejects invalid INVALID_ARGS thresholds', async () => {
+    const ctx = await spine()
+    await expect(ctx.plugin(RepeatToolGuard, { invalidArgsReminderThreshold: 0 })).rejects.toThrow(/positive integer/)
+    const ctx2 = await spine()
+    await expect(ctx2.plugin(RepeatToolGuard, {
+      invalidArgsReminderThreshold: 3,
+      invalidArgsStopThreshold: 3,
+    })).rejects.toThrow(/greater than invalidArgsReminderThreshold/)
+    const ctx3 = await spine()
+    await expect(ctx3.plugin(RepeatToolGuard, { invalidArgsStopThreshold: 3.5 }))
+      .rejects.toThrow(/greater than invalidArgsReminderThreshold/)
   })
 
   it('rejects a non-positive or fractional argumentsPreviewChars', async () => {

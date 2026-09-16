@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This package helps a model escape loops in which it calls the same tool with identical arguments without making progress. At configured repeat counts, it asks the model to inspect the previous result and change approach or finish. The reminder is advisory: it never blocks or delays a legitimate repeated call. Repeats are tracked separately for each agent and cleared by a new user message. The `dsh` base bundle enables the package with reminders at 3, 5, and 8 repeats.
+This package helps a model escape tool-call loops. Exact repeated calls receive advisory reminders at configured counts. Repeated `INVALID_ARGS` failures are keyed by tool and failure signature even when their arguments vary: the default injects schema-correction context after two failures and blocks the current turn after three. Chains are tracked separately for each agent and cleared by a new user message. The `dsh` base bundle enables the package.
 
 ## Table of Contents
 
@@ -29,7 +29,7 @@ Mount this plugin when the model should catch itself looping on identical tool c
 
 ### When to choose it
 
-Choose it when the model works autonomously for long stretches and a stuck loop is the failure you want to break with advice rather than force. Avoid it when identical repeats are legitimate and must run undisturbed — the guard only reminds, and a reminder is a small extra message after the repeated call — and when near-identical variants must be caught, because only exact repeats (same tool, same arguments regardless of property order) are detected.
+Choose it when the model works autonomously for long stretches and a stuck loop must not run unbounded. Valid exact repeats remain advisory. Schema-invalid calls are stricter because repeating the same validation failure cannot make progress: the guard provides one correction opportunity, then ends the turn. Near-identical successful calls are not detected because ordinary chains still require the same tool and canonical arguments.
 
 ### Setting the thresholds and scope
 
@@ -42,6 +42,8 @@ When you want to change when reminders fire or which tools they cover, mount the
     include: []                  # track every tool; list patterns to track only some
     exclude: [todo_write]        # never track these tools
     argumentsPreviewChars: 500   # cap on arguments shown in the detailed reminder
+    invalidArgsReminderThreshold: 2 # correct repeated schema-invalid calls
+    invalidArgsStopThreshold: 3     # block the turn after this many failures
 ```
 
 | Field | Default | Meaning |
@@ -50,12 +52,14 @@ When you want to change when reminders fire or which tools they cover, mount the
 | `include` | `[]` | Only these tools are tracked; empty means every tool |
 | `exclude` | `[]` | These tools are never tracked; calls to them neither count nor reset |
 | `argumentsPreviewChars` | `500` | How many characters of the repeated arguments the detailed reminder shows |
+| `invalidArgsReminderThreshold` | `2` | Same-signature `INVALID_ARGS` count that injects schema correction |
+| `invalidArgsStopThreshold` | `3` | Same-signature `INVALID_ARGS` count that blocks the next step; must exceed the reminder threshold |
 
-Invalid configuration fails at startup with a clear error — an empty `thresholds` list, a repeat count below 2, or a duplicate — never a silent change of behavior. The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-repeat-tool-reminder) documents every accepted value.
+Invalid configuration fails at startup with a clear error — an empty `thresholds` list, a repeat count below 2, a duplicate, a non-positive invalid-argument reminder threshold, or a stop threshold that does not exceed it — never a silent change of behavior. The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-repeat-tool-reminder) documents every accepted value.
 
 ### What you get
 
-With the defaults, a model that repeats the same call with identical arguments receives a short reminder on the third repeat — to analyze the previous result before calling again — and detailed reminders on the fifth and eighth, naming the tool and the repeated arguments so it can decide whether to change approach, gather more evidence, or finish. A new user message clears the count, so a fresh instruction is never treated as a loop. Reminders appear in the conversation after the repeated call's result, attributed to the plugin, so the model reads them like any other message.
+With the defaults, a model that repeats the same valid call receives a short reminder on the third repeat and detailed reminders on the fifth and eighth. Calls that fail with the same `INVALID_ARGS` signature receive a schema-correction notice after the second failure even when the submitted arguments differ; a third failure causes the next step to reject and closes the turn as blocked. A new user message clears both states, so a fresh instruction can continue normally.
 
 -----
 
@@ -71,14 +75,14 @@ This section explains how the guard detects repeats and delivers reminders, and 
 
 The guard is built on four commitments:
 
-- **Advisory, not veto.** The guard enriches post-execute decisions with model context; it never blocks or rewrites a call, so `PostToolDecision` blocking stays a later listener's job.
+- **Advisory for valid repeats, terminal for deterministic invalid loops.** Ordinary exact repeats only add context. Repeated `INVALID_ARGS` failures receive correction context and then reject the next model step at the configured stop threshold.
 - **Count in post-execute.** Detection runs on `tools/post-execute`, which also fires for denied calls; counting there lets one listener cover every attempt with no cross-event state.
 - **Exact-match canonicalization.** Arguments reach the guard as the loop's `JSON.parse` output (or its raw-string fallback), so JSON's value domain is the whole input domain and a deep key-sort plus `JSON.stringify` is a complete, deterministic identity — no bigint, cycle, or `undefined` handling exists because no input path can produce them.
-- **Fail loud at load.** `thresholds` and `argumentsPreviewChars` validate in `apply` and throw, never falling back to defaults.
+- **Fail loud at load.** Reminder, preview, and invalid-argument thresholds validate in `apply` and throw, never falling back to defaults.
 
 ### Detection: the repeat chain
 
-Each agent's chain is keyed by `(tool name, canonical arguments)` — two calls with the same tool and canonically identical arguments (property order ignored) count as consecutive, and a different tracked call resets the count to 1. The chain lives in a `WeakMap<Agent, Chain>`.
+Each agent has one chain. Successful and ordinary failed calls key it by `(tool name, canonical arguments)`, with property order ignored. `INVALID_ARGS` calls instead key it by `(tool name, error code, error message)`, so changing an irrelevant description cannot evade the chain when the same required property remains absent. A different tracked identity resets the count to 1. The chain lives in a `WeakMap<Agent, Chain>`.
 
 - **Untracked calls are transparent to the chain.** A call excluded by `include`/`exclude` neither increments nor resets the counter, so `grep X → todo_write → grep X` still counts as two consecutive `grep X` when `todo_write` is excluded — bookkeeping tools interleaved into a loop do not launder it.
 - **Denied calls count.** Detection sits on `tools/post-execute`, which also runs for calls a `tools/pre-execute` listener denied; a model hammering a denied call is exactly the loop worth breaking.
@@ -88,7 +92,7 @@ Each agent's chain is keyed by `(tool name, canonical arguments)` — two calls 
 
 ### Reminder delivery
 
-Reminders ride the post-execute decision's `additionalContexts` (source `{kind: 'plugin', plugin: 'repeat-tool-reminder', form: 'notice', summary: '<tool> × <count>'}`), never a `content` replacement: the `tool/result` event stays the tool's own output for audit. The loop buffers the context and appends it as an injected `user/message` after the step's tool results, which the session renders as a plain synthetic user message — model-visible, source-attributed, and reconstructable from the session log with no new session event. The guard always delegates via `next()` and prepends its reminder to the downstream decision's context array, so both decision variants (a blocked call included) still get the nudge while every entry retains its own source and metadata.
+Reminders ride the post-execute decision's `additionalContexts` (source `{kind: 'plugin', plugin: 'repeat-tool-reminder', form: 'notice', summary: '<tool> × <count>'}` or `'<tool> invalid × <count>'`), never a `content` replacement: the `tool/result` event stays the tool's own output for audit. The loop buffers the context and appends it as an injected `user/message` after the step's tool results, which the session renders as a plain synthetic user message — model-visible, source-attributed, and reconstructable from the session log with no new session event. The post-execute listener always delegates via `next()` and prepends its reminder to the downstream context array. When an invalid-argument chain reaches its stop threshold, the following `agent/pre-step` rejects before another model request; the loop records `turn/end {kind: 'blocked'}`. A real user message clears the pending stop before delegating.
 
 ### Source map
 
@@ -159,6 +163,30 @@ Each reminder is retained history; `argumentsPreviewChars` bounds its data-depen
 
 Append-only; newly visible content follows the reusable request prefix and does not invalidate existing KV-cache entries.
 
+### Invalid-argument correction and stop
+
+#### What the model sees
+
+After the default second consecutive `INVALID_ARGS` failure with the same tool and error signature, the agent receives:
+
+##### Invalid-argument correction notice
+
+```markdown
+Tool argument validation failed repeatedly:
+- tool: <toolName>
+- consecutive_failures: 2
+- error: <validationError>
+Do not repeat another variant of the same invalid call. Re-read the tool schema and include every required property. For a required code field, put executable program text in code rather than prose in description; run_code requires both, for example: {"code":"return await tools.name({})","description":"Run named tool"}.
+```
+
+#### Token effect
+
+One bounded correction message is retained. A third matching failure is recorded normally, then the next model step is rejected and the turn ends as blocked; no further model request is sent after the stop threshold. A later real user message starts with fresh guard state.
+
+#### KV Cache effect
+
+The correction is append-only. Stopping the turn avoids the repeated invalid requests that would otherwise keep extending the prefix.
+
 ## Known Limitations and Deferred Work
 
 <a id="known-limitations-and-deferred-work"></a>
@@ -166,9 +194,8 @@ Append-only; newly visible content follows the reusable request prefix and does 
 
 These limits define when the guard is a poor fit. They are current package constraints, not a task backlog.
 
-- **Exact-match detection only** — canonicalization is a deep key-sort, so near-identical variants (a tweaked path, extra whitespace inside a value) evade the chain; fuzzy matching is rejected pending evidence of need.
+- **Exact-match detection for non-schema failures** — canonicalization is a deep key-sort, so near-identical valid calls or other failures can evade the chain. `INVALID_ARGS` is the deliberate exception and keys on the stable failure signature.
 - **Compaction does not reset chains** — a chain spanning a compaction checkpoint keeps counting.
-- **Advisory only** — escalating to a blocking form at a high threshold is not implemented, though `PostToolDecision` already supports blocking.
 - **No subagent chain-sharing** — chains stay isolated per agent; a parent and its subagent repeating the same call never combine.
 - **Legitimate idempotent polling still draws nudges** past the thresholds — the pressure valves are the `thresholds`/`exclude` config.
 - **Past the highest threshold a chain goes silent** — reminders fire only at exact configured counts, never beyond them.
@@ -181,6 +208,6 @@ These limits define when the guard is a poor fit. They are current package const
 
 This Dev Note is working context for maintainers: open questions and directions that are not decided. It is explicitly non-authoritative — shipped behavior, limits, and accepted rationale live in the sections above, the package code, and the linked Agent Notes.
 
-The [repeat-tool-guard feature note](../../../.agents/notes/archived/feature/2026-07-08-repeat-tool-guard.md) records the original design and alternatives under the former package name; the [naming ledger](../../../.agents/notes/archived/architecture/2026-08-11-repository-naming-contract-and-rename-ledger.md) records the rename to `repeat-tool-reminder` and its reason.
+The [invalid-argument loop guard decision](../../../.agents/notes/implemented/bug-fix/2026-09-16-invalid-tool-argument-loop-guard.md) owns failure-signature correction and termination. The [repeat-tool-guard feature note](../../../.agents/notes/archived/feature/2026-07-08-repeat-tool-guard.md) records the original design and alternatives under the former package name; the [naming ledger](../../../.agents/notes/archived/architecture/2026-08-11-repository-naming-contract-and-rename-ledger.md) records the rename to `repeat-tool-reminder` and its reason.
 
 </details>
