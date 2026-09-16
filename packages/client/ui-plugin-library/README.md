@@ -29,7 +29,7 @@ The shipped Web application mounts this package, but it becomes visible only ins
 
 ### Review and install a source
 
-Review accepts an exact npm version, an HTTPS GitHub repository pinned to a commit, or a local directory. Direct installation requires a valid root package manifest whose `dsh.bundle.patch` names an existing package-internal YAML entry. The shell bridge issues a single-use 15-minute review token and installs into its managed profile with an exact source and dependency lifecycle scripts disabled.
+Review accepts an exact npm version, an HTTPS GitHub repository pinned to a commit, or a local directory. Direct installation requires a valid root package manifest whose `dsh.bundle.patch` names an existing package-internal YAML entry. A plugin that owns user settings may declare `dsh.settings.namespaces` as a list of lowercase hyphenated namespace keys; uninstall removes only those declared sections from the active settings document and preserves undeclared sections. The shell bridge issues a single-use 15-minute review token and installs into its managed profile with an exact source and dependency lifecycle scripts disabled.
 
 Community discovery uses the [SkillHub Plugins catalog](https://skillhub.cloud.tencent.com/plugins) and GitHub's `dsh-plugin` topic. Catalog metadata is only a discovery signal; the selected GitHub repository is pinned to a commit and must pass structural review before installation.
 

@@ -18,6 +18,7 @@ import {
   writeSync,
 } from 'node:fs'
 import { delimiter, dirname, join, resolve, sep } from 'node:path'
+import { parseDocument } from 'yaml'
 import {
   DESKTOP_HOST_PACKAGE,
   desktopCorePackageOverrides,
@@ -37,6 +38,8 @@ export interface DesktopPluginRecord {
   readonly name: string
   readonly version: string
   readonly enabled: boolean
+  /** Settings namespaces the plugin explicitly owns and removes on uninstall. */
+  readonly settingsNamespaces?: readonly string[]
 }
 
 /** Installed desktop project manifest slice. */
@@ -81,6 +84,7 @@ const CORE_BUILD_PACKAGE = '@deepseek-ai/dsh-subprocess-local'
 const DESKTOP_PROFILE_BUNDLES = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'] as const
 const WORKSPACE_SETTINGS = 'nodeLinker: hoisted\nautoInstallPeers: false\nstrictDepBuilds: true\n'
 const PACKAGE_NAME_PATTERN = /^(?:@[a-z0-9][a-z0-9._~-]*\/[a-z0-9][a-z0-9._~-]*|[a-z0-9][a-z0-9._~-]*)$/u
+const SETTINGS_NAMESPACE_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u
 const VERSION_PATTERN = /^[0-9A-Za-z][0-9A-Za-z.+_-]*$/u
 const MAX_PNPM_DIAGNOSTIC_BYTES = 64 * 1024
 const DESKTOP_REGISTRY = 'https://registry.npmjs.org/'
@@ -205,6 +209,43 @@ function writeProfilePlugins(projectDir: string, plugins: readonly DesktopPlugin
   } satisfies DesktopProjectManifest)
 }
 
+function settingsNamespacesOf(manifest: Record<string, unknown>, packageName: string): readonly string[] {
+  const dsh = manifest.dsh
+  const settings = isRecord(dsh) ? dsh.settings : undefined
+  const namespaces = isRecord(settings) ? settings.namespaces : undefined
+  if (namespaces === undefined) return []
+  if (!Array.isArray(namespaces)) {
+    throw new Error(`desktop project: plugin "${packageName}" declares invalid dsh.settings.namespaces`)
+  }
+  const parsed = namespaces.filter((ns): ns is string => typeof ns === 'string')
+  if (parsed.length !== namespaces.length || parsed.some(ns => !SETTINGS_NAMESPACE_PATTERN.test(ns))) {
+    throw new Error(`desktop project: plugin "${packageName}" declares invalid dsh.settings.namespaces`)
+  }
+  return parsed
+}
+
+interface SettingsCleanup {
+  readonly restore: () => void
+}
+
+function removePluginSettings(dshHome: string, namespaces: readonly string[]): SettingsCleanup | undefined {
+  if (namespaces.length === 0) return undefined
+  const path = join(dshHome, 'settings.yaml')
+  if (!existsSync(path)) return undefined
+  const original = readFileSync(path, 'utf8')
+  const document = parseDocument(original)
+  if (document.errors.length > 0) throw new Error('desktop project: cannot clean invalid settings.yaml')
+  let changed = false
+  for (const namespace of namespaces) {
+    if (!document.hasIn([namespace])) continue
+    document.deleteIn([namespace])
+    changed = true
+  }
+  if (!changed) return undefined
+  writeFileSync(path, String(document), { mode: 0o600 })
+  return { restore: () => { writeFileSync(path, original, { mode: 0o600 }) } }
+}
+
 function inspectPlugin(projectDir: string, requestedName: string): DesktopPluginRecord {
   const manifestPath = join(projectDir, 'node_modules', ...requestedName.split('/'), 'package.json')
   if (!existsSync(manifestPath)) {
@@ -225,7 +266,13 @@ function inspectPlugin(projectDir: string, requestedName: string): DesktopPlugin
   if ((patchPath !== packageDir && !patchPath.startsWith(packageDir + sep)) || !existsSync(patchPath)) {
     throw new Error(`desktop project: ${requestedName}@${manifest.version} declares an invalid bundle patch`)
   }
-  return { name: requestedName, version: manifest.version, enabled: profilePluginNames(projectDir).includes(requestedName) }
+  const settingsNamespaces = settingsNamespacesOf(manifest, requestedName)
+  return {
+    name: requestedName,
+    version: manifest.version,
+    enabled: profilePluginNames(projectDir).includes(requestedName),
+    ...settingsNamespaces.length === 0 ? {} : { settingsNamespaces },
+  }
 }
 
 /** Desktop npm project manager with direct writes and no rollback. */
@@ -412,9 +459,16 @@ export class DesktopProjectManager {
         if (!Object.hasOwn(projectManifest(projectDir).dependencies, mutation.name)) {
           throw new Error(`desktop project: plugin ${JSON.stringify(mutation.name)} is not installed`)
         }
-        const remaining = pluginRecords(projectDir).filter(plugin => plugin.name !== mutation.name)
-        await this.runPnpm(projectDir, ['remove', mutation.name, '--config.ignore-scripts=true'])
-        writeProfilePlugins(projectDir, remaining)
+        const installed = inspectPlugin(projectDir, mutation.name)
+        const cleanup = removePluginSettings(dirname(dirname(projectDir)), installed.settingsNamespaces ?? [])
+        try {
+          const remaining = pluginRecords(projectDir).filter(plugin => plugin.name !== mutation.name)
+          await this.runPnpm(projectDir, ['remove', mutation.name, '--config.ignore-scripts=true'])
+          writeProfilePlugins(projectDir, remaining)
+        } catch (error) {
+          cleanup?.restore()
+          throw error
+        }
         return
       }
       case 'plugin-update':

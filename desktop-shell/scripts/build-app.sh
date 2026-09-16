@@ -6,8 +6,9 @@ SHELL_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 HARNESS_ROOT=$(CDPATH= cd -- "$SHELL_ROOT/.." && pwd)
 SOURCE_ROOT=${DSH_SOURCE_DIR:-$HARNESS_ROOT}
 SOURCE_ROOT=$(CDPATH= cd -- "$SOURCE_ROOT" && pwd)
-OUTPUT_ROOT="$SHELL_ROOT/dist"
-APP_ROOT="$OUTPUT_ROOT/DeepSeek Harness Lite.app"
+ISOLATED=false
+OUTPUT_ROOT=""
+APP_ROOT=""
 ICON_SOURCE="$SHELL_ROOT/Resources/AppIcon.svg"
 ICON_WORK=$(mktemp -d)
 SNAPSHOT_WORK=""
@@ -99,11 +100,27 @@ if [ ! -f "$SOURCE_ROOT/apps/cli/package.json" ]; then
   exit 1
 fi
 DISTRIBUTION=false
-if [ "${1:-}" = "--distribution" ]; then
-  DISTRIBUTION=true
-elif [ "$#" -ne 0 ]; then
-  echo "usage: $0 [--distribution]" >&2
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --distribution) DISTRIBUTION=true ;;
+    --isolated) ISOLATED=true ;;
+    *)
+      echo "usage: $0 [--distribution] [--isolated]" >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
+if [ "$DISTRIBUTION" = true ] && [ "$ISOLATED" = true ]; then
+  echo "build-app: --distribution and --isolated are mutually exclusive" >&2
   exit 2
+fi
+if [ "$ISOLATED" = true ]; then
+  OUTPUT_ROOT="$SHELL_ROOT/dist-isolated"
+  APP_ROOT="$OUTPUT_ROOT/DeepSeek Harness Lite Isolated.app"
+else
+  OUTPUT_ROOT="$SHELL_ROOT/dist"
+  APP_ROOT="$OUTPUT_ROOT/DeepSeek Harness Lite.app"
 fi
 
 if ! command -v rsvg-convert >/dev/null 2>&1; then
@@ -127,6 +144,12 @@ mkdir -p "$APP_ROOT/Contents/MacOS" "$APP_ROOT/Contents/Resources"
 cp "$SHELL_ROOT/.build/release/DeepSeekHarnessDesktop" "$APP_ROOT/Contents/MacOS/DeepSeekHarnessDesktop"
 /usr/bin/strip -S "$APP_ROOT/Contents/MacOS/DeepSeekHarnessDesktop"
 cp "$SHELL_ROOT/Resources/Info.plist" "$APP_ROOT/Contents/Info.plist"
+if [ "$ISOLATED" = true ]; then
+  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ai.deepseek.harness.desktop.lite.isolated" "$APP_ROOT/Contents/Info.plist"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName DeepSeek Harness Lite Isolated" "$APP_ROOT/Contents/Info.plist"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleName DeepSeek Harness Lite Isolated" "$APP_ROOT/Contents/Info.plist"
+  /usr/libexec/PlistBuddy -c "Set :DSHIsolatedDataRoot true" "$APP_ROOT/Contents/Info.plist"
+fi
 if [ "$DISTRIBUTION" = true ]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ai.deepseek.harness.desktop.lite" "$APP_ROOT/Contents/Info.plist"
   /usr/libexec/PlistBuddy -c "Delete :DSHSourceRoot" "$APP_ROOT/Contents/Info.plist"

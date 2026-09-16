@@ -20,12 +20,13 @@ The Electron application targets macOS 13 through macOS 26 because its Electron 
 | Product | Bundle identifier | Output |
 |---|---|---|
 | Lite development | `ai.deepseek.harness.desktop.lite.local` | `desktop-shell/dist/DeepSeek Harness Lite.app` |
+| Lite isolated test | `ai.deepseek.harness.desktop.lite.isolated` | `desktop-shell/dist-isolated/DeepSeek Harness Lite Isolated.app` |
 | Lite distribution | `ai.deepseek.harness.desktop.lite` | `desktop-shell/dist/DeepSeek-Harness-Lite-macOS.dmg` |
 | Electron | Electron package identifier | output owned by `apps/desktop` |
 
 ## Shared data and preserved features
 
-The production Lite shell uses `~/.dsh` as `DSH_HOME`, matching Electron and the CLI. The `desktop-lite` and Electron compositions both use `$DSH_HOME/desktop/dsh-desktop.sqlite` as authoritative Session persistence. This preserves Session history, Session IDs, cross-Session references, attachment metadata, and SQLite migration behavior across shells. Both profiles mount DeepSeek Files recognition, external-search provider settings, SkillHub, the native plugin library, Lark, and `dsh-model-catalog`. The model catalog refreshes complete upstream declarations from `models.dev` and enriches discovery and actual calls without creating an implicit provider route.
+The production Lite shell uses `~/.dsh` as `DSH_HOME`, matching Electron and the CLI. The isolated test build uses `~/Library/Application Support/DeepSeek Harness Lite Isolated/data` and never reads or migrates `~/.dsh`. The `desktop-lite` and Electron compositions both use `$DSH_HOME/desktop/dsh-desktop.sqlite` as authoritative Session persistence. This preserves Session history, Session IDs, cross-Session references, attachment metadata, and SQLite migration behavior across shells. Both profiles mount DeepSeek Files recognition, external-search provider settings, SkillHub, the native plugin library, Lark, and `dsh-model-catalog`. The model catalog refreshes complete upstream declarations from `models.dev` and enriches discovery and actual calls without creating an implicit provider route.
 
 The Swift shell keeps its source/update audit catalog under `~/Library/Application Support/DeepSeek Harness Lite`; that auxiliary database is not Session authority. Forced profile synchronization marks dependencies absent from current manifests as removed, so its plugin inventory does not report stale installations. First launch can migrate data from the previous `~/Library/Application Support/DeepSeek Harness Desktop/data` location without deleting the old directory.
 
@@ -41,6 +42,8 @@ From the repository root:
 swift test --package-path desktop-shell
 desktop-shell/scripts/build-app.sh
 open "desktop-shell/dist/DeepSeek Harness Lite.app"
+PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$PATH" desktop-shell/scripts/build-app.sh --isolated
+open "desktop-shell/dist-isolated/DeepSeek Harness Lite Isolated.app"
 ```
 
 Create the distribution DMG only from a clean, published release commit:

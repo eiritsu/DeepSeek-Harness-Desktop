@@ -29,7 +29,7 @@ kind: "package-reference"
 
 ### 审查并安装来源
 
-审查接受精确 npm 版本、固定到 commit 的 HTTPS GitHub 仓库或本地目录。可直接安装的来源必须具有有效根 package manifest，并由 `dsh.bundle.patch` 指向实际存在的包内 YAML 入口。桌面壳 bridge 会签发一个有效期 15 分钟的一次性审查 token，再以精确来源且禁用依赖 lifecycle script 的方式安装到其受管 profile。
+审查接受精确 npm 版本、固定到 commit 的 HTTPS GitHub 仓库或本地目录。可直接安装的来源必须具有有效根 package manifest，并由 `dsh.bundle.patch` 指向实际存在的包内 YAML 入口。插件如果拥有用户设置，可以在 `dsh.settings.namespaces` 中声明小写连字符 namespace；卸载时只删除这些声明的配置段，并保留未声明的配置。桌面壳 bridge 会签发一个有效期 15 分钟的一次性审查 token，再以精确来源且禁用依赖 lifecycle script 的方式安装到其受管 profile。
 
 社区发现使用 [SkillHub Plugins 目录](https://skillhub.cloud.tencent.com/plugins)与 GitHub 的 `dsh-plugin` topic。目录元数据只用于发现；选中的 GitHub 仓库会先固定到 commit，再通过结构审查后才能安装。
 

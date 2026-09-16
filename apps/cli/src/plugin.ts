@@ -11,8 +11,9 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { parseDocument } from 'yaml'
 import {
   DEFAULT_PROFILE_BUNDLES,
   initProfile,
@@ -24,8 +25,58 @@ import {
   type ProfileManifest,
 } from '@deepseek-ai/dsh-app-boot'
 import { INSTALL_ANCHOR } from './profile-boot.ts'
+import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 
 const NAME = 'dsh'
+const SETTINGS_NAMESPACE_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u
+
+function pluginSettingsNamespaces(packageName: string, profileDir: string): readonly string[] {
+  const manifestPath = join(profileDir, 'node_modules', ...packageName.split('/'), 'package.json')
+  if (!existsSync(manifestPath)) return []
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+    dsh?: { settings?: { namespaces?: unknown } }
+  }
+  const namespaces = manifest.dsh?.settings?.namespaces
+  if (namespaces === undefined) return []
+  if (!Array.isArray(namespaces)) {
+    throw new Error(`${NAME}: plugin "${packageName}" declares invalid dsh.settings.namespaces`)
+  }
+  const parsed = namespaces.filter((ns): ns is string => typeof ns === 'string')
+  if (parsed.length !== namespaces.length || parsed.some(ns => !SETTINGS_NAMESPACE_PATTERN.test(ns))) {
+    throw new Error(`${NAME}: plugin "${packageName}" declares invalid dsh.settings.namespaces`)
+  }
+  return parsed
+}
+
+/**
+ * Remove settings namespaces explicitly owned by one installed plugin.
+ * @param packageName - installed package name.
+ * @param profileDir - profile containing the installed package manifest.
+ * @param dshHome - settings home; defaults to the active Harness home.
+ * @returns restore callback when a settings document changed.
+ */
+export function removeDeclaredPluginSettings(
+  packageName: string,
+  profileDir: string,
+  dshHome: string = resolveDshHome(),
+): (() => void) | undefined {
+  const namespaces = pluginSettingsNamespaces(packageName, profileDir)
+  if (namespaces.length === 0) return undefined
+  const path = join(dshHome, 'settings.yaml')
+  if (!existsSync(path)) return undefined
+  const original = readFileSync(path, 'utf8')
+  const document = parseDocument(original)
+  if (document.errors.length > 0) throw new Error(`${NAME}: cannot clean invalid settings.yaml`)
+  let changed = false
+  for (const namespace of namespaces) {
+    if (!document.hasIn([namespace])) continue
+    document.deleteIn([namespace])
+    changed = true
+  }
+  if (!changed) return undefined
+  writeFileSync(path, String(document), { mode: 0o600 })
+  return () => { writeFileSync(path, original, { mode: 0o600 }) }
+}
 
 /**
  * Whether a resolved dependency exports a profile patch, i.e. is a bundle.
@@ -129,6 +180,8 @@ export function runPlugin(profile: string, args: readonly string[]): number {
     process.stderr.write(`${NAME}: initialized profile ${profile} at ${dir}\n`)
   }
   const before = readProfileManifest(NAME, dir)
+  const removingPackage = args[0] === 'remove' ? args[1] : undefined
+  const cleanup = removingPackage === undefined ? undefined : removeDeclaredPluginSettings(removingPackage, dir)
   // Windows resolves pnpm through its .cmd shim, which spawn() refuses
   // without a shell since the CVE-2024-27980 hardening.
   const result = spawnSync('pnpm', args.map(argument => anchorPathSpec(argument, process.cwd())), {
@@ -139,15 +192,23 @@ export function runPlugin(profile: string, args: readonly string[]): number {
   if (result.error !== undefined) {
     const code = (result.error as NodeJS.ErrnoException).code
     if (code === 'ENOENT') {
+      cleanup?.()
       process.stderr.write(`${NAME}: pnpm not found on PATH — install pnpm to manage profile plugins\n`)
       return 127
     }
+    cleanup?.()
     throw result.error
   }
   const exitCode = result.status ?? 1
   if (exitCode === 0) {
-    reconcilePlugins(before, dir)
+    try {
+      reconcilePlugins(before, dir)
+    } catch (error) {
+      cleanup?.()
+      throw error
+    }
   } else {
+    cleanup?.()
     // pnpm's own diagnostics name pnpm-workspace.yaml without saying WHICH
     // one; the profile owns it, and the commonest failure here is pnpm ≥10
     // blocking a git dependency's prepare (build) script until allowlisted.

@@ -4,6 +4,34 @@ import Foundation
 import Testing
 @testable import DeepSeekHarnessDesktop
 
+@Test func isolatedLiteUsesIndependentSupportAndDataRoots() {
+  let applicationSupport = URL(fileURLWithPath: "/tmp/application-support", isDirectory: true)
+  let home = URL(fileURLWithPath: "/tmp/home", isDirectory: true)
+  let roots = SourceManager.defaultDataRoots(
+    isolated: true,
+    applicationSupport: applicationSupport,
+    home: home,
+  )
+
+  #expect(roots.supportRoot.path == "/tmp/application-support/DeepSeek Harness Lite Isolated")
+  #expect(roots.dshHome.path == "/tmp/application-support/DeepSeek Harness Lite Isolated/data")
+  #expect(roots.legacyHome == nil)
+}
+
+@Test func normalLiteKeepsSharedHarnessCompatibilityRoots() {
+  let applicationSupport = URL(fileURLWithPath: "/tmp/application-support", isDirectory: true)
+  let home = URL(fileURLWithPath: "/tmp/home", isDirectory: true)
+  let roots = SourceManager.defaultDataRoots(
+    isolated: false,
+    applicationSupport: applicationSupport,
+    home: home,
+  )
+
+  #expect(roots.supportRoot.path == "/tmp/application-support/DeepSeek Harness Lite")
+  #expect(roots.dshHome.path == "/tmp/home/.dsh")
+  #expect(roots.legacyHome?.path == "/tmp/application-support/DeepSeek Harness Desktop/data")
+}
+
 @Test func skillArchivePayloadRootResolvesWrappedArchives() throws {
   let root = FileManager.default.temporaryDirectory
     .appendingPathComponent("dsh-skill-archive-\(UUID().uuidString)", isDirectory: true)

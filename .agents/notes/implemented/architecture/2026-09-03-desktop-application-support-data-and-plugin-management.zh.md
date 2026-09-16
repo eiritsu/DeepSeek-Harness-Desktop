@@ -18,11 +18,11 @@ Shell 会在运行时启动前建立 `data/dsh-desktop.sqlite`。数据库保存
 
 Session 导出仍通过已认证的 loopback 路由流式输出。macOS shell 接管 WebKit 下载导航，并在用户 Downloads 目录中以不重名文件名保存归档，因此面向浏览器的 client 操作不会跳到外部浏览器，也不会在没有文件时报告成功。运行时输出在追加到桌面日志前会脱敏包含凭据的字段和认证查询参数，shell 启动时也会对现有日志执行相同的脱敏。
 
-插件库把随应用提供的 Web profile Bundle 显示为 App 管理项，把外部 profile 依赖显示为可卸载项。以后从桌面安装外部插件仍通过 `dsh plugin --profile web` 执行，并把 `DSH_HOME` 指向 Application Support 数据目录。启动时会把嵌入源码快照中实际存在的内置 Bundle 加入持久 Web profile，不替换用户依赖。
+插件库把随应用提供的 Web profile Bundle 显示为 App 管理项，把外部 profile 依赖显示为可卸载项。以后从桌面安装外部插件仍通过 `dsh plugin --profile web` 执行，并把 `DSH_HOME` 指向 Application Support 数据目录。启动时会把嵌入源码快照中实际存在的内置 Bundle 加入持久 Web profile，不替换用户依赖。外部插件可以声明 `dsh.settings.namespaces`；CLI 与 Electron 的卸载路径只删除活动 settings 文档中声明的配置段，包卸载失败时恢复文档。没有该声明的插件不会修改 settings。
 
 ## 验证
 
-桌面 Swift 测试覆盖旧 home 合并且不删除旧数据，以及 App 内置 Bundle 的插件清单。Bundle 组合测试会分别计算普通 Web 与桌面会话查询设置。打包 App 的 smoke 测试会验证 Session 日志操作在 Downloads 产生并通过校验的 ZIP。插件库 locale 与包文档说明 Application Support 的数据归属，以及内置项和可卸载项的区别。
+桌面 Swift 测试覆盖旧 home 合并且不删除旧数据，以及 App 内置 Bundle 的插件清单。Bundle 组合测试会分别计算普通 Web 与桌面会话查询设置。打包 App 的 smoke 测试会验证 Session 日志操作在 Downloads 产生并通过校验的 ZIP。插件库 locale 与包文档说明 Application Support 的数据归属，以及内置项和可卸载项的区别。Project Manager 与 CLI 测试覆盖声明 namespace 的清理、无关配置保留和事务失败恢复。
 
 ## 备选方案
 

@@ -87,7 +87,7 @@ compaction/end      → log-only. Releases the lock (carries `error` on a recove
 
 ### Checkpoint framing + incremental merge (backend-private)
 
-The basic backend wraps the summary as established checkpoint context and tags it for incremental merging on the next cycle. The raw summary remains on `compaction/summary`. Framing is backend policy; the seam promises that one replacement user message carries the possibly framed summary and uses the canonical checkpoint source.
+The basic backend wraps the summary as established checkpoint context and tags it for incremental merging on the next cycle. The raw summary remains on `compaction/summary`. Framing is backend policy; the seam promises that one replacement user message carries the possibly framed summary and uses the canonical checkpoint source. The checkpoint directive is domain-neutral: it records concepts and entities, decisions and constraints, environments and resources, files and artifacts, evidence and verification, commitments and pending actions, risks, and the next action for coding, office, operations, research, planning, and business work. Environment facts are preserved as facts, while secrets remain names and roles rather than values.
 
 ### Blocking via a log-recorded lock, plus a crash/recoverable failure taxonomy
 

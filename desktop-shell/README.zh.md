@@ -20,12 +20,13 @@ Electron runtime 已不再支持 macOS 11 和 12，因此 Electron 应用面向 
 | 产品 | Bundle identifier | 产物 |
 |---|---|---|
 | Lite 开发版 | `ai.deepseek.harness.desktop.lite.local` | `desktop-shell/dist/DeepSeek Harness Lite.app` |
+| Lite 隔离测试版 | `ai.deepseek.harness.desktop.lite.isolated` | `desktop-shell/dist-isolated/DeepSeek Harness Lite Isolated.app` |
 | Lite 发行版 | `ai.deepseek.harness.desktop.lite` | `desktop-shell/dist/DeepSeek-Harness-Lite-macOS.dmg` |
 | Electron | Electron 包配置的 identifier | 由 `apps/desktop` 负责输出 |
 
 ## 共享数据与保留功能
 
-生产环境的 Lite 壳使用 `~/.dsh` 作为 `DSH_HOME`，与 Electron 和 CLI 一致。`desktop-lite` 与 Electron 组合都把 `$DSH_HOME/desktop/dsh-desktop.sqlite` 用作权威 Session 持久化。因此两个壳可以保留同一份 Session 历史、Session ID、跨 Session 引用、附件 metadata 与 SQLite 迁移行为。两个 profile 都会挂载 DeepSeek Files 识别、外部搜索 provider 设置、SkillHub、原生插件库、Lark 与 `dsh-model-catalog`。模型 catalog 会从 `models.dev` 刷新完整的上游声明，并补充模型发现和实际调用，但不会隐式创建 provider 路由。
+生产环境的 Lite 壳使用 `~/.dsh` 作为 `DSH_HOME`，与 Electron 和 CLI 一致。隔离测试版使用 `~/Library/Application Support/DeepSeek Harness Lite Isolated/data`，不会读取或迁移 `~/.dsh`。`desktop-lite` 与 Electron 组合都把 `$DSH_HOME/desktop/dsh-desktop.sqlite` 用作权威 Session 持久化。因此两个壳可以保留同一份 Session 历史、Session ID、跨 Session 引用、附件 metadata 与 SQLite 迁移行为。两个 profile 都会挂载 DeepSeek Files 识别、外部搜索 provider 设置、SkillHub、原生插件库、Lark 与 `dsh-model-catalog`。模型 catalog 会从 `models.dev` 刷新完整的上游声明，并补充模型发现和实际调用，但不会隐式创建 provider 路由。
 
 Swift 壳把自身的源码/更新审计 catalog 保存在 `~/Library/Application Support/DeepSeek Harness Lite`；这个辅助数据库不是 Session 权威来源。强制同步 profile 时，当前 manifest 中已不存在的依赖会被标记为已移除，因此其插件清单不会继续报告陈旧安装。首次启动可以从旧版 `~/Library/Application Support/DeepSeek Harness Desktop/data` 迁移数据，并保留旧目录。
 
@@ -41,6 +42,8 @@ Swift 壳把自身的源码/更新审计 catalog 保存在 `~/Library/Applicatio
 swift test --package-path desktop-shell
 desktop-shell/scripts/build-app.sh
 open "desktop-shell/dist/DeepSeek Harness Lite.app"
+PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$PATH" desktop-shell/scripts/build-app.sh --isolated
+open "desktop-shell/dist-isolated/DeepSeek Harness Lite Isolated.app"
 ```
 
 只在干净且已经发布的 release commit 上创建发行 DMG：

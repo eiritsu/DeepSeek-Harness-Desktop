@@ -53,6 +53,24 @@ final class SourceManager: @unchecked Sendable {
   let dshHome: URL
   let probeHome: URL
 
+  /** Resolve the default application-support and Harness data roots. */
+  static func defaultDataRoots(
+    isolated: Bool,
+    applicationSupport: URL,
+    home: URL,
+  ) -> (supportRoot: URL, dshHome: URL, legacyHome: URL?) {
+    let supportName = isolated ? "DeepSeek Harness Lite Isolated" : "DeepSeek Harness Lite"
+    let supportRoot = applicationSupport.appendingPathComponent(supportName, isDirectory: true)
+    if isolated {
+      return (supportRoot, supportRoot.appendingPathComponent("data", isDirectory: true), nil)
+    }
+    return (
+      supportRoot,
+      home.appendingPathComponent(".dsh", isDirectory: true),
+      applicationSupport.appendingPathComponent("DeepSeek Harness Desktop/data", isDirectory: true),
+    )
+  }
+
   init(
     supportRoot: URL? = nil,
     defaults: UserDefaults = .standard,
@@ -68,24 +86,29 @@ final class SourceManager: @unchecked Sendable {
     legacyHome: URL? = nil,
     allowsExternalSourceRoot: Bool? = nil
   ) {
-    let resolvedSupportRoot = supportRoot ?? FileManager.default.urls(
+    let applicationSupport = FileManager.default.urls(
       for: .applicationSupportDirectory,
       in: .userDomainMask
-    )[0].appendingPathComponent("DeepSeek Harness Lite", isDirectory: true)
+    )[0]
+    let home = FileManager.default.homeDirectoryForCurrentUser
+    let isolated = (Bundle.main.object(forInfoDictionaryKey: "DSHIsolatedDataRoot") as? Bool) == true
+    let defaultsRoots = Self.defaultDataRoots(
+      isolated: isolated,
+      applicationSupport: applicationSupport,
+      home: home,
+    )
+    let resolvedSupportRoot = supportRoot ?? defaultsRoots.supportRoot
     self.defaults = defaults
     self.bootstrapArchive = bootstrapArchive
     self.bootstrapVersion = bootstrapVersion
     self.sourceRepository = sourceRepository
     self.sourceBranch = sourceBranch
     self.supportRoot = resolvedSupportRoot
-    self.legacyHome = legacyHome ?? (supportRoot == nil
-      ? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        .appendingPathComponent("DeepSeek Harness Desktop/data", isDirectory: true)
-      : nil)
+    self.legacyHome = legacyHome ?? (supportRoot == nil ? defaultsRoots.legacyHome : nil)
     self.allowsExternalSourceRoot = allowsExternalSourceRoot
       ?? (Bundle.main.object(forInfoDictionaryKey: "DSHSourceRoot") != nil || bootstrapArchive == nil)
     self.dshHome = dshHome ?? (supportRoot == nil
-      ? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".dsh", isDirectory: true)
+      ? defaultsRoots.dshHome
       : self.supportRoot.appendingPathComponent("data", isDirectory: true))
     probeHome = self.supportRoot.appendingPathComponent("probe-data", isDirectory: true)
   }

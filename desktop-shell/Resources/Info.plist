@@ -21,7 +21,7 @@
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.1.16</string>
+  <string>0.1.17</string>
   <key>CFBundleVersion</key>
   <string>1</string>
   <key>LSMinimumSystemVersion</key>
@@ -33,6 +33,8 @@
     <key>NSAllowsLocalNetworking</key>
     <true/>
   </dict>
+  <key>DSHIsolatedDataRoot</key>
+  <false/>
   <key>DSHSourceRoot</key>
   <string>__DSH_SOURCE_ROOT__</string>
   <key>DSHSourceRepository</key>

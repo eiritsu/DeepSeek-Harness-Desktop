@@ -39,7 +39,10 @@ if (command !== 'rebuild') {
     const packageRoot = join(project, 'node_modules', name)
     mkdirSync(packageRoot, { recursive: true })
     writeFileSync(join(packageRoot, 'package.json'), JSON.stringify({name, version,
-      peerDependencies: {'@deepseek-ai/cordis': '^1.0.0'}, dsh: {bundle: {patch: './bundle.yml'}}}))
+      peerDependencies: {'@deepseek-ai/cordis': '^1.0.0'}, dsh: {
+        bundle: {patch: './bundle.yml'},
+        settings: {namespaces: name === 'settings-plugin' ? ['plugin-settings'] : []},
+      }}))
     writeFileSync(join(packageRoot, 'bundle.yml'), '[]\\n')
   }
   writeFileSync(join(project, 'pnpm-lock.yaml'), JSON.stringify(manifest.dependencies))
@@ -283,6 +286,19 @@ describe('desktop external plugin profile', () => {
     await expect(manager.mutate({ type: 'plugin-add', spec: '@deepseek-ai/cordis' }, hooks())).rejects.toThrow(/host-owned/u)
     await expect(manager.applyRelease()).resolves.toBe(false)
     expect(calls(root)).toHaveLength(2)
+  })
+
+  it('removes declared plugin settings and preserves unrelated namespaces', async () => {
+    const { root, manager } = setup()
+    await manager.applyRelease()
+    const settingsPath = join(root, '.dsh', 'settings.yaml')
+    writeFileSync(settingsPath, 'plugin-settings:\n  enabled: true\nother-settings:\n  keep: true\n')
+    await manager.mutate({ type: 'plugin-add', spec: 'settings-plugin@1.0.0' }, hooks())
+    await manager.mutate({ type: 'plugin-remove', name: 'settings-plugin' }, hooks())
+
+    const settings = readFileSync(settingsPath, 'utf8')
+    expect(settings).not.toContain('plugin-settings')
+    expect(settings).toContain('other-settings')
   })
 
   it('retains disabled plugin versions through updates and enables them explicitly', async () => {
