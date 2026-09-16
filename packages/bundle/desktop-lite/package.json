@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-desktop-lite",
   "description": "The lightweight macOS WKWebView bundle over the shared dsh Web application",
-  "version": "0.1.17",
+  "version": "0.1.18",
   "publishConfig": {
     "access": "public"
   },
