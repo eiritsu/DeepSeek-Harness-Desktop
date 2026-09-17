@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-本包帮助模型跳出工具调用循环。精确重复的调用会在配置次数收到建议性提醒。重复的 `INVALID_ARGS` 会按工具和失败签名计数，即使参数每次变化：默认第二次失败后注入 schema 纠错上下文，第三次失败后阻止当前 turn。每个 agent 的链分别跟踪，新的用户消息会清除状态。`dsh` 基础组合包默认启用本包。
+本包帮助模型跳出工具调用循环。精确重复的调用会在配置次数收到建议性提醒。重复的调用方可修复失败——`INVALID_ARGS` 与 `SANDBOX_ESCALATION_INVALID`——按工具和错误码计数，即使参数或错误消息每次变化：默认第二次失败后注入纠错通知，第三次失败后阻止当前 turn。每个 agent 的链分别跟踪，新的用户消息会清除状态。`dsh` 基础组合包默认启用本包。
 
 ## 目录
 
@@ -29,7 +29,7 @@ kind: "package-reference"
 
 ### 何时选择
 
-当模型长时间自主工作且循环不能无限持续时选择它。合法的精确重复仍只接收建议；schema 无效的调用更严格，因为重复同一个验证错误不可能产生进展：guard 提供一次纠错机会，随后结束 turn。近似的成功调用不会被检测，因为普通链仍要求工具和规范化参数相同。
+当模型长时间自主工作且循环不能无限持续时选择它。合法的精确重复仍只接收建议；调用方可修复的失败更严格，因为重复同一类请求缺陷不可能产生进展：guard 提供一次纠错机会，随后结束 turn。近似的成功调用不会被检测，因为普通链仍要求工具和规范化参数相同。
 
 ### 设置阈值与范围
 
@@ -52,14 +52,14 @@ kind: "package-reference"
 | `include` | `[]` | 只跟踪这些工具；空表示所有工具 |
 | `exclude` | `[]` | 绝不跟踪这些工具；对它们的调用既不计数也不重置 |
 | `argumentsPreviewChars` | `500` | 详细提醒中显示多少字符的重复参数 |
-| `invalidArgsReminderThreshold` | `2` | 同签名 `INVALID_ARGS` 达到该次数时注入 schema 纠错 |
-| `invalidArgsStopThreshold` | `3` | 同签名 `INVALID_ARGS` 达到该次数时阻止下一 step；必须大于提醒阈值 |
+| `invalidArgsReminderThreshold` | `2` | 同错误码的调用方可修复失败达到该次数时注入纠错通知 |
+| `invalidArgsStopThreshold` | `3` | 同错误码的调用方可修复失败达到该次数时阻止下一 step；必须大于提醒阈值 |
 
 无效配置会在启动时以清晰错误失败——空的 `thresholds` 列表、小于 2 的重复次数、重复值、非正数的无效参数提醒阈值，或不大于提醒阈值的停止阈值——绝不会静默改变行为。生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-repeat-tool-reminder)记录每个受支持的值。
 
 ### 你会得到什么
 
-按默认值，以相同参数重复合法调用的模型会在第三次收到简短提醒，并在第五次和第八次收到详细提醒。即使提交参数不同，只要调用以相同 `INVALID_ARGS` 签名失败，第二次就会收到 schema 纠错通知；第三次失败后下一 step 被拒绝，turn 以 blocked 结束。新的用户消息会清除两类状态，因此全新指令可以正常继续。
+按默认值，以相同参数重复合法调用的模型会在第三次收到简短提醒，并在第五次和第八次收到详细提醒。即使提交参数和错误消息不同，只要调用以相同调用方可修复错误码失败，第二次就会收到纠错通知——`INVALID_ARGS` 违规与 `SANDBOX_ESCALATION_INVALID` 拒绝（例如从已是最高档 `danger-full-access` 的会话继续请求升级）都会累计；第三次失败后下一 step 被拒绝，turn 以 blocked 结束。新的用户消息会清除两类状态，因此全新指令可以正常继续。
 
 -----
 
@@ -75,14 +75,14 @@ kind: "package-reference"
 
 guard 建立在四项承诺之上：
 
-- **合法重复只建议，确定性无效循环会终止。** 普通精确重复只增加上下文；重复的 `INVALID_ARGS` 先接收纠错上下文，达到停止阈值后拒绝下一次模型 step。
+- **合法重复只建议，确定性无效循环会终止。** 普通精确重复只增加上下文；重复的调用方可修复失败（`INVALID_ARGS`、`SANDBOX_ESCALATION_INVALID`）先接收纠错上下文，达到停止阈值后拒绝下一次模型 step。
 - **在 post-execute 中计数。** 检测运行在 `tools/post-execute` 上，被拒绝的调用同样会经过它；在那里计数让一个监听器即可覆盖所有尝试，无需跨事件状态。
 - **精确匹配规范化。** 参数以循环的 `JSON.parse` 输出（或畸形参数 JSON 的原始字符串回退）到达 guard，因此 JSON 的值域就是全部输入域，深度键排序加 `JSON.stringify` 是完整、确定性的同一性判定——不存在 bigint、循环引用或 `undefined` 处理，因为没有输入路径能产生它们。
 - **加载时快速失败。** 提醒、预览和无效参数阈值都在 `apply` 中校验并抛出错误，绝不回退到默认值。
 
 ### 检测：重复链
 
-每个 agent 维护一条链。成功调用和普通失败调用以「`(tool name, canonical arguments)`」为键，并忽略属性顺序；`INVALID_ARGS` 改用「`(tool name, error code, error message)`」为键，因此只修改无关的 description 无法绕过缺少必填字段的同一失败链。换成另一条受跟踪身份会把计数重置为 1。链保存在 `WeakMap<Agent, Chain>` 中。
+每个 agent 维护一条链。成功调用和普通失败调用以「`(tool name, canonical arguments)`」为键，并忽略属性顺序；调用方可修复失败改用「`(tool name, error code)`」为键：错误码即身份，因此无关的 description 变化或同一拒绝的不同变体——升级目标在 `danger-full-access` 与 `workspace-write` 之间翻转——都无法重置计数。通知引用的错误文本是最新一次结果的 message。换成另一条受跟踪身份会把计数重置为 1。链保存在 `WeakMap<Agent, Chain>` 中。
 
 - **不受跟踪的调用对链透明。** 被 `include`／`exclude` 排除的调用既不递增也不重置计数器，因此 `grep X → todo_write → grep X` 在 `todo_write` 被排除时仍算作连续两次 `grep X`——穿插进循环的记录类工具不能掩盖循环。
 - **被拒绝的调用也计数。** 检测位于 `tools/post-execute`，被 `tools/pre-execute` 监听器拒绝的调用同样会经过它；模型反复尝试被拒绝的调用，恰恰是需要打破的循环。
@@ -163,25 +163,25 @@ The repeated calls are not making progress. Do not call this tool with these exa
 
 仅追加；新出现的内容位于可复用请求前缀之后，不会使现有 KV Cache 条目失效。
 
-### 无效参数纠错与停止
+### 无效调用纠错与停止
 
 #### 模型看到什么
 
-同一工具和错误签名默认连续第二次出现 `INVALID_ARGS` 后，agent 会收到：
+同一工具和错误码默认连续第二次出现调用方可修复失败（`INVALID_ARGS` 或 `SANDBOX_ESCALATION_INVALID`）后，agent 会收到：
 
-##### 无效参数纠错通知
+##### 无效调用纠错通知
 
 ```markdown
 Tool argument validation failed repeatedly:
 - tool: <toolName>
 - consecutive_failures: 2
-- error: <validationError>
-Do not repeat another variant of the same invalid call. Re-read the tool schema and include every required property. For a required code field, put executable program text in code rather than prose in description; run_code requires both, for example: {"code":"return await tools.name({})","description":"Run named tool"}.
+- error: <latestErrorMessage>
+Do not repeat another variant of the same invalid call. Re-read the tool schema and the current runtime policy, and either fix the request or drop the invalid fields entirely. For a required code field, put executable program text in code rather than prose in description; run_code requires both, for example: {"code":"return await tools.name({})","description":"Run named tool"}.
 ```
 
 #### Token 影响
 
-保留一条有界纠错消息。第三次匹配失败仍会正常记录，然后下一次模型 step 被拒绝，turn 以 blocked 结束；达到停止阈值后不再发出新的模型请求。之后真实用户消息会以全新 guard 状态开始。
+保留一条有界纠错消息。第三次同码失败仍会正常记录，然后下一次模型 step 被拒绝，turn 以 blocked 结束；达到停止阈值后不再发出新的模型请求。之后真实用户消息会以全新 guard 状态开始。
 
 #### KV Cache 影响
 
@@ -194,7 +194,7 @@ Do not repeat another variant of the same invalid call. Re-read the tool schema 
 
 这些限制说明 guard 何时不合适。它们是当前包约束，不是任务积压。
 
-- **非 schema 失败仍只做精确匹配**——规范化是深度键排序，因此近似的合法调用或其他失败可以绕过链。`INVALID_ARGS` 是刻意的例外，按稳定失败签名计数。
+- **非 schema 失败仍只做精确匹配**——规范化是深度键排序，因此近似的合法调用或其他失败可以绕过链。调用方可修复错误码（`INVALID_ARGS`、`SANDBOX_ESCALATION_INVALID`）是刻意的例外，按稳定错误码计数。
 - **压缩（compaction）不会重置链**——跨越压缩检查点的链会继续计数。
 - **subagent 之间不共享链**——链始终按 agent 隔离；父 agent 与其 subagent 重复相同调用也绝不合并。
 - **合理的幂等轮询超过阈值后仍会收到提醒**——可通过 `thresholds`／`exclude` 配置释放压力。

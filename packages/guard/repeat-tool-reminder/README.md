@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This package helps a model escape tool-call loops. Exact repeated calls receive advisory reminders at configured counts. Repeated `INVALID_ARGS` failures are keyed by tool and failure signature even when their arguments vary: the default injects schema-correction context after two failures and blocks the current turn after three. Chains are tracked separately for each agent and cleared by a new user message. The `dsh` base bundle enables the package.
+This package helps a model escape tool-call loops. Exact repeated calls receive advisory reminders at configured counts. Repeated caller-fixable failures — `INVALID_ARGS` and `SANDBOX_ESCALATION_INVALID` — are keyed by tool and failure code even when their arguments or messages vary: the default injects a correction notice after two failures and blocks the current turn after three. Chains are tracked separately for each agent and cleared by a new user message. The `dsh` base bundle enables the package.
 
 ## Table of Contents
 
@@ -52,14 +52,14 @@ When you want to change when reminders fire or which tools they cover, mount the
 | `include` | `[]` | Only these tools are tracked; empty means every tool |
 | `exclude` | `[]` | These tools are never tracked; calls to them neither count nor reset |
 | `argumentsPreviewChars` | `500` | How many characters of the repeated arguments the detailed reminder shows |
-| `invalidArgsReminderThreshold` | `2` | Same-signature `INVALID_ARGS` count that injects schema correction |
-| `invalidArgsStopThreshold` | `3` | Same-signature `INVALID_ARGS` count that blocks the next step; must exceed the reminder threshold |
+| `invalidArgsReminderThreshold` | `2` | Same-code caller-fixable failure count that injects a correction notice |
+| `invalidArgsStopThreshold` | `3` | Same-code caller-fixable failure count that blocks the next step; must exceed the reminder threshold |
 
 Invalid configuration fails at startup with a clear error — an empty `thresholds` list, a repeat count below 2, a duplicate, a non-positive invalid-argument reminder threshold, or a stop threshold that does not exceed it — never a silent change of behavior. The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-repeat-tool-reminder) documents every accepted value.
 
 ### What you get
 
-With the defaults, a model that repeats the same valid call receives a short reminder on the third repeat and detailed reminders on the fifth and eighth. Calls that fail with the same `INVALID_ARGS` signature receive a schema-correction notice after the second failure even when the submitted arguments differ; a third failure causes the next step to reject and closes the turn as blocked. A new user message clears both states, so a fresh instruction can continue normally.
+With the defaults, a model that repeats the same valid call receives a short reminder on the third repeat and detailed reminders on the fifth and eighth. Calls that fail with the same caller-fixable code receive a correction notice after the second failure even when the submitted arguments and error messages differ — an `INVALID_ARGS` violation and a `SANDBOX_ESCALATION_INVALID` refusal (such as escalating from an already-top `danger-full-access` session) both accumulate; a third failure causes the next step to reject and closes the turn as blocked. A new user message clears both states, so a fresh instruction can continue normally.
 
 -----
 
@@ -75,14 +75,14 @@ This section explains how the guard detects repeats and delivers reminders, and 
 
 The guard is built on four commitments:
 
-- **Advisory for valid repeats, terminal for deterministic invalid loops.** Ordinary exact repeats only add context. Repeated `INVALID_ARGS` failures receive correction context and then reject the next model step at the configured stop threshold.
+- **Advisory for valid repeats, terminal for deterministic invalid loops.** Ordinary exact repeats only add context. Repeated caller-fixable failures (`INVALID_ARGS`, `SANDBOX_ESCALATION_INVALID`) receive correction context and then reject the next model step at the configured stop threshold.
 - **Count in post-execute.** Detection runs on `tools/post-execute`, which also fires for denied calls; counting there lets one listener cover every attempt with no cross-event state.
 - **Exact-match canonicalization.** Arguments reach the guard as the loop's `JSON.parse` output (or its raw-string fallback), so JSON's value domain is the whole input domain and a deep key-sort plus `JSON.stringify` is a complete, deterministic identity — no bigint, cycle, or `undefined` handling exists because no input path can produce them.
 - **Fail loud at load.** Reminder, preview, and invalid-argument thresholds validate in `apply` and throw, never falling back to defaults.
 
 ### Detection: the repeat chain
 
-Each agent has one chain. Successful and ordinary failed calls key it by `(tool name, canonical arguments)`, with property order ignored. `INVALID_ARGS` calls instead key it by `(tool name, error code, error message)`, so changing an irrelevant description cannot evade the chain when the same required property remains absent. A different tracked identity resets the count to 1. The chain lives in a `WeakMap<Agent, Chain>`.
+Each agent has one chain. Successful and ordinary failed calls key it by `(tool name, canonical arguments)`, with property order ignored. Caller-fixable failures instead key it by `(tool name, error code)`: the code is the identity, so neither an irrelevant description nor a different variant of the same refusal — an escalation target flipped between `danger-full-access` and `workspace-write` — can reset the count. The quoted error text is the latest result's message. A different tracked identity resets the count to 1. The chain lives in a `WeakMap<Agent, Chain>`.
 
 - **Untracked calls are transparent to the chain.** A call excluded by `include`/`exclude` neither increments nor resets the counter, so `grep X → todo_write → grep X` still counts as two consecutive `grep X` when `todo_write` is excluded — bookkeeping tools interleaved into a loop do not launder it.
 - **Denied calls count.** Detection sits on `tools/post-execute`, which also runs for calls a `tools/pre-execute` listener denied; a model hammering a denied call is exactly the loop worth breaking.
@@ -163,25 +163,25 @@ Each reminder is retained history; `argumentsPreviewChars` bounds its data-depen
 
 Append-only; newly visible content follows the reusable request prefix and does not invalidate existing KV-cache entries.
 
-### Invalid-argument correction and stop
+### Invalid-call correction and stop
 
 #### What the model sees
 
-After the default second consecutive `INVALID_ARGS` failure with the same tool and error signature, the agent receives:
+After the default second consecutive caller-fixable failure (`INVALID_ARGS` or `SANDBOX_ESCALATION_INVALID`) with the same tool and error code, the agent receives:
 
-##### Invalid-argument correction notice
+##### Invalid-call correction notice
 
 ```markdown
 Tool argument validation failed repeatedly:
 - tool: <toolName>
 - consecutive_failures: 2
-- error: <validationError>
-Do not repeat another variant of the same invalid call. Re-read the tool schema and include every required property. For a required code field, put executable program text in code rather than prose in description; run_code requires both, for example: {"code":"return await tools.name({})","description":"Run named tool"}.
+- error: <latestErrorMessage>
+Do not repeat another variant of the same invalid call. Re-read the tool schema and the current runtime policy, and either fix the request or drop the invalid fields entirely. For a required code field, put executable program text in code rather than prose in description; run_code requires both, for example: {"code":"return await tools.name({})","description":"Run named tool"}.
 ```
 
 #### Token effect
 
-One bounded correction message is retained. A third matching failure is recorded normally, then the next model step is rejected and the turn ends as blocked; no further model request is sent after the stop threshold. A later real user message starts with fresh guard state.
+One bounded correction message is retained. A third same-code failure is recorded normally, then the next model step is rejected and the turn ends as blocked; no further model request is sent after the stop threshold. A later real user message starts with fresh guard state.
 
 #### KV Cache effect
 
@@ -194,7 +194,7 @@ The correction is append-only. Stopping the turn avoids the repeated invalid req
 
 These limits define when the guard is a poor fit. They are current package constraints, not a task backlog.
 
-- **Exact-match detection for non-schema failures** — canonicalization is a deep key-sort, so near-identical valid calls or other failures can evade the chain. `INVALID_ARGS` is the deliberate exception and keys on the stable failure signature.
+- **Exact-match detection for non-schema failures** — canonicalization is a deep key-sort, so near-identical valid calls or other failures can evade the chain. Caller-fixable codes (`INVALID_ARGS`, `SANDBOX_ESCALATION_INVALID`) are the deliberate exception and key on the stable error code.
 - **Compaction does not reset chains** — a chain spanning a compaction checkpoint keeps counting.
 - **No subagent chain-sharing** — chains stay isolated per agent; a parent and its subagent repeating the same call never combine.
 - **Legitimate idempotent polling still draws nudges** past the thresholds — the pressure valves are the `thresholds`/`exclude` config.

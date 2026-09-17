@@ -16,8 +16,30 @@
  * @module dsh-sandbox/escalation
  */
 
+import { HarnessError } from '@deepseek-ai/dsh-llm'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import type { SandboxMode } from './index.ts'
+
+/**
+ * The structured code every caller-fixable escalation failure carries — the
+ * argument-pairing refusals, a blank justification, and a non-widening target.
+ * The tool registry surfaces it as `error.info.code`, which lets loop-hygiene
+ * guards classify repeated identical failures as caller errors; the model-
+ * visible text stays the verbatim message either way.
+ */
+export const SANDBOX_ESCALATION_INVALID = 'SANDBOX_ESCALATION_INVALID'
+
+/**
+ * Throw one escalation refusal as a {@link HarnessError} carrying
+ * {@link SANDBOX_ESCALATION_INVALID}. Plain `Error`s are reserved for
+ * approval outcomes (rejection, cancellation, unavailability): those are
+ * policy decisions about a well-formed request, not caller-fixable argument
+ * defects, and must not feed an invalid-call loop guard.
+ * @param message - the verbatim model-visible refusal text.
+ */
+function escalationInvalid(message: string): never {
+  throw new HarnessError(message, SANDBOX_ESCALATION_INVALID)
+}
 
 /**
  * The strictly-wider table: what a call whose effective mode is the key may
@@ -50,13 +72,13 @@ export const ESCALATION_TARGETS: readonly SandboxMode[] = ['workspace-write', 'd
  */
 export function validateEscalationArgs(sandboxPermissions: string | undefined, justification: string | undefined): void {
   if (sandboxPermissions !== undefined && justification === undefined) {
-    throw new Error('invalid escalation: sandbox_permissions requires a justification')
+    escalationInvalid('invalid escalation: sandbox_permissions requires a justification')
   }
   if (justification !== undefined && sandboxPermissions === undefined) {
-    throw new Error('invalid escalation: justification is only valid together with sandbox_permissions')
+    escalationInvalid('invalid escalation: justification is only valid together with sandbox_permissions')
   }
   if (justification !== undefined && justification.trim().length === 0) {
-    throw new Error('invalid justification: expected a non-empty sentence')
+    escalationInvalid('invalid justification: expected a non-empty sentence')
   }
 }
 
@@ -158,9 +180,11 @@ export async function approveEscalation<A, C>(request: EscalationRequest, approv
   const { requestedMode: mode, effectiveMode, justification, subject } = request
   // Strict widening is an EXECUTION check against the call's effective mode —
   // deliberately not a schema constraint (the enum is the closed target
-  // vocabulary; the effective mode is per-call truth).
+  // vocabulary; the effective mode is per-call truth). A non-widening request
+  // is a caller-fixable argument defect: structured so loop-hygiene guards can
+  // break a model that keeps re-asking from the top mode.
   if (!(WIDER_MODES[effectiveMode] ?? []).includes(mode as SandboxMode)) {
-    throw new Error(`sandbox escalation to "${mode}" is not strictly wider than this call's current "${effectiveMode}" mode`)
+    escalationInvalid(`sandbox escalation to "${mode}" is not strictly wider than this call's current "${effectiveMode}" mode`)
   }
   if (approval.approver === undefined) {
     throw new Error(`sandbox escalation to "${mode}" requires approval, but no approval service is composed`)

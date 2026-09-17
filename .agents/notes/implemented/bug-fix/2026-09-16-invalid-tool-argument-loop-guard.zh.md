@@ -12,11 +12,13 @@ Status: implemented
 
 ## Decision
 
-随附的 `repeat-tool-reminder` 对成功调用和普通失败继续使用规范化精确参数作为身份。对于 `INVALID_ARGS` 结果，则改用 `(tool name, error code, error message)` 作为链身份，因此修改其他参数无法隐藏重复的校验失败。
+随附的 `repeat-tool-reminder` 对成功调用和普通失败继续使用规范化精确参数作为身份。对于调用方可修复的失败结果，则改用 `(tool name, error code)` 作为链身份，因此修改其他参数或错误消息的变体都无法隐藏同一失败类的重复出现。
 
-默认第二次匹配失败会追加一条带来源的纠错通知，引用校验错误并要求模型重新阅读 schema。通知明确说明必填 `code` 字段必须包含可执行程序文本，且 `run_code` 同时要求 `code` 和 `description`。第三次匹配失败仍按工具自身错误记录；随后 guard 拒绝下一次 `agent/pre-step`，因此 turn 持久化为 `blocked` 并且不会再发出模型请求。真实用户消息会同时清除重复链和待停止状态。
+默认第二次匹配失败会追加一条带来源的纠错通知，引用最新一次的错误并要求模型重新阅读 schema。通知明确说明必填 `code` 字段必须包含可执行程序文本，且 `run_code` 同时要求 `code` 和 `description`。第三次匹配失败仍按工具自身错误记录；随后 guard 拒绝下一次 `agent/pre-step`，因此 turn 持久化为 `blocked` 并且不会再发出模型请求。真实用户消息会同时清除重复链和待停止状态。
 
 提醒次数和停止次数分别由 `invalidArgsReminderThreshold` 与 `invalidArgsStopThreshold` 配置。停止阈值必须是大于正整数提醒阈值的整数。普通重复调用仍遵循现有 `thresholds` 的建议性行为。
+
+**链身份现已采用错误码而非错误消息**（由[沙箱升级集成](2026-09-17-sandbox-escalation-loop-guard.zh.md)扩展）。同一调用方可修复失败类——`INVALID_ARGS` 或 `SANDBOX_ESCALATION_INVALID`——无论消息如何变化都累计为一条链，因为升级场景的生产循环表明：模型交替两种拒绝文本会让每条按消息计数的链永远重置。通知引用的是最新失败的错误文本；真正不同的失败类仍构成各自的链，任何成功或普通结果都会重置回普通参数键链。
 
 ## Alternatives considered
 
@@ -36,4 +38,4 @@ repeat-tool-reminder 行为测试通过真实 agent loop 驱动参数持续变�
 
 确定性的参数校验循环最多消耗所配置数量的工具尝试，不再持续到人工取消。最后一条工具错误仍然可见且可审计，blocked turn 明确记录停止原因。新的用户指令可以使用全新 guard 状态重试。
 
-该 guard 是进程本地的启发式状态；恢复会话时计数重新开始。两个真正不同的校验消息仍是不同链。持续生成畸形调用的 provider 仍可能阻塞单个 turn，但不会再制造无界工具结果噪声和 token 消耗。
+该 guard 是进程本地的启发式状态；恢复会话时计数重新开始。不同错误码的调用方可修复失败仍是不同链；同一错误码的消息变体共享一条链。持续生成畸形调用的 provider 仍可能阻塞单个 turn，但不会再制造无界工具结果噪声和 token 消耗。

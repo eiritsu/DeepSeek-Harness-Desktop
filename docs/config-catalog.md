@@ -1911,14 +1911,14 @@ export interface Config {
    * always compares the FULL canonical string).
    */
   argumentsPreviewChars?: number
-  /** Repeated INVALID_ARGS count that injects a schema-correction reminder (default 2). */
+  /** Repeated invalid-call count that injects a correction reminder (default 2). */
   invalidArgsReminderThreshold?: number
-  /** Repeated INVALID_ARGS count that stops the current turn after its result (default 3). */
+  /** Repeated invalid-call count that stops the current turn after its result (default 3). */
   invalidArgsStopThreshold?: number
 }
 ```
 
-Source: [`packages/guard/repeat-tool-reminder/src/index.ts:30`](../packages/guard/repeat-tool-reminder/src/index.ts)
+Source: [`packages/guard/repeat-tool-reminder/src/index.ts:51`](../packages/guard/repeat-tool-reminder/src/index.ts)
 
 <a id="deepseek-aidsh-sandbox-local"></a>
 

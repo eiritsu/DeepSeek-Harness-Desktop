@@ -18,6 +18,8 @@ By default the second matching failure appends one source-attributed correction 
 
 The reminder and stop counts are configurable as `invalidArgsReminderThreshold` and `invalidArgsStopThreshold`. The stop threshold must be an integer greater than the positive reminder threshold. Ordinary repeated calls remain advisory under the existing `thresholds` behavior.
 
+**Chain identity is now the error code, not the error message** (extended by [the sandbox escalation integration](2026-09-17-sandbox-escalation-loop-guard.md)). A caller-fixable failure class — `INVALID_ARGS` or `SANDBOX_ESCALATION_INVALID` — accumulates as one chain regardless of message variants, because the escalation production loop showed that a model alternating two refusal texts resets every message-keyed chain forever. The quoted error text is the latest failure's message; a genuinely different failure class still forms its own chain, and any successful or ordinary result resets to the ordinary argument-keyed chain.
+
 ## Alternatives considered
 
 **Make `run_code.description` optional or remove it.** Rejected because the observed model omitted `code`, not just `description`; reducing another field does not guarantee a program and weakens useful UI labels for models that follow the schema.
@@ -36,4 +38,4 @@ The repeat-tool-reminder behavior suite drives changing invalid argument objects
 
 A deterministic argument-validation loop consumes at most the configured number of tool attempts instead of running until manual cancellation. The final tool failure remains visible and auditable, while the blocked turn makes the stop explicit. A new user instruction can retry with fresh guard state.
 
-The guard is process-local and heuristic; resuming a session starts fresh counters. Two genuinely different validation messages remain separate chains. Providers that repeatedly produce malformed calls may still block individual turns, but they no longer create unbounded tool-result noise or token spend.
+The guard is process-local and heuristic; resuming a session starts fresh counters. Caller-fixable failures of different error codes remain separate chains; message variants of one code share a chain. Providers that repeatedly produce malformed calls may still block individual turns, but they no longer create unbounded tool-result noise or token spend.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { createUserMessage, ToolCallId  } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, HarnessError, ToolCallId  } from '@deepseek-ai/dsh-llm'
 import { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
 import { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -129,6 +129,57 @@ describe('invalid argument loop protection', () => {
     expect(found[0]!.text).toContain('run_code requires both')
     expect(found[0]!.source).toEqual({
       kind: 'plugin', plugin: 'repeat-tool-reminder', form: 'notice', summary: 'needs-code invalid × 2',
+    })
+
+    const ended = events.findLast((event): event is SessionEvent<'turn/end'> => event.type === 'turn/end')
+    expect(ended?.data.reason).toEqual({ kind: 'blocked' })
+  })
+
+  // The observed production loop: a session already at `danger-full-access`
+  // re-asks for escalations (varying the target between danger-full-access and
+  // workspace-write). Every call fails with the same structured
+  // SANDBOX_ESCALATION_INVALID code, so the corrective chain must key on the
+  // error message and stop the turn — variant arguments must not reset it.
+  it('groups escalation refusals by SANDBOX_ESCALATION_INVALID and blocks after three failures', async () => {
+    const ctx = await harness({ invalidArgsReminderThreshold: 2, invalidArgsStopThreshold: 3 })
+    const refuseEscalation = (target: string): never => {
+      throw new HarnessError(
+        `sandbox escalation to "${target}" is not strictly wider than this call's current "danger-full-access" mode`,
+        'SANDBOX_ESCALATION_INVALID',
+      )
+    }
+    ctx.tools.register(defineContentToolFixture({
+      name: 'escalator',
+      description: 'always refuses a non-widening escalation',
+      parameters: { target: { type: 'string' }, justification: { type: 'string' } },
+      async execute(args) { return refuseEscalation(args.target ?? 'danger-full-access') },
+    }))
+    const adapter = new MockAdapter([
+      toolCallResponse('c1', 'escalator', { target: 'danger-full-access', justification: 'confirm workspace' }),
+      toolCallResponse('c2', 'escalator', { target: 'workspace-write', justification: 'confirm workspace' }),
+      toolCallResponse('c3', 'escalator', { target: 'danger-full-access', justification: 'confirm workspace path' }),
+      toolCallResponse('c4', 'escalator', { target: 'workspace-write', justification: 'must not run' }),
+      textResponse('must not run'),
+    ])
+    ctx.llm.registerAdapter(['mock'], adapter)
+    const agent = await ctx.agentLoop.create(SessionId('escalation-loop'), { provider: 'mock', model: 'mock' })
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
+    await waitForIdle(ctx, agent)
+
+    const events = agent.session.snapshotEvents()
+    const calls = events.filter(event => event.type === 'tool/call' && event.data.name === 'escalator')
+    const results = events.filter((event): event is SessionEvent<'tool/result'> => event.type === 'tool/result')
+    expect(calls).toHaveLength(3)
+    expect(results).toHaveLength(3)
+    expect(results.every(result => result.data.error?.code === 'SANDBOX_ESCALATION_INVALID')).toBe(true)
+
+    const found = reminders(agent)
+    expect(found).toHaveLength(1)
+    expect(found[0]!.text).toContain('consecutive_failures: 2')
+    expect(found[0]!.text).toContain('not strictly wider')
+    expect(found[0]!.text).toContain('current runtime policy')
+    expect(found[0]!.source).toEqual({
+      kind: 'plugin', plugin: 'repeat-tool-reminder', form: 'notice', summary: 'escalator invalid × 2',
     })
 
     const ended = events.findLast((event): event is SessionEvent<'turn/end'> => event.type === 'turn/end')

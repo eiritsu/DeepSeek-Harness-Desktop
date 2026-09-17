@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-09-16-invalid-tool-argument-loop-guard.md
-2026-09-16-invalid-tool-argument-loop-guard.md: d520b57f4147e9216a289ccf25089b891343e7e3
-2026-09-16-invalid-tool-argument-loop-guard.zh.md: b51d934f933e055a15adaf707f92a51a345959ef
+2026-09-16-invalid-tool-argument-loop-guard.md: 17acb8c112d8ec3cea341654e920c214d70879b4
+2026-09-16-invalid-tool-argument-loop-guard.zh.md: 2d8e436a16cb5cb4d6e914ee8f37d3f0c21781d3

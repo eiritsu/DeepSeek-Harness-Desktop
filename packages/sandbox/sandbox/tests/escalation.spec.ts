@@ -9,6 +9,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   ESCALATION_TARGETS,
+  SANDBOX_ESCALATION_INVALID,
   WIDER_MODES,
   approveEscalation,
   escalationHintMarker,
@@ -89,6 +90,24 @@ describe('approveEscalation', () => {
     await expect(approveEscalation(req({ requestedMode: 'workspace-write', effectiveMode: 'danger-full-access' as never }), spy))
       .rejects.toThrow(/not strictly wider/)
     expect(seen).toEqual([])
+  })
+
+  it('caller-fixable refusals carry SANDBOX_ESCALATION_INVALID so loop guards can classify them', async () => {
+    // The structured code — not the message — is the loop-hygiene contract:
+    // repeat-tool-reminder keys repeated caller-fixable failures on it.
+    let notWider: { code?: string } | undefined
+    try {
+      await approveEscalation(req({ requestedMode: 'danger-full-access', effectiveMode: 'danger-full-access' as never }), ingredients())
+    } catch (error) {
+      notWider = error as { code?: string }
+    }
+    expect(notWider?.code).toBe(SANDBOX_ESCALATION_INVALID)
+    const blank = (() => { try { validateEscalationArgs('workspace-write', '   ') } catch (error) { return error } })() as { code?: string }
+    expect(blank.code).toBe(SANDBOX_ESCALATION_INVALID)
+    // Approval outcomes are policy decisions about a well-formed request and
+    // must stay UNCODED, so a rejected ask never feeds the invalid-call chain.
+    await expect(approveEscalation(req(), ingredients({ approver: approver('rejected') })))
+      .rejects.not.toMatchObject({ code: SANDBOX_ESCALATION_INVALID })
   })
 
   it('a missing approval service and an agent-less call each fail closed with distinct text', async () => {

@@ -13,9 +13,30 @@ import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { MessageSource } from '@deepseek-ai/dsh-llm'
 import type { UserMessage } from '@deepseek-ai/dsh-session'
+import { SANDBOX_ESCALATION_INVALID } from '@deepseek-ai/dsh-sandbox'
 import type { PostToolDecision, ToolExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 
 export const name = 'repeat-tool-reminder'
+
+/**
+ * Structured result codes this guard classifies as caller-fixable and feeds
+ * into the corrective invalid-call chain (reminder at the reminder threshold,
+ * turn stop at the stop threshold). `INVALID_ARGS` covers schema-validation
+ * failures; `SANDBOX_ESCALATION_INVALID` covers escalation requests that are
+ * malformed or not strictly wider than the call's effective mode. The chain
+ * keys on the CODE alone, so message variants of one failure class accumulate
+ * — a model alternating `danger-full-access` and `workspace-write` escalation
+ * targets otherwise resets two message-keyed chains forever, which is the
+ * exact production loop this integration closes. Approval outcomes
+ * (rejection, cancellation, unavailability) stay OUT: they are policy
+ * decisions about a well-formed request, not repeated argument defects.
+ */
+const CALLER_FIXABLE_CODES: readonly string[] = ['INVALID_ARGS', SANDBOX_ESCALATION_INVALID]
+
+/** Whether one tool result's structured error code joins the invalid-call chain. */
+function callerFixableCode(code: string | undefined): code is string {
+  return code !== undefined && CALLER_FIXABLE_CODES.includes(code)
+}
 
 /**
  * Plugin config, validated by the same-named schemastery schema plus the
@@ -42,9 +63,9 @@ export interface Config {
    * always compares the FULL canonical string).
    */
   argumentsPreviewChars?: number
-  /** Repeated INVALID_ARGS count that injects a schema-correction reminder (default 2). */
+  /** Repeated invalid-call count that injects a correction reminder (default 2). */
   invalidArgsReminderThreshold?: number
-  /** Repeated INVALID_ARGS count that stops the current turn after its result (default 3). */
+  /** Repeated invalid-call count that stops the current turn after its result (default 3). */
   invalidArgsStopThreshold?: number
 }
 
@@ -86,16 +107,17 @@ function detailedReminder(toolName: string, count: number, canonicalArguments: s
     + 'evidence has been gathered.'
 }
 
-/** Corrective context for repeated schema-invalid calls whose arguments vary. */
+/** Corrective context for repeated caller-fixable failures whose arguments vary. */
 function invalidArgsReminder(toolName: string, count: number, message: string): string {
   return 'Tool argument validation failed repeatedly:\n'
     + `- tool: ${toolName}\n`
     + `- consecutive_failures: ${count}\n`
     + `- error: ${message}\n`
     + 'Do not repeat another variant of the same invalid call. Re-read the tool schema '
-    + 'and include every required property. For a required code field, put executable '
-    + 'program text in code rather than prose in description; run_code requires both, '
-    + 'for example: {"code":"return await tools.name({})","description":"Run named tool"}.'
+    + 'and the current runtime policy, and either fix the request or drop the invalid '
+    + 'fields entirely. For a required code field, put executable program text in code '
+    + 'rather than prose in description; run_code requires both, for example: '
+    + '{"code":"return await tools.name({})","description":"Run named tool"}.'
 }
 
 /**
@@ -220,22 +242,20 @@ export function apply(ctx: Context, config: Config): void {
     // to key on; only agent-loop calls participate.
     if (!exec.agent) return undefined
     if (!tracked(exec.name)) return undefined
-    const invalidArgs = result.isError && result.error.info?.code === 'INVALID_ARGS'
-      ? result.error.message
+    const invalidCode = result.isError && callerFixableCode(result.error.info?.code)
+      ? result.error.info.code
       : undefined
-    const canonical = invalidArgs ?? canonicalize(exec.arguments)
-    const key = invalidArgs === undefined
-      ? JSON.stringify([exec.name, canonical])
-      : JSON.stringify([exec.name, 'INVALID_ARGS', canonical])
+    const canonical = invalidCode === undefined ? canonicalize(exec.arguments) : invalidCode
+    const key = JSON.stringify([exec.name, invalidCode === undefined ? canonical : 'INVALID', invalidCode ?? canonical])
     const chain = chains.get(exec.agent)
     const count = chain !== undefined && chain.key === key ? chain.count + 1 : 1
     chains.set(exec.agent, { key, count })
 
-    if (invalidArgs !== undefined) {
+    if (invalidCode !== undefined) {
       if (count >= invalidArgsStopThreshold) halted.add(exec.agent)
       if (count !== invalidArgsReminderThreshold) return undefined
       return createUserMessage({
-        content: [{ type: 'text', text: invalidArgsReminder(exec.name, count, invalidArgs) }],
+        content: [{ type: 'text', text: invalidArgsReminder(exec.name, count, result.error?.message ?? 'unknown caller-fixable failure') }],
         source: { ...PLUGIN_SOURCE, form: 'notice', summary: `${exec.name} invalid × ${count}` },
       })
     }
@@ -252,7 +272,8 @@ export function apply(ctx: Context, config: Config): void {
 
   // Count before delegating so denied and invalid calls participate. A later
   // listener may still block or replace; this guard only adds corrective
-  // context, except that repeated INVALID_ARGS stops the next model step.
+  // context, except that repeated caller-fixable failures stop the next model
+  // step.
   ctx.on('tools/post-execute', async (exec, result, next): Promise<PostToolDecision> => {
     const reminder = observe(exec, result)
     const downstream = await next()
