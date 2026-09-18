@@ -86,41 +86,31 @@ import Testing
   #expect(region.mouseDownCanMoveWindow)
 }
 
-@Test func titlebarDragRegionLeavesBothWebToolbarEndsClickable() {
-  let layout = WindowDragLayout(leadingExclusionWidth: 500, trailingExclusionWidth: 140)
-  let bounds = NSRect(x: 0, y: 0, width: 1_240, height: 52)
-  let dragFrames = windowDragFrames(in: bounds, layout: layout)
-  let exclusionFrames = windowDragExclusionFrames(in: bounds, layout: layout)
+@Test func titlebarDragRegionLeavesRedToolbarAreaClickable() {
+  let bounds = NSRect(x: 0, y: 0, width: 2_480, height: 52)
+  let drag = windowDragFrames(in: bounds)
+  let excluded = windowDragExclusionFrames(in: bounds)
 
-  // The drag gap is between 500 and 1100 (1240 - 140).
-  #expect(dragFrames.count == 1)
-  #expect(dragFrames[0] == NSRect(x: 500, y: 0, width: 600, height: 52))
-
-  // Leading exclusion [0..500) and trailing exclusion [1100..1240).
-  #expect(exclusionFrames.count == 2)
-  #expect(exclusionFrames[0] == NSRect(x: 0, y: 0, width: 500, height: 52))
-  #expect(exclusionFrames[1] == NSRect(x: 1100, y: 0, width: 140, height: 52))
-
-  // No overlap between drag and exclusion frames.
-  for drag in dragFrames {
-    for excl in exclusionFrames {
-      #expect(!drag.intersects(excl))
-    }
-  }
+  #expect(drag == [NSRect(x: 90, y: 0, width: 220, height: 52)])
+  #expect(excluded.count == 2)
+  #expect(excluded[0] == NSRect(x: 0, y: 0, width: 90, height: 52))
+  #expect(excluded[1] == NSRect(x: 310, y: 0, width: 2_170, height: 52))
+  #expect(!drag[0].intersects(excluded[0]))
+  #expect(!drag[0].intersects(excluded[1]))
 }
 
-@Test func titlebarDragRegionStaysAnchoredToFullWidth() {
-  let layout = WindowDragLayout(leadingExclusionWidth: 500, trailingExclusionWidth: 140)
-  let narrowBounds = NSRect(x: 0, y: 0, width: 300, height: 52)
-  // On a narrow window, leading (500) exceeds the width, so no drag gap.
-  #expect(windowDragFrames(in: narrowBounds, layout: layout) == [])
-  let exclusionNarrow = windowDragExclusionFrames(in: narrowBounds, layout: layout)
-  #expect(exclusionNarrow.count == 1)
-  #expect(exclusionNarrow[0] == NSRect(x: 0, y: 0, width: 300, height: 52))
+@Test func titlebarDragRegionAdaptsExclusionAfterResize() {
+  let bounds = NSRect(x: 0, y: 0, width: 1_240, height: 52)
+  let resized = NSRect(x: 0, y: 0, width: 1_920, height: 52)
+  let first = windowDragExclusionFrames(in: bounds)
+  let second = windowDragExclusionFrames(in: resized)
 
+  #expect(first[1].width == 930)
+  #expect(second[1].width == 1_610)
   #expect(windowDragRegionAutoresizingMask.contains(.width))
   #expect(windowDragRegionAutoresizingMask.contains(.height))
 }
+
 
 @Test func stderrIsLoggedWithoutReplacingStartupProgress() {
   let progress = LockedBox<[String]>([])

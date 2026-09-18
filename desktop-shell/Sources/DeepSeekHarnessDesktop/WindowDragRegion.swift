@@ -2,42 +2,45 @@ import AppKit
 
 let windowDragRegionAutoresizingMask: NSView.AutoresizingMask = [.width, .height]
 
-/// Geometry: the leading exclusion (session toolbar / subagent / create-mode / background-task area).
+/// Safe titlebar drag geometry. The rest of the titlebar is deliberately left
+/// transparent to hit testing so WebKit controls remain clickable.
 struct WindowDragLayout {
-  var leadingExclusionWidth: CGFloat = 500
-  var trailingExclusionWidth: CGFloat = 140
+  var leadingInset: CGFloat = 90
+  var maximumWidth: CGFloat = 220
 }
 
-/// Return the draggable frames given a titlebar bounds and layout insets.
-/// The result is every frame NOT covered by a leading or trailing exclusion
-/// rect; `WindowDragRegionView.hitTest` returns `nil` inside exclusions so
-/// the underlying WKWebView stays clickable there.
+/// Return the small safe drag frame, anchored to the native brand area.
 func windowDragFrames(
   in bounds: NSRect,
   layout: WindowDragLayout = WindowDragLayout(),
 ) -> [NSRect] {
-  let leading = min(layout.leadingExclusionWidth, bounds.width)
-  let trailing = min(layout.trailingExclusionWidth, max(0, bounds.width - leading))
-  let gapStart = bounds.minX + leading
-  let gapEnd = bounds.maxX - trailing
-  guard gapEnd > gapStart else { return [] }
-  return [NSRect(x: gapStart, y: bounds.minY, width: gapEnd - gapStart, height: bounds.height)]
+  let leading = max(0, layout.leadingInset)
+  let availableWidth = max(0, bounds.width - leading)
+  let width = min(max(0, layout.maximumWidth), availableWidth)
+  guard width > 0, bounds.height > 0 else { return [] }
+  return [NSRect(
+    x: bounds.minX + min(leading, bounds.width),
+    y: bounds.minY,
+    width: width,
+    height: bounds.height,
+  )]
 }
 
-/// Return the exclusion frames so tests can assert non-overlap with draggable frames.
+/// Return the non-draggable titlebar regions. These regions return `nil` from
+/// `hitTest`, allowing the underlying WebKit toolbar to receive mouse events.
 func windowDragExclusionFrames(
   in bounds: NSRect,
   layout: WindowDragLayout = WindowDragLayout(),
 ) -> [NSRect] {
-  let leading = min(layout.leadingExclusionWidth, bounds.width)
-  let trailing = min(layout.trailingExclusionWidth, max(0, bounds.width - leading))
-  var frames: [NSRect] = []
-  if leading > 0 {
-    frames.append(NSRect(x: bounds.minX, y: bounds.minY, width: leading, height: bounds.height))
+  guard let drag = windowDragFrames(in: bounds, layout: layout).first else {
+    return bounds.width > 0 && bounds.height > 0 ? [bounds] : []
   }
-  let trailingStart = bounds.maxX - trailing
-  if trailing > 0 && trailingStart > bounds.minX + leading {
-    frames.append(NSRect(x: trailingStart, y: bounds.minY, width: trailing, height: bounds.height))
+  var frames: [NSRect] = []
+  if drag.minX > bounds.minX {
+    frames.append(NSRect(x: bounds.minX, y: bounds.minY, width: drag.minX - bounds.minX, height: bounds.height))
+  }
+  if drag.maxX < bounds.maxX {
+    frames.append(NSRect(x: drag.maxX, y: bounds.minY, width: bounds.maxX - drag.maxX, height: bounds.height))
   }
   return frames
 }
@@ -50,14 +53,15 @@ final class WindowDragRegionView: NSView {
 
   override func hitTest(_ point: NSPoint) -> NSView? {
     let local = convert(point, from: nil)
-    let exclusionFrames = windowDragExclusionFrames(in: bounds, layout: dragLayout)
-    for exclusion in exclusionFrames {
-      if exclusion.contains(local) { return nil }
-    }
-    return super.hitTest(point)
+    return windowDragFrames(in: bounds, layout: dragLayout).contains { $0.contains(local) } ? self : nil
   }
 
   override func mouseDown(with event: NSEvent) {
-    window?.performDrag(with: event)
+    guard let window else { return }
+    if event.clickCount == 2 {
+      window.zoom(nil)
+    } else {
+      window.performDrag(with: event)
+    }
   }
 }
