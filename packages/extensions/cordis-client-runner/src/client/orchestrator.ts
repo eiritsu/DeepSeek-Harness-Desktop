@@ -123,12 +123,22 @@ export class CordisRunOrchestrator {
   private readonly activity = new Map<CordisDynamicPluginId, CordisRunActivity>()
   private readonly failures = new Map<CordisDynamicPluginId, CordisRunFailure>()
   private readonly inFlight = new Map<CordisDynamicPluginId, Promise<void>>()
+  private generation = 0
   private readonly listeners = new Set<() => void>()
   private activityCache: ReadonlyMap<CordisDynamicPluginId, CordisRunActivity> | undefined
   private failureCache: ReadonlyMap<CordisDynamicPluginId, CordisRunFailure> | undefined
 
   /** @param env - Client loader and folded Host operations. */
   constructor(private readonly env: CordisRunOrchestratorEnv) {}
+
+  /** Drop page-side approvals and failures after the Host connection changes. */
+  reset(): void {
+    this.generation += 1
+    this.requests.clear()
+    this.activity.clear()
+    this.failures.clear()
+    this.commit()
+  }
 
   /** Open approvals and current activation attempts, keyed by stable Plugin ID. */
   readonly activeRuns: CordisObservable<ReadonlyMap<CordisDynamicPluginId, CordisRunActivity>> = {
@@ -321,7 +331,9 @@ export class CordisRunOrchestrator {
     this.failures.delete(plan.pluginId)
     if (plan.requestId !== undefined) this.requests.delete(plan.requestId)
     this.commit()
-    const attempt = this.drive(plan).finally(() => {
+    const generation = this.generation
+    const attempt = this.drive(plan, generation).finally(() => {
+      if (generation !== this.generation) return
       this.inFlight.delete(plan.pluginId)
       this.activity.delete(plan.pluginId)
       this.commit()
@@ -330,8 +342,10 @@ export class CordisRunOrchestrator {
     return attempt
   }
 
-  private async drive(plan: RunPlan): Promise<void> {
+  private async drive(plan: RunPlan, generation: number): Promise<void> {
+    if (generation !== this.generation) return
     const started = await this.startHost(plan)
+    if (generation !== this.generation) return
     if (!started.ok) {
       this.fail(plan, 'host-half-failed', started)
       if (plan.requestId !== undefined) {
@@ -345,9 +359,11 @@ export class CordisRunOrchestrator {
     try {
       source = await this.env.host.getClientCode(plan.agentId, plan.pluginId, started.pluginRunId)
     } catch (error) {
+      if (generation !== this.generation) return
       await this.finishClientFailure(plan, started.pluginRunId, started.startedHere, errorDetails(error), error)
       return
     }
+    if (generation !== this.generation) return
     const loaded = await this.env.runner.load({
       pluginId: source.pluginId,
       packageId: source.packageId,
@@ -357,6 +373,7 @@ export class CordisRunOrchestrator {
       code: source.code,
     }).catch((error: unknown) => ({ ok: false, cause: 'evaluate', ...errorDetails(error), error }) as const)
     if (!loaded.ok) {
+      if (generation !== this.generation) return
       await this.finishClientFailure(
         plan,
         started.pluginRunId,
@@ -375,9 +392,11 @@ export class CordisRunOrchestrator {
       ...loaded.waitingFor === undefined ? {} : { waitingFor: loaded.waitingFor },
     }
     if (plan.requestId !== undefined) {
+      if (generation !== this.generation) return
       await this.answer(plan.requestId, resolution)
       return
     }
+    if (generation !== this.generation) return
     await this.settleDirect(plan, resolution)
   }
 

@@ -208,11 +208,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
       statusLabel.widthAnchor.constraint(lessThanOrEqualTo: content.widthAnchor, multiplier: 0.72),
     ])
     window.contentView = content
-    if let titlebar = window.standardWindowButton(.closeButton)?.superview {
-      windowDragRegion.frame = titlebar.bounds
-      windowDragRegion.autoresizingMask = windowDragRegionAutoresizingMask
-      titlebar.addSubview(windowDragRegion)
-    }
+    // Keep the drag layer in the content hierarchy. Returning nil from a
+    // sibling overlay then lets the WebKit view receive toolbar events; a
+    // layer attached to the native titlebar container would still let that
+    // container swallow the event before it reached WebKit.
+    let titlebarHeight = window.standardWindowButton(.closeButton)?.superview?.bounds.height ?? 52
+    windowDragRegion.translatesAutoresizingMaskIntoConstraints = false
+    content.addSubview(windowDragRegion)
+    NSLayoutConstraint.activate([
+      windowDragRegion.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+      windowDragRegion.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+      windowDragRegion.topAnchor.constraint(equalTo: content.topAnchor),
+      windowDragRegion.heightAnchor.constraint(equalToConstant: titlebarHeight),
+    ])
     window.makeKeyAndOrderFront(nil)
     NSApp.activate(ignoringOtherApps: true)
   }

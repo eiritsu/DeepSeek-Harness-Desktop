@@ -99,6 +99,17 @@ function ask(bench: Bench, requestId: ApprovalRequestId = REQ): void {
 }
 
 describe('the waiting affordance', () => {
+  it('reset cancels stale orchestration and prevents a late answer', async () => {
+    let release = (): void => {}
+    const bench = boot({ hostHalf: () => new Promise((resolve) => { release = (): void => { resolve(HOST_OK) } }) })
+    const running = bench.orchestrator.startUserRun(DUAL)
+    bench.orchestrator.reset()
+    release()
+    await running
+    expect(bench.answers).toEqual([])
+    expect(bench.orchestrator.activeRuns.getSnapshot().size).toBe(0)
+  })
+
   it('publishes failures on their own observable', async () => {
     const bench = boot({ hostHalf: () => Promise.resolve({ ok: false, message: 'nope' }) })
     let notified = 0

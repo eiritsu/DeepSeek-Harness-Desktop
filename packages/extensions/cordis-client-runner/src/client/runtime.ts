@@ -178,6 +178,7 @@ export class DynamicCordisPackageRunner {
   private readonly live = new Map<CordisDynamicPluginId, LivePackage>()
   /** Serializes load/unload per package id (a second request can outrun a slow load). */
   private readonly queues = new Map<CordisDynamicPluginId, Promise<unknown>>()
+  private generation = 0
   private readonly changeListeners = new Set<() => void>()
   /** Page-local shadowing rank. A later registration receives a lower priority. */
   private nextPriority = 0
@@ -286,7 +287,11 @@ export class DynamicCordisPackageRunner {
    * @returns the outcome the run orchestration reports to the host.
    */
   load(half: DynamicCordisClientHalf): Promise<DynamicCordisLoadResult> {
+    const generation = this.generation
     return this.enqueue(half.pluginId, async () => {
+      if (generation !== this.generation) {
+        return { ok: false, cause: 'activate', message: 'dynamic package load was cancelled by connection reset' }
+      }
       const current = this.live.get(half.pluginId)
       if (current !== undefined) {
         // Already running this activation here: nothing to load, but the caller
@@ -295,6 +300,13 @@ export class DynamicCordisPackageRunner {
         await this.teardown(current.pkg.pluginId, current.entryId, current.styles)
       }
       const result = await this.mount(half)
+      if (generation !== this.generation && result.ok) {
+        const mounted = this.live.get(half.pluginId)
+        if (mounted?.pkg.pluginRunId === half.pluginRunId) {
+          await this.teardown(mounted.pkg.pluginId, mounted.entryId, mounted.styles)
+        }
+        return { ok: false, cause: 'activate', message: 'dynamic package load was cancelled by connection reset' }
+      }
       this.notify()
       return result
     })
@@ -315,13 +327,21 @@ export class DynamicCordisPackageRunner {
     })
   }
 
-  /** Unload everything (plugin disposal path). */
-  async dispose(): Promise<void> {
-    this.unwatch()
+  /** Remove all page-local dynamic packages after the Host connection changes. */
+  async reset(): Promise<void> {
+    this.generation += 1
     for (const current of [...this.live.values()]) {
       await this.teardown(current.pkg.pluginId, current.entryId, current.styles)
     }
+    this.failures.clear()
+    this.queues.clear()
     this.notify()
+  }
+
+  /** Unload everything (plugin disposal path). */
+  async dispose(): Promise<void> {
+    this.unwatch()
+    await this.reset()
   }
 
   private notify(): void {

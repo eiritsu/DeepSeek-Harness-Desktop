@@ -325,6 +325,15 @@ describe('retract', () => {
 })
 
 describe('observation and disposal', () => {
+  it('reset unloads live packages without disabling future loads', async () => {
+    const bench = await boot()
+    await bench.runner.load(half())
+    await bench.runner.reset()
+    expect(bench.runner.isLoaded(PLUGIN)).toBe(false)
+    expect(bench.removed).toEqual(['entry-1'])
+    await expect(bench.runner.load(half({ pluginRunId: runId(2) }))).resolves.toMatchObject({ ok: true })
+  })
+
   it('notifies subscribers and re-derives the snapshot after each convergence', async () => {
     const bench = await boot()
     let notified = 0
