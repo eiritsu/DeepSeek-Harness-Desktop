@@ -7,7 +7,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import type { DiffCallView, DiffResultView, ToolResult } from '@deepseek-ai/dsh-tools'
+import type { DiffCallView, DiffResultView, ToolDefinition, ToolResult } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-fs'
 import { computeHunkDiffs, diffsFromMeta } from './diff.ts'
 import { remediateFsError } from './error.ts'
@@ -71,17 +71,15 @@ export function formatEditOutput(displayPath: string, replaceAll: boolean): stri
  * Register the `edit` tool and its scope-aware system-prompt guidance.
  * @param ctx - the plugin context; registrations are effects scoped to it, and execution uses its `fs` service.
  * @param sandbox - the shared sandbox-escalation API (advertisement, mode stamping, denial mapping).
+ * @param modes - session-specific wider modes to expose in the schema.
+ * @returns a validated tool definition.
  */
-export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void {
-  ctx.systemPrompt.section({
-    name: 'tool:edit',
-    order: ctx.systemPrompt.getSectionOrder('TOOL_EDIT'),
-    text: ({ scope }) => ctx.tools.get('edit', scope) === undefined
-      ? ''
-      : 'Use the edit tool for targeted changes to existing UTF-8 text files. It replaces literal old_string with new_string; by default old_string must appear exactly once. If old_string appears multiple times, provide a more specific old_string or set replace_all to true. Read the file first (the default fs-observation-policy requires it), unless you just created or edited it in this session.',
-  })
-
-  ctx.tools.register(defineTool({
+export function createEditTool(
+  ctx: Context,
+  sandbox: FsSandboxController,
+  modes: readonly import('@deepseek-ai/dsh-sandbox').SandboxMode[] = sandbox.escalationModes,
+): ToolDefinition {
+  return defineTool({
     name: 'edit',
     description: 'Edit an existing UTF-8 text file by replacing literal text.',
     parameters: {
@@ -89,7 +87,7 @@ export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void 
       old_string: { type: 'string', required: true, description: 'Literal text to replace. Must match exactly.' },
       new_string: { type: 'string', required: true, description: 'Literal replacement text. Use an empty string to delete the match.' },
       replace_all: { type: 'boolean', description: 'Replace all matches. Defaults to false; when false, old_string must appear exactly once.' },
-      ...sandbox.escalationModes.length > 0 ? sandbox.schemaFields() : {},
+      ...modes.length > 0 ? sandbox.schemaFields(modes) : {},
     },
     output: {
       schema: {
@@ -164,5 +162,21 @@ export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void 
       if (diffs === undefined) return undefined
       return { card: 'diff', title: `Edit ${args.file_path}`, diffs }
     },
-  }))
+  })
+}
+
+/**
+ * Register the edit tool in the current global or Agent-scoped tool layer.
+ * @param ctx - context owning the tool registry and filesystem service.
+ * @param sandbox - shared sandbox escalation controller.
+ */
+export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void {
+  ctx.systemPrompt.section({
+    name: 'tool:edit',
+    order: ctx.systemPrompt.getSectionOrder('TOOL_EDIT'),
+    text: ({ scope }) => ctx.tools.get('edit', scope) === undefined
+      ? ''
+      : 'Use the edit tool for targeted changes to existing UTF-8 text files. It replaces literal old_string with new_string; by default old_string must appear exactly once. If old_string appears multiple times, provide a more specific old_string or set replace_all to true. Read the file first (the default fs-observation-policy requires it), unless you just created or edited it in this session.',
+  })
+  ctx.tools.register(createEditTool(ctx, sandbox))
 }

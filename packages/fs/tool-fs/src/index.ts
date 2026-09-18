@@ -8,9 +8,13 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-user-approval'
+import type { Agent } from '@deepseek-ai/dsh-agent'
+import { escalationModesFor } from '@deepseek-ai/dsh-sandbox'
+import { scopeOf } from '@deepseek-ai/dsh-scope'
+import type { SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import { applyReadTool, READ_LIMIT, STREAM_MIN_SIZE } from './read.ts'
-import { applyWriteTool } from './write.ts'
-import { applyEditTool } from './edit.ts'
+import { applyWriteTool, createWriteTool } from './write.ts'
+import { applyEditTool, createEditTool } from './edit.ts'
 import { applyReadImageTool } from './read-image.ts'
 import { READ_MAX_BYTES, READ_MAX_LINE_LENGTH } from './read-render.ts'
 import { FsSandboxController } from './sandbox.ts'
@@ -76,4 +80,48 @@ export function apply(ctx: Context, config: Config): void {
   const sandbox = new FsSandboxController(ctx)
   applyWriteTool(ctx, sandbox)
   applyEditTool(ctx, sandbox)
+
+  const agents = ctx.get('agents')
+  const sandboxPolicy = ctx.get('sandboxPolicy')
+  const scopedFibers = new Map<Agent, () => void | Promise<void>>()
+  const refreshScope = (agent: Agent, mode?: SandboxMode): void => {
+    if (agent.ctx === undefined || scopeOf(agent.ctx) === undefined) return
+    if (agent.ctx === undefined || scopeOf(agent.ctx) === undefined) return
+    const previous = scopedFibers.get(agent)
+    if (previous !== undefined) {
+      scopedFibers.delete(agent)
+      void previous()
+    }
+    const effectiveMode = mode ?? sandboxPolicy?.resolve({ session: agent.session }).mode
+    const modes = escalationModesFor(effectiveMode)
+    const fiber = agent.ctx.effect(() => {
+      if (sandbox.escalationModes.length === 0) return () => {}
+      const disposeWrite = agent.ctx.tools.register(createWriteTool(ctx, sandbox, modes))
+      const disposeEdit = agent.ctx.tools.register(createEditTool(ctx, sandbox, modes))
+      return () => {
+        disposeEdit()
+        return disposeWrite()
+      }
+    }, 'tool-fs: session schema shadows')
+    scopedFibers.set(agent, fiber)
+  }
+  const removeScope = (agent: Agent): void => {
+    const fiber = scopedFibers.get(agent)
+    if (fiber === undefined) return
+    scopedFibers.delete(agent)
+    void fiber()
+  }
+  for (const agent of agents?.list() ?? []) refreshScope(agent)
+  ctx.on('agent/created', ({ agent }) => { refreshScope(agent) })
+  ctx.on('agent/disposed', ({ agent }) => { removeScope(agent) })
+  ctx.on('session/event', (session, event) => {
+    if (event.type !== 'sandbox/mode') return
+    const agent = agents?.get(session.id)
+    if (agent !== undefined) refreshScope(agent, event.data.mode)
+  })
+  ctx.effect(() => async () => {
+    const fibers = [...scopedFibers.values()]
+    scopedFibers.clear()
+    await Promise.all(fibers.map(fiber => fiber()))
+  }, 'tool-fs: session schema shadows')
 }

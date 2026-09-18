@@ -209,7 +209,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     ])
     window.contentView = content
     if let titlebar = window.standardWindowButton(.closeButton)?.superview {
-      windowDragRegion.frame = windowDragRegionFrame(in: titlebar.bounds)
+      windowDragRegion.frame = titlebar.bounds
       windowDragRegion.autoresizingMask = windowDragRegionAutoresizingMask
       titlebar.addSubview(windowDragRegion)
     }

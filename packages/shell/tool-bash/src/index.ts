@@ -11,15 +11,16 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { isAbsolute, resolve as resolvePath } from 'node:path'
+import { scopeOf } from '@deepseek-ai/dsh-scope'
 import { defineTool, TOOL_ABORTED } from '@deepseek-ai/dsh-tools'
-import type { GenericCallView, TerminalCallView, ToolExecution, ToolResult, ToolResultView } from '@deepseek-ai/dsh-tools'
+import type { GenericCallView, TerminalCallView, ToolDefinition, ToolExecution, ToolResult, ToolResultView } from '@deepseek-ai/dsh-tools'
 import { HarnessError } from '@deepseek-ai/dsh-llm'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-jobs'
 import type {} from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-shell-env'
 import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandbox'
-import { ESCALATION_TARGETS, approveEscalation, canonicalPath, validateEscalationArgs } from '@deepseek-ai/dsh-sandbox'
+import { ESCALATION_TARGETS, approveEscalation, canonicalPath, escalationModesFor, validateEscalationArgs } from '@deepseek-ai/dsh-sandbox'
 import type { SandboxPolicyService } from '@deepseek-ai/dsh-sandbox-policy'
 import { DSH_ENV_PREFIX } from '@deepseek-ai/dsh-shell'
 import type { ShellRunResult } from '@deepseek-ai/dsh-shell'
@@ -186,6 +187,49 @@ const BACKGROUND_OUTPUT_PROPERTIES = {
   jobId: { type: 'string', required: true },
 } as const
 
+/**
+ * Clone one registered bash definition for an Agent scope with only the
+ * escalation targets that are genuinely wider than that Agent's current
+ * session mode. The original execute closure remains intact: injected fields
+ * still reach its strict fail-closed validation even when this schema omits
+ * them.
+ * @param base - the standing bash definition this scope shadows.
+ * @param backgroundEnabled - whether the background argument remains visible.
+ * @param modes - the session's real escalation targets.
+ * @returns a scope-local bash definition with a session-specific schema.
+ */
+function scopedBashTool(
+  base: ToolDefinition,
+  backgroundEnabled: boolean,
+  modes: readonly SandboxMode[],
+): ToolDefinition {
+  const parameters = base.parameters as { type: 'object'; properties: Record<string, Record<string, unknown>> }
+  const properties = { ...parameters.properties }
+  if (modes.length === 0) {
+    delete properties['sandbox_permissions']
+    delete properties['justification']
+  } else {
+    properties['sandbox_permissions'] = {
+      ...properties['sandbox_permissions'],
+      enum: [...modes],
+    }
+  }
+  return {
+    ...base,
+    description: bashDescription(backgroundEnabled, modes),
+    parameters: { ...parameters, properties },
+    output: {
+      ...base.output,
+      render: (_args, value) => [{
+        type: 'text',
+        text: (value as { kind: string }).kind === 'background'
+          ? `started background job ${(value as { jobId: string }).jobId}`
+          : renderResult(value as unknown as { kind: 'foreground' } & ShellRunResult, modes),
+      }],
+    },
+  }
+}
+
 export function apply(ctx: Context, config: Config = {}): void {
   const backgroundEnabled = config.enableRunInBackground ?? true
   const defaultMode = ctx.shell.sandboxMode
@@ -238,7 +282,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     text: 'Check the [exit code: N] marker on every bash result; investigate failures before moving on.',
   })
 
-  ctx.tools.register(defineTool({
+  const baseTool = defineTool({
     name: 'bash',
     description: bashDescription(backgroundEnabled, escalationModes),
     parameters: {
@@ -389,5 +433,43 @@ export function apply(ctx: Context, config: Config = {}): void {
     },
     presentCall: presentBashCall,
     presentResult: presentBashResult,
-  }))
+  })
+  ctx.tools.register(baseTool)
+
+  const agents = ctx.get('agents')
+  const scopedFibers = new Map<Agent, () => void | Promise<void>>()
+  const refreshScope = (agent: Agent, mode?: SandboxMode): void => {
+    if (agent.ctx === undefined || scopeOf(agent.ctx) === undefined) return
+    const previous = scopedFibers.get(agent)
+    if (previous !== undefined) {
+      scopedFibers.delete(agent)
+      void previous()
+    }
+    const effectiveMode = mode ?? sandboxPolicy?.resolve({ session: agent.session }).mode
+    // agent.ctx is the scope boundary; its parent loop fiber declares tools,
+    // so direct access registers in the agent layer and preserves the scope tag.
+    const fiber = agent.ctx.effect(() => (
+      agent.ctx.tools.register(scopedBashTool(baseTool, backgroundEnabled, escalationModesFor(effectiveMode)))
+    ), 'tool-bash: session schema shadow')
+    scopedFibers.set(agent, fiber)
+  }
+  const removeScope = (agent: Agent): void => {
+    const fiber = scopedFibers.get(agent)
+    if (fiber === undefined) return
+    scopedFibers.delete(agent)
+    void fiber()
+  }
+  for (const agent of agents?.list() ?? []) refreshScope(agent)
+  ctx.on('agent/created', ({ agent }) => { refreshScope(agent) })
+  ctx.on('agent/disposed', ({ agent }) => { removeScope(agent) })
+  ctx.on('session/event', (session, event) => {
+    if (event.type !== 'sandbox/mode') return
+    const agent = agents?.get(session.id)
+    if (agent !== undefined) refreshScope(agent, event.data.mode)
+  })
+  ctx.effect(() => async () => {
+    const fibers = [...scopedFibers.values()]
+    scopedFibers.clear()
+    await Promise.all(fibers.map(fiber => fiber()))
+  }, 'tool-bash: session schema shadows')
 }

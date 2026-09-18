@@ -22,15 +22,16 @@
 import { isAbsolute, resolve as resolvePath } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import { scopeOf } from '@deepseek-ai/dsh-scope'
 import { defineTool, TOOL_ABORTED } from '@deepseek-ai/dsh-tools'
-import type { GenericCallView, TerminalCallView, ToolExecution, ToolResult, ToolResultView } from '@deepseek-ai/dsh-tools'
+import type { GenericCallView, TerminalCallView, ToolDefinition, ToolExecution, ToolResult, ToolResultView } from '@deepseek-ai/dsh-tools'
 import { HarnessError } from '@deepseek-ai/dsh-llm'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-jobs'
 import type {} from '@deepseek-ai/dsh-shell-env'
 import type {} from '@deepseek-ai/dsh-user-approval'
 import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandbox'
-import { ESCALATION_TARGETS, approveEscalation, validateEscalationArgs } from '@deepseek-ai/dsh-sandbox'
+import { ESCALATION_TARGETS, approveEscalation, escalationModesFor, validateEscalationArgs } from '@deepseek-ai/dsh-sandbox'
 import type { SandboxPolicyService } from '@deepseek-ai/dsh-sandbox-policy'
 import type { ShellRunResult } from '@deepseek-ai/dsh-shell'
 import { parseExitStatus } from '@deepseek-ai/dsh-shell'
@@ -190,6 +191,32 @@ const BACKGROUND_OUTPUT_PROPERTIES = {
 } as const
 /* jscpd:ignore-end */
 
+/** Return a pwsh definition whose escalation fields match one Agent's mode. */
+function scopedPwshTool(base: ToolDefinition, backgroundEnabled: boolean, modes: readonly SandboxMode[]): ToolDefinition {
+  const parameters = base.parameters as { type: 'object'; properties: Record<string, Record<string, unknown>> }
+  const properties = { ...parameters.properties }
+  if (modes.length === 0) {
+    delete properties['sandbox_permissions']
+    delete properties['justification']
+  } else {
+    properties['sandbox_permissions'] = { ...properties['sandbox_permissions'], enum: [...modes] }
+  }
+  return {
+    ...base,
+    description: pwshDescription(backgroundEnabled, modes),
+    parameters: { ...parameters, properties },
+    output: {
+      ...base.output,
+      render: (_args, value) => [{
+        type: 'text',
+        text: (value as { kind: string }).kind === 'background'
+          ? `started background job ${(value as { jobId: string }).jobId}`
+          : renderPwshResult(value as unknown as RenderablePwshResult, modes),
+      }],
+    },
+  }
+}
+
 /* jscpd:ignore-start -- deliberate mirror of dsh-tool-bash's apply() preamble (pwsh-tool-and-executor Agent Note). */
 export function apply(ctx: Context, config: Config = {}): void {
   const backgroundEnabled = config.enableRunInBackground ?? true
@@ -247,7 +274,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       + 'On Windows a killed process settles as `[exit code: 1]` without a signal marker; treat a bare exit 1 after an interruption as a termination, not a command failure.',
   })
 
-  ctx.tools.register(defineTool({
+  const baseTool = defineTool({
     name: 'pwsh',
     description: pwshDescription(backgroundEnabled, escalationModes),
     /* jscpd:ignore-start -- deliberate mirror of dsh-tool-bash's parameter surface (pwsh-tool-and-executor Agent Note). */
@@ -440,5 +467,42 @@ export function apply(ctx: Context, config: Config = {}): void {
       return { card: 'terminal', output: body, ...exit }
     },
     /* jscpd:ignore-end */
-  }))
+  })
+  ctx.tools.register(baseTool)
+
+  const agents = ctx.get('agents')
+  const scopedFibers = new Map<Agent, () => void | Promise<void>>()
+  const refreshScope = (agent: Agent, mode?: SandboxMode): void => {
+    if (agent.ctx === undefined || scopeOf(agent.ctx) === undefined) return
+    if (agent.ctx === undefined || scopeOf(agent.ctx) === undefined) return
+    const previous = scopedFibers.get(agent)
+    if (previous !== undefined) {
+      scopedFibers.delete(agent)
+      void previous()
+    }
+    const effectiveMode = mode ?? sandboxPolicy?.resolve({ session: agent.session }).mode
+    const fiber = agent.ctx.effect(() => (
+      agent.ctx.tools.register(scopedPwshTool(baseTool, backgroundEnabled, escalationModesFor(effectiveMode)))
+    ), 'tool-pwsh: session schema shadow')
+    scopedFibers.set(agent, fiber)
+  }
+  const removeScope = (agent: Agent): void => {
+    const fiber = scopedFibers.get(agent)
+    if (fiber === undefined) return
+    scopedFibers.delete(agent)
+    void fiber()
+  }
+  for (const agent of agents?.list() ?? []) refreshScope(agent)
+  ctx.on('agent/created', ({ agent }) => { refreshScope(agent) })
+  ctx.on('agent/disposed', ({ agent }) => { removeScope(agent) })
+  ctx.on('session/event', (session, event) => {
+    if (event.type !== 'sandbox/mode') return
+    const agent = agents?.get(session.id)
+    if (agent !== undefined) refreshScope(agent, event.data.mode)
+  })
+  ctx.effect(() => async () => {
+    const fibers = [...scopedFibers.values()]
+    scopedFibers.clear()
+    await Promise.all(fibers.map(fiber => fiber()))
+  }, 'tool-pwsh: session schema shadows')
 }

@@ -54,13 +54,14 @@ export class FsSandboxController {
    * only under a confining backend (guard on {@link escalationModes}); the
    * enum pins the closed target vocabulary, the strict-wider check happens per
    * call at execution.
+   * @param modes - session-specific wider modes to advertise.
    * @returns the two escalation parameter specs.
    */
-  schemaFields(): EscalationSchemaFields {
+  schemaFields(modes: readonly SandboxMode[] = this.escalationModes): EscalationSchemaFields {
     return {
       sandbox_permissions: {
         type: 'string',
-        enum: [...this.escalationModes],
+        enum: [...modes],
         description: 'The wider sandbox mode this file operation needs. Only valid as a one-shot retry '
           + 'of an operation the sandbox just denied; requires justification and user approval.',
       },

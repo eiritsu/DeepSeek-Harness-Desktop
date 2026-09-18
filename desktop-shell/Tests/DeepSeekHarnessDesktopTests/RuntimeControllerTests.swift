@@ -87,20 +87,39 @@ import Testing
 }
 
 @Test func titlebarDragRegionLeavesBothWebToolbarEndsClickable() {
-  let frame = windowDragRegionFrame(in: NSRect(x: 0, y: 0, width: 1_240, height: 52))
+  let layout = WindowDragLayout(leadingExclusionWidth: 500, trailingExclusionWidth: 140)
+  let bounds = NSRect(x: 0, y: 0, width: 1_240, height: 52)
+  let dragFrames = windowDragFrames(in: bounds, layout: layout)
+  let exclusionFrames = windowDragExclusionFrames(in: bounds, layout: layout)
 
-  #expect(frame == NSRect(x: 90, y: 0, width: 220, height: 52))
-  #expect(frame.minX == 90)
-  #expect(frame.maxX == 310)
+  // The drag gap is between 500 and 1100 (1240 - 140).
+  #expect(dragFrames.count == 1)
+  #expect(dragFrames[0] == NSRect(x: 500, y: 0, width: 600, height: 52))
+
+  // Leading exclusion [0..500) and trailing exclusion [1100..1240).
+  #expect(exclusionFrames.count == 2)
+  #expect(exclusionFrames[0] == NSRect(x: 0, y: 0, width: 500, height: 52))
+  #expect(exclusionFrames[1] == NSRect(x: 1100, y: 0, width: 140, height: 52))
+
+  // No overlap between drag and exclusion frames.
+  for drag in dragFrames {
+    for excl in exclusionFrames {
+      #expect(!drag.intersects(excl))
+    }
+  }
 }
 
-@Test func titlebarDragRegionStaysAnchoredToTheBrandArea() {
-  let frame = windowDragRegionFrame(in: NSRect(x: 0, y: 0, width: 500, height: 52))
+@Test func titlebarDragRegionStaysAnchoredToFullWidth() {
+  let layout = WindowDragLayout(leadingExclusionWidth: 500, trailingExclusionWidth: 140)
+  let narrowBounds = NSRect(x: 0, y: 0, width: 300, height: 52)
+  // On a narrow window, leading (500) exceeds the width, so no drag gap.
+  #expect(windowDragFrames(in: narrowBounds, layout: layout) == [])
+  let exclusionNarrow = windowDragExclusionFrames(in: narrowBounds, layout: layout)
+  #expect(exclusionNarrow.count == 1)
+  #expect(exclusionNarrow[0] == NSRect(x: 0, y: 0, width: 300, height: 52))
 
-  #expect(frame == NSRect(x: 90, y: 0, width: 220, height: 52))
-  #expect(windowDragRegionAutoresizingMask.contains(.maxXMargin))
+  #expect(windowDragRegionAutoresizingMask.contains(.width))
   #expect(windowDragRegionAutoresizingMask.contains(.height))
-  #expect(!windowDragRegionAutoresizingMask.contains(.width))
 }
 
 @Test func stderrIsLoggedWithoutReplacingStartupProgress() {
@@ -746,6 +765,19 @@ private func createSourceArchive(from source: URL, at archive: URL) throws {
   #expect(query.output.trimmingCharacters(in: .whitespacesAndNewlines) == "1")
   let attributes = try FileManager.default.attributesOfItem(atPath: migrated.path)
   #expect((attributes[.posixPermissions] as? NSNumber)?.intValue == 0o600)
+
+  // A second v0.1.17/v0.1.18-style launch is idempotent: the original
+  // database remains authoritative for backup, and the migrated database
+  // neither duplicates nor loses its existing session row.
+  _ = try await withCheckedThrowingContinuation { continuation in
+    manager.resolveAndPrepare(progress: { _ in }) { continuation.resume(with: $0) }
+  }
+  let secondQuery = try CommandRunner.run(
+    executable: URL(fileURLWithPath: "/usr/bin/sqlite3"),
+    arguments: [migrated.path, "SELECT count(*) FROM dsh_session_metadata;"]
+  )
+  #expect(secondQuery.status == 0)
+  #expect(secondQuery.output.trimmingCharacters(in: .whitespacesAndNewlines) == "1")
 }
 
 @Test func sourceUpdateTopologyNeverTreatsDivergenceAsAnUpgrade() {

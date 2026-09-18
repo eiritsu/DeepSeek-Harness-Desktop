@@ -7,7 +7,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import type { DiffCallView, DiffResultView, ToolResult } from '@deepseek-ai/dsh-tools'
+import type { DiffCallView, DiffResultView, ToolDefinition, ToolResult } from '@deepseek-ai/dsh-tools'
 import type { FsWriteOutcome } from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-fs'
 import { computeHunkDiffs, diffsFromMeta } from './diff.ts'
@@ -57,25 +57,21 @@ interface WriteToolArgs {
  * Register the `write` tool and its scope-aware system-prompt guidance.
  * @param ctx - the plugin context; registrations are effects scoped to it, and execution uses its `fs` service.
  * @param sandbox - the shared sandbox-escalation API (advertisement, mode stamping, denial mapping).
+ * @param modes - session-specific wider modes to expose in the schema.
+ * @returns a validated tool definition.
  */
-export function applyWriteTool(ctx: Context, sandbox: FsSandboxController): void {
-  ctx.systemPrompt.section({
-    name: 'tool:write',
-    order: ctx.systemPrompt.getSectionOrder('TOOL_WRITE'),
-    text: ({ scope }) => ctx.tools.get('write', scope) === undefined
-      ? ''
-      : 'Use the write tool to create files or completely replace file contents. Existing files are overwritten, so read an existing file first (the default fs-observation-policy requires it)'
-        + (ctx.tools.get('edit', scope) === undefined ? '' : ' and prefer edit for targeted changes')
-        + '.',
-  })
-
-  ctx.tools.register(defineTool({
+export function createWriteTool(
+  ctx: Context,
+  sandbox: FsSandboxController,
+  modes: readonly import('@deepseek-ai/dsh-sandbox').SandboxMode[] = sandbox.escalationModes,
+): ToolDefinition {
+  return defineTool({
     name: 'write',
     description: 'Create or fully replace a UTF-8 text file.',
     parameters: {
       file_path: { type: 'string', required: true, description: 'Path to write, resolved by the filesystem backend.' },
       content: { type: 'string', required: true, description: 'Full UTF-8 text content to write.' },
-      ...sandbox.escalationModes.length > 0 ? sandbox.schemaFields() : {},
+      ...modes.length > 0 ? sandbox.schemaFields(modes) : {},
     },
     output: {
       schema: {
@@ -148,5 +144,23 @@ export function applyWriteTool(ctx: Context, sandbox: FsSandboxController): void
         ?? [{ path: args.file_path, oldText: null, newText: args.content }]
       return { card: 'diff', title: `Write ${args.file_path}`, diffs }
     },
-  }))
+  })
+}
+
+/**
+ * Register the write tool in the current global or Agent-scoped tool layer.
+ * @param ctx - context owning the tool registry and filesystem service.
+ * @param sandbox - shared sandbox escalation controller.
+ */
+export function applyWriteTool(ctx: Context, sandbox: FsSandboxController): void {
+  ctx.systemPrompt.section({
+    name: 'tool:write',
+    order: ctx.systemPrompt.getSectionOrder('TOOL_WRITE'),
+    text: ({ scope }) => ctx.tools.get('write', scope) === undefined
+      ? ''
+      : 'Use the write tool to create files or completely replace file contents. Existing files are overwritten, so read an existing file first (the default fs-observation-policy requires it)'
+        + (ctx.tools.get('edit', scope) === undefined ? '' : ' and prefer edit for targeted changes')
+        + '.',
+  })
+  ctx.tools.register(createWriteTool(ctx, sandbox))
 }

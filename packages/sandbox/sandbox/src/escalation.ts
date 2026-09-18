@@ -63,6 +63,18 @@ export const WIDER_MODES: Record<string, readonly SandboxMode[]> = {
 export const ESCALATION_TARGETS: readonly SandboxMode[] = ['workspace-write', 'danger-full-access']
 
 /**
+ * Return only the real escalation targets for one effective session mode.
+ * `danger-full-access` and an unsandboxed call have no target; consumers use
+ * this when projecting an Agent-scoped schema, while execution still applies
+ * the strict-wider check in {@link approveEscalation}.
+ * @param mode - the effective policy mode, or undefined without confinement.
+ * @returns modes strictly wider than the supplied mode.
+ */
+export function escalationModesFor(mode: SandboxMode | undefined): readonly SandboxMode[] {
+  return mode === undefined ? [] : WIDER_MODES[mode] ?? []
+}
+
+/**
  * Validate the escalation argument pairing a tool schema cannot express:
  * `sandbox_permissions` and `justification` travel together — an approval
  * prompt without a reason, or a reason driving nothing, is a malformed ask —

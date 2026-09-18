@@ -12,6 +12,7 @@ import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { turnBoundaryProjectionDefinition } from '@deepseek-ai/dsh-agent-loop'
 import { SessionId } from '@deepseek-ai/dsh-session'
+import { createScope } from '@deepseek-ai/dsh-scope'
 import LocalJobRegistry from '@deepseek-ai/dsh-jobs-local'
 import * as ToolTasks from '@deepseek-ai/dsh-tool-jobs'
 import ApprovalService from '@deepseek-ai/dsh-user-approval'
@@ -207,13 +208,16 @@ function sandboxAgent(
   mode?: 'read-only' | 'workspace-write' | 'danger-full-access',
   ctx?: Context,
   onAppend?: (type: string) => void,
+  sessionName = 'sandbox-session',
 ): Agent {
   const events: Array<{ type: string; data?: Record<string, unknown>; seq: number }> = [{ type: 'turn/start', seq: 0, data: { turn: 1 } }]
   if (mode !== undefined) events.push({ type: 'sandbox/mode', seq: events.length, data: { mode } })
-  const id = SessionId('sandbox-session')
-  return {
+  const id = SessionId(sessionName)
+  // Build the agent object first, then mint its scope with the agent itself as
+  // the key (createScope(loopCtx, this) in the agent-loop constructor), so a
+  // scoped tool registration shadows the global layer exactly as in production.
+  const agent: Agent = {
     id,
-    ...ctx === undefined ? {} : { ctx: ctx.plugin(() => {}).ctx },
     session: {
       id,
       header: { version: 0, id, createdAt: 0 },
@@ -228,6 +232,18 @@ function sandboxAgent(
       },
     },
   } as unknown as Agent
+  if (ctx !== undefined && agent.ctx === undefined) Object.assign(agent, { ctx: ctx.plugin(() => {}).ctx })
+  return agent
+}
+
+async function sandboxAgentWithScope(ctx: Context, mode: 'read-only' | 'workspace-write' | 'danger-full-access', sessionName = 'sandbox-session'): Promise<Agent> {
+  const agent = sandboxAgent(mode, undefined, undefined, sessionName)
+  let scope!: ReturnType<typeof createScope>
+  await ctx.plugin(Object.assign((inner: Context) => {
+    scope = createScope(inner, agent)
+  }, { inject: ['tools'] }))
+  Object.assign(agent, { ctx: scope.ctx })
+  return agent
 }
 
 describe('bash tool', () => {
@@ -637,6 +653,39 @@ describe('sandbox escalation through the generic task producer', () => {
       seq: malformed.session.seq,
     })
     expect(text(await call(ctx, 'bash', escalate, malformed))).toContain('not strictly wider')
+  })
+
+  it('projects the agent-scoped schema from the session standing mode', async () => {
+    const { ctx } = await setupSandboxed()
+    const dangerAgent = await sandboxAgentWithScope(ctx, 'danger-full-access', 'danger-shadow')
+    ctx.agents.register(dangerAgent)
+    const scoped = ctx.tools.schemas(dangerAgent).find(item => item.name === 'bash')!
+    const props = scoped.parameters.properties as Record<string, unknown>
+    expect(props).not.toHaveProperty('sandbox_permissions')
+    expect(props).not.toHaveProperty('justification')
+    expect(scoped.description).not.toContain('sandbox_permissions')
+
+    // The global layer keeps the full advertisement for agentless callers.
+    const global = ctx.tools.schemas().find(item => item.name === 'bash')!
+    expect((global.parameters.properties as Record<string, { enum?: string[] }>)['sandbox_permissions']?.enum)
+      .toEqual(['workspace-write', 'danger-full-access'])
+
+    // A session at workspace-write sees only its real target.
+    const writeAgent = await sandboxAgentWithScope(ctx, 'workspace-write', 'workspace-shadow')
+    ctx.agents.register(writeAgent)
+    const writeSchema = ctx.tools.schemas(writeAgent).find(item => item.name === 'bash')!
+    expect((writeSchema.parameters.properties as Record<string, { enum?: string[] }>)['sandbox_permissions']?.enum)
+      .toEqual(['danger-full-access'])
+  })
+
+  it('the scoped shadow still fails an injected field through execute validation', async () => {
+    const { ctx } = await setupSandboxed()
+    const agent = await sandboxAgentWithScope(ctx, 'danger-full-access', 'danger-injected')
+    ctx.agents.register(agent)
+    const result = await call(ctx, 'bash', { command: 'true', description: 'd', sandbox_permissions: 'workspace-write', justification: 'why' }, agent)
+    expect(result.isError).toBe(true)
+    expect(text(result)).toContain('not strictly wider')
+    expect(result.error?.info?.code).toBe('SANDBOX_ESCALATION_INVALID')
   })
 
   it('fails closed when approval cannot be routed', async () => {
