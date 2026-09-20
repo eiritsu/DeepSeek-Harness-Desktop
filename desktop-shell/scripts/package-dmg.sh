@@ -52,6 +52,7 @@ fi
 for PACKAGE in \
   packages/client/ui-deepseek-files \
   packages/client/ui-plugin-library \
+  packages/client/ui-computer-use \
   packages/attachment/file-recognizer-office \
   packages/extensions/external-tools \
   packages/llm/model-catalog \

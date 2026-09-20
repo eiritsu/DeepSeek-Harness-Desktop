@@ -52,6 +52,7 @@ const packagePaths = [
   'packages/client/ui-deepseek-files',
   'packages/client/ui-plugin-library',
   'packages/client/ui-skill-library',
+  'packages/client/ui-computer-use',
   'packages/attachment/file-recognizer-office',
   'packages/extensions/external-tools',
   'packages/llm/model-catalog',
@@ -165,6 +166,7 @@ if [ "$DISTRIBUTION" = true ]; then
   for PACKAGE in \
     packages/client/ui-deepseek-files \
     packages/client/ui-skill-library \
+    packages/client/ui-computer-use \
     packages/attachment/file-recognizer-office \
     packages/extensions/external-tools \
     packages/session/session-persistence-sqlite \
