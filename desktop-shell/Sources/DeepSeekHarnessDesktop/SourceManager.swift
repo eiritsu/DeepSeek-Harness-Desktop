@@ -36,12 +36,18 @@ final class SourceManager: @unchecked Sendable {
     "packages/client/ui-deepseek-files",
     "packages/client/ui-plugin-library",
     "packages/client/ui-skill-library",
+    "packages/client/ui-computer-use",
     "packages/attachment/file-recognizer-office",
     "packages/extensions/external-tools",
     "packages/llm/model-catalog",
     "packages/bundle/desktop-lite",
     "apps/cli/package.json",
   ]
+
+  /// The repository-relative paths a source update preserves from the
+  /// installed application. Tests assert this inventory against the
+  /// distribution lists so a newly shipped package cannot be dropped.
+  static var overlayManagedExtensionPaths: [String] { managedExtensionPaths }
 
   private let defaults: UserDefaults
   private let queue = DispatchQueue(label: "ai.deepseek.harness.desktop.source", qos: .userInitiated)
@@ -580,6 +586,13 @@ final class SourceManager: @unchecked Sendable {
       throw DesktopError.message("源码仓库下载失败：\n\(clone.output)")
     }
     return repository
+  }
+
+  /// Copy this application's managed extensions over a staged update tree.
+  /// Tests drive the real overwrite path instead of duplicating its inventory.
+  @discardableResult
+  func overlayManagedExtensionsForTesting(from current: URL, into stage: URL) throws -> Bool {
+    try overlayManagedExtensions(from: current, into: stage)
   }
 
   /// Keep the desktop-owned runtime packages available when the upstream

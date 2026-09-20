@@ -102,13 +102,21 @@ final class PluginManager: @unchecked Sendable {
   private static let managedBundleNames: [String] = []
   /// Client features are mounted by `dsh-web-app` rather than as profile
   /// bundles. They remain App-owned and should still be visible in inventory.
-  private static let embeddedManagedBundleNames = Set([
+  private static let clientOnlyBundleNames = [
     "@deepseek-ai/dsh-client-ui-deepseek-files",
     "@deepseek-ai/dsh-client-ui-plugin-library",
+    "@deepseek-ai/dsh-client-ui-computer-use",
     "@deepseek-ai/dsh-external-tools",
     "@deepseek-ai/dsh-file-recognizer-office",
     "@deepseek-ai/dsh-model-catalog",
-  ])
+  ]
+  private static let embeddedManagedBundleNames = Set(clientOnlyBundleNames)
+
+  /// The client-only packages treated as app-managed and kept out of
+  /// `dsh.profile.bundles`. Tests assert the inventory against the
+  /// distribution lists so a newly shipped feature cannot be omitted.
+  static var clientOnlyBundleInventory: [String] { clientOnlyBundleNames }
+
   private struct CatalogCacheKey: Hashable {
     let page: Int
     let pageSize: Int
@@ -245,15 +253,8 @@ final class PluginManager: @unchecked Sendable {
         // Client-only packages are roster rows in dsh-web-app, not profile
         // bundles. Keeping them here makes the host loader reject the profile
         // because they intentionally have no `dsh.bundle` declaration.
-        let clientOnly = [
-          "@deepseek-ai/dsh-client-ui-deepseek-files",
-          "@deepseek-ai/dsh-client-ui-plugin-library",
-          "@deepseek-ai/dsh-external-tools",
-          "@deepseek-ai/dsh-file-recognizer-office",
-          "@deepseek-ai/dsh-model-catalog",
-        ]
         let bundleCountBeforeCleanup = bundles.count
-        bundles.removeAll { clientOnly.contains($0) }
+        bundles.removeAll { Self.clientOnlyBundleNames.contains($0) }
         let removedClientOnly = bundleCountBeforeCleanup != bundles.count
         // Only packages that declare real profile bundles may be written to
         // `dsh.profile.bundles`; embedded client features are roster-only.
