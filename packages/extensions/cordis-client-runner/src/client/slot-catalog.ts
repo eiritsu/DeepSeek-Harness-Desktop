@@ -1955,6 +1955,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     declaredBy: 'an entry in \'sidebar.settings\' (client-ui-settings-general), so it exists while that entry is mounted',
     occupants: [
       'client-ui-agent-preset AgentPresetSection id \'agent-presets\'',
+      'client-ui-computer-use ComputerUseSection id \'computer-use\'',
       'client-ui-deepseek-files DeepseekFilesSection id \'deepseek-files\'',
       'client-ui-deepseek-files DesktopDataSection id \'desktop-data\'',
       'client-ui-lark LarkManagementSection id \'lark-management\'',

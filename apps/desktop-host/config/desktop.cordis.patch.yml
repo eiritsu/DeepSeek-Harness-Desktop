@@ -75,6 +75,12 @@
     - id: ui-lark
       name: '@deepseek-ai/dsh-client-ui-lark'
 
+    # The native provider inserted above owns the durable settings namespace
+    # this section edits; the section stays visible for as long as that row is
+    # mounted and serves the namespace, including while `enabled` is false.
+    - id: ui-computer-use
+      name: '@deepseek-ai/dsh-client-ui-computer-use'
+
     - id: directory-picker-native
       name: '@deepseek-ai/dsh-host-directory-picker-native'
 

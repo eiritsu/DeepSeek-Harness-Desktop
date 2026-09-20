@@ -39,6 +39,7 @@
     "@deepseek-ai/dsh-app-boot": "workspace:^",
     "@deepseek-ai/dsh-base": "workspace:^",
     "@deepseek-ai/dsh-client-ui-agent-preset": "workspace:^",
+    "@deepseek-ai/dsh-client-ui-computer-use": "workspace:^",
     "@deepseek-ai/dsh-client-ui-deepseek-files": "workspace:^",
     "@deepseek-ai/dsh-client-ui-lark": "workspace:^",
     "@deepseek-ai/dsh-client-ui-cordis": "workspace:^",

@@ -97,4 +97,24 @@ describe('desktop package-set selection', () => {
       expect(parsed.dependencies).toHaveProperty('@deepseek-ai/dsh-file-recognizer-office')
     }
   })
+
+  it('keeps the Computer Use settings section in every Desktop profile overlay and closure root', () => {
+    const profiles = [
+      new URL('../../desktop-host/config/desktop.cordis.patch.yml', import.meta.url),
+      new URL('../../../packages/bundle/desktop-lite/cordis.patch.yml', import.meta.url),
+    ]
+    for (const profile of profiles) {
+      expect(readFileSync(profile, 'utf8'))
+        .toContain("id: ui-computer-use\n      name: '@deepseek-ai/dsh-client-ui-computer-use'")
+    }
+    const manifests = [
+      new URL('../../cli/package.json', import.meta.url),
+      new URL('../../desktop-host/package.json', import.meta.url),
+      new URL('../../../packages/bundle/desktop-lite/package.json', import.meta.url),
+    ]
+    for (const manifest of manifests) {
+      const parsed = JSON.parse(readFileSync(manifest, 'utf8')) as { dependencies?: Record<string, string> }
+      expect(parsed.dependencies).toHaveProperty('@deepseek-ai/dsh-client-ui-computer-use')
+    }
+  })
 })

@@ -74,6 +74,24 @@ describe('shipped profile composition selects the computer-use provider', () => 
     expect(rowsFor(PROFILE_TEMPLATES['sdk-minimal']!.bundles).has('computer-use-cua-driver-native')).toBe(false)
   })
 
+  it('mounts the Computer Use settings section only in the Desktop and Lite profiles', () => {
+    const SECTION = '@deepseek-ai/dsh-client-ui-computer-use'
+    const desktop = rowsFor(
+      ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'],
+      join(repoRoot, 'apps/desktop-host/config/desktop.cordis.patch.yml'),
+    )
+    const lite = rowsFor(PROFILE_TEMPLATES['desktop-lite']!.bundles)
+
+    for (const [label, rows] of [['desktop', desktop], ['desktop-lite', lite]] as const) {
+      expect(rows.get('ui-computer-use')?.name, label).toBe(SECTION)
+    }
+
+    for (const profile of ['web', 'headless', 'acp', 'sdk'] as const) {
+      expect(rowsFor(PROFILE_TEMPLATES[profile]!.bundles).has('ui-computer-use'), profile).toBe(false)
+    }
+    expect(rowsFor(PROFILE_TEMPLATES['sdk-minimal']!.bundles).has('ui-computer-use')).toBe(false)
+  })
+
   it('lets the packaging smoke overlay disable only the native provider', () => {
     const desktopPatch = join(repoRoot, 'apps/desktop-host/config/desktop.cordis.patch.yml')
     const smokeOverlay = join(repoRoot, 'apps/desktop/scripts/packaging-smoke.overlay.yml')

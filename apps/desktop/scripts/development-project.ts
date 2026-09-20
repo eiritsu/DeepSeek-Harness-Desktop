@@ -18,7 +18,10 @@ import type { DesktopRelease } from '../src/release.ts'
 interface PackageManifest {
   readonly name?: string
   readonly version?: string
+  readonly dependencies?: Readonly<Record<string, string>>
 }
+
+const FIRST_PARTY_SCOPE = '@deepseek-ai/'
 
 /** Inputs whose locations differ between the launcher and isolated tests. */
 export interface DevelopmentProjectOptions {
@@ -79,6 +82,30 @@ function mirrorDependencyLinks(sourceRoot: string, destinationRoot: string): voi
 }
 
 /**
+ * Link each first-party runtime dependency that an owning application installed for itself.
+ *
+ * pnpm resolves a direct dependency through the owning project's `node_modules`, but it may not
+ * hoist a workspace package into the shared virtual-hoist directory the project mirror starts
+ * from. Mirroring the owner's own links keeps every declared runtime dependency resolvable.
+ * A name already supplied by the mirror keeps the workspace graph's choice.
+ * @param ownerDir - CLI or Desktop Host application directory.
+ * @param destinationRoot - Disposable project's `node_modules` directory.
+ */
+function linkOwnedDependencies(ownerDir: string, destinationRoot: string): void {
+  const dependencies = readManifest(join(ownerDir, 'package.json')).dependencies ?? {}
+  for (const name of Object.keys(dependencies).sort()) {
+    if (!name.startsWith(FIRST_PARTY_SCOPE)) continue
+    const destination = join(destinationRoot, name)
+    if (existsSync(destination)) continue
+    const source = join(ownerDir, 'node_modules', name)
+    if (!existsSync(source)) {
+      throw new Error(`desktop development: ${ownerDir} requires ${name} but it is not installed; run pnpm install`)
+    }
+    linkDirectory(source, destination)
+  }
+}
+
+/**
  * Replace one disposable project with links to the current built workspace.
  * @param options - Project destination, CLI package, and release identity.
  * @returns the absolute project directory supplied by the caller.
@@ -116,5 +143,7 @@ export function prepareDevelopmentProject(options: DevelopmentProjectOptions): s
   const hostLink = join(destinationModules, '@deepseek-ai', 'dsh-desktop-host')
   removeOwnedPath(hostLink)
   linkDirectory(options.hostDir, hostLink)
+  linkOwnedDependencies(options.cliDir, destinationModules)
+  linkOwnedDependencies(options.hostDir, destinationModules)
   return options.projectDir
 }

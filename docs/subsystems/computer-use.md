@@ -17,7 +17,7 @@ Each provider supplies its upstream tool catalog. The shared service registers o
 
 ## Lifetime and desktop sharing
 
-A provider retains its registration while it shuts down its tools and owned resources. Startup failure releases the attempted registration. The MCP provider keeps its registration during reconnects.
+A provider retains its registration while it shuts down its tools and owned resources. Startup failure releases the attempted registration. The MCP provider keeps its registration during reconnects. The native provider owns a durable `enabled` setting exposed as the top-level **Computer Use** settings section contributed by [`dsh-client-ui-computer-use`](../../packages/client/ui-computer-use/README.md); turning it off tears the runtime down, aborts pending calls, and releases the registration, and turning it on initializes the runtime again. The section renders only while a composition serves the provider's settings namespace.
 
 One registered provider does not reserve a desktop for a Session. Callers coordinate complete observe, act, and verify workflows across Sessions and separate DSH processes. A cancelled call cannot undo input that the desktop already received.
 

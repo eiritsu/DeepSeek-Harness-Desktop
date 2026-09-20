@@ -51,3 +51,9 @@
 
     - id: ui-lark
       name: '@deepseek-ai/dsh-client-ui-lark'
+
+    # The Desktop products mount the native provider above; this section
+    # toggles the runtime setting and renders only while that settings
+    # namespace is served, including while `enabled` is false.
+    - id: ui-computer-use
+      name: '@deepseek-ai/dsh-client-ui-computer-use'

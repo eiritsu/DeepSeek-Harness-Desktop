@@ -34,7 +34,13 @@ Mount the provider in a composition that already supplies the tool registry and 
 - name: '@deepseek-ai/dsh-computer-use-cua-driver-native'
 ```
 
-The provider has no configuration fields. It loads the exact Cua Driver npm version declared in [package.json](package.json) and uses its same-process defaults. Native import, runtime initialization, malformed catalog, duplicate tool name, or occupied computer-use registration failures reject activation and roll back owned resources. The registered provider name is `cua-driver-native`.
+The provider loads the exact Cua Driver npm version declared in [package.json](package.json) and uses its same-process defaults. Native import, runtime initialization, malformed catalog, duplicate tool name, or occupied computer-use registration failures reject activation and roll back owned resources. The registered provider name is `cua-driver-native`.
+
+### Runtime setting
+
+The provider owns the durable `computer-use-cua-driver-native` settings section. Its `enabled` field sets whether the native runtime is mounted and defaults to `true`, so the Desktop and Lite products mount it without configuration. An `enabled` composition field supplies the section's base value; the top-level **Computer Use** settings section contributed by [`dsh-client-ui-computer-use`](../../client/ui-computer-use/README.md) writes the user layer. That section renders only while a composition serves this namespace, so a profile without the provider shows no trace of it.
+
+Changing the setting rebuilds the whole mount. Turning it off removes the tools and guidance, aborts pending calls, shuts down and destroys the native runtime, and releases the computer-use registration; turning it on runs native import, runtime creation, and tool discovery again. Rapid changes are serialized, and a stop always awaits the start it supersedes, so a new runtime never starts before the previous one has released the exclusive registration.
 
 Use an attachment store and a model route that explicitly declares image input to receive screenshots. The [MCP result adapter](../../mcp/mcp-client/README.md) owns image admission and diagnostic behavior; programmatic callers retain the canonical raw result when a model cannot receive its images. Calls use Cua Driver's upstream tool parameters and results.
 
@@ -58,12 +64,15 @@ env -u NODE_USE_ENV_PROXY DSH_COMPUTER_USE_NATIVE_E2E=1 node node_modules/vitest
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The provider reserves the shared computer-use registration before loading native code. A child plugin owns discovery, model tools, guidance, and the native runtime. The parent retains the registration until child teardown has removed tools, interrupted native calls and image-capability admission, awaited settlement, and completed native shutdown. Cancellation does not undo input already delivered to an application.
+The provider reserves the shared computer-use registration before loading native code. A child plugin owns discovery, model tools, guidance, and the native runtime. The parent retains the registration until child teardown has removed tools, interrupted native calls and image-capability admission, awaited settlement, and completed native shutdown. A controller serializes the desired mount state, so the settings section and composition reloads share one start/stop path. Cancellation does not undo input already delivered to an application.
 
 | File | Role |
 |---|---|
-| [src/index.ts](src/index.ts) | Native runtime ownership, catalog validation, tool registration, and provider guidance |
+| [src/index.ts](src/index.ts) | Native runtime ownership, catalog validation, tool registration, guidance, and the settings-driven mount controller |
+| [src/settings.ts](src/settings.ts) | Settings namespace, field, default, and section type |
 | — | No runtime invariant companion is published; resource ownership has no independently observed state to compare. |
+
+The browser half lives in [`dsh-client-ui-computer-use`](../../client/ui-computer-use/README.md), which restates the namespace, field, and default as browser-local literals.
 
 Tool definitions reuse the existing MCP result adapter. Cua Driver's JSON catalog determines the schemas; its raw result supplies canonical text, structured output, and image bytes. The computer-use service carries only the provider name and exclusive registration.
 
@@ -75,6 +84,7 @@ Tool definitions reuse the existing MCP result adapter. Cua Driver's JSON catalo
 ## Further Exploration
 
 - [Computer-use service](../computer-use/README.md) — exclusive named registration.
+- [Computer Use settings section](../../client/ui-computer-use/README.md) — the browser half that writes this provider's `enabled` setting.
 - [MCP client](../../mcp/mcp-client/README.md) — shared result and image projection.
 - [Cua Driver SDK](https://cua.ai/docs/reference/cua-driver/sdk-reference) — upstream runtime API and host facilities.
 - [Cua Driver MCP provider](../../experimental/computer-use-cua-driver-mcp/README.md) — use an installed driver.
@@ -112,7 +122,7 @@ The unchanged guidance preserves its repeated prompt prefix. Mounting, removing,
 
 #### What the model sees
 
-Tools use the `cua_driver_native__` prefix followed by the upstream name and retain the upstream descriptions and input schemas. Upstream tool refusals become tool errors. Supported screenshots appear as durable image references beside result text; the canonical raw result remains available to programmatic callers.
+Tools use the `cua_driver_native__` prefix followed by the upstream name and retain the upstream descriptions and input schemas. Upstream tool refusals become tool errors. Supported screenshots appear as durable image references beside result text; the canonical raw result remains available to programmatic callers. The tool definitions and guidance are present only while the runtime setting is enabled.
 
 #### Token effect
 

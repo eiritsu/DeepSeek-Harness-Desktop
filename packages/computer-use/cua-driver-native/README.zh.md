@@ -34,7 +34,13 @@ kind: "package-reference"
 - name: '@deepseek-ai/dsh-computer-use-cua-driver-native'
 ```
 
-此提供者没有配置字段。它加载 [package.json](package.json) 声明的确切 Cua Driver npm 版本，并采用其进程内默认配置。原生模块导入、运行时初始化、目录格式、工具重名或电脑操作注册冲突会使激活失败，并回滚所拥有的资源。注册的提供者名称为 `cua-driver-native`。
+此提供者加载 [package.json](package.json) 声明的确切 Cua Driver npm 版本，并采用其进程内默认配置。原生模块导入、运行时初始化、目录格式、工具重名或电脑操作注册冲突会使激活失败，并回滚所拥有的资源。注册的提供者名称为 `cua-driver-native`。
+
+### 运行时设置
+
+此提供者拥有持久化的 `computer-use-cua-driver-native` 设置分区，其 `enabled` 字段决定原生运行时是否挂载，默认值为 `true`，因此 Desktop 与 Lite 产品无需配置即可挂载。组合配置中的 `enabled` 字段提供分区的基准值；由 [`dsh-client-ui-computer-use`](../../client/ui-computer-use/README.zh.md) 贡献的一级**电脑操作**设置分区写入用户层。该分区仅在组合提供此命名空间时渲染，因此未挂载此提供者的 profile 不会显示任何痕迹。
+
+更改该设置会重建整个挂载。关闭会移除工具与指导文本、中止进行中的调用、关闭并销毁原生运行时，并释放电脑操作注册名额；开启会重新执行原生模块导入、运行时创建与工具发现。快速切换会被串行化，停止总会等待它所取代的启动完成，因此新运行时绝不会在旧运行时释放独占注册名额之前启动。
 
 挂载附件存储并使用明确声明支持图像输入的模型路由，才能接收截图。[MCP 结果适配器](../../mcp/mcp-client/README.zh.md) 负责图像接纳和诊断行为；模型无法接收图像时，程序调用方仍保留规范原始结果。调用采用 Cua Driver 上游的工具参数和结果。
 
@@ -58,12 +64,15 @@ env -u NODE_USE_ENV_PROXY DSH_COMPUTER_USE_NATIVE_E2E=1 node node_modules/vitest
 <details>
 <summary>实现内部——点击展开</summary>
 
-此提供者在加载原生代码前占用共享电脑操作注册名额。子插件拥有目录发现、模型工具、指导文本和原生运行时。父插件保留注册名额，直到子插件卸载完成工具移除、中断原生调用和图像能力准入、等待调用结束及原生关闭。取消不会撤销已经传给应用的输入。
+此提供者在加载原生代码前占用共享电脑操作注册名额。子插件拥有目录发现、模型工具、指导文本和原生运行时。父插件保留注册名额，直到子插件卸载完成工具移除、中断原生调用和图像能力准入、等待调用结束及原生关闭。控制器串行化目标挂载状态，因此设置分区与组合重载共享同一条启动/停止路径。取消不会撤销已经传给应用的输入。
 
 | 文件 | 职责 |
 |---|---|
-| [src/index.ts](src/index.ts) | 原生运行时所有权、目录校验、工具注册和提供者指导文本 |
+| [src/index.ts](src/index.ts) | 原生运行时所有权、目录校验、工具注册、指导文本以及由设置驱动的挂载控制器 |
+| [src/settings.ts](src/settings.ts) | 设置命名空间、字段、默认值和分区类型 |
 | — | 不发布运行时不变量伴随模块；资源所有权没有可独立观测并比较的状态。 |
+
+浏览器半侧位于 [`dsh-client-ui-computer-use`](../../client/ui-computer-use/README.zh.md)，它把命名空间、字段和默认值重述为浏览器本地字面量。
 
 工具定义复用现有 MCP 结果适配器。Cua Driver 的 JSON 目录决定 schema，其原始结果提供规范文本、结构化输出和图像字节。电脑操作服务只保存提供者名称并保证独占注册。
 
@@ -75,6 +84,7 @@ env -u NODE_USE_ENV_PROXY DSH_COMPUTER_USE_NATIVE_E2E=1 node node_modules/vitest
 ## 进一步探索
 
 - [电脑操作服务](../computer-use/README.zh.md)——独占的具名注册。
+- [电脑操作设置分区](../../client/ui-computer-use/README.zh.md)——写入此提供者 `enabled` 设置的浏览器半侧。
 - [MCP 客户端](../../mcp/mcp-client/README.zh.md)——共享结果与图像投影。
 - [Cua Driver SDK](https://cua.ai/docs/reference/cua-driver/sdk-reference)——上游运行时 API 和主机能力。
 - [Cua Driver MCP 提供方](../../experimental/computer-use-cua-driver-mcp/README.zh.md)——使用已安装的驱动。
@@ -112,7 +122,7 @@ On macOS, cursor-overlay operations may return facility_unavailable even when sc
 
 #### 模型看到什么
 
-工具名称使用 `cua_driver_native__` 前缀并附加上游名称，保留上游描述和输入 schema。上游工具拒绝转为工具错误。支持的截图作为持久化图像引用出现在结果文本旁；程序调用方仍可读取规范原始结果。
+工具名称使用 `cua_driver_native__` 前缀并附加上游名称，保留上游描述和输入 schema。上游工具拒绝转为工具错误。支持的截图作为持久化图像引用出现在结果文本旁；程序调用方仍可读取规范原始结果。只有在运行时设置开启时，工具定义和指导文本才会出现。
 
 #### Token 影响
 

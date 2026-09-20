@@ -80,6 +80,7 @@
     { "path": "./packages/client/ui-skill-library" },
     { "path": "./packages/client/ui-plugin-library" },
     { "path": "./packages/client/ui-lark" },
+    { "path": "./packages/client/ui-computer-use" },
     { "path": "./packages/client/ui-tool" },
     { "path": "./packages/client/ui-deliverables/tsconfig.client.json" },
     { "path": "./packages/client/ui-workflow-run" },

@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -65,6 +65,80 @@ describe('desktop development project', () => {
     }
     expect(manifest.dependencies['@deepseek-ai/dsh']).toBe('1.2.3')
     expect(manifest.dependencies['@deepseek-ai/dsh-desktop-host']).toBe('1.2.3')
+  })
+
+  it('links a direct first-party dependency pnpm did not hoist', () => {
+    const root = temporaryRoot()
+    const cli = join(root, 'apps', 'cli')
+    const host = join(root, 'apps', 'desktop-host')
+    const dependencies = join(root, 'workspace-dependencies')
+    const owned = join(root, 'packages', 'ui-computer-use')
+    mkdirSync(join(cli, 'lib'), { recursive: true })
+    mkdirSync(join(host, 'lib'), { recursive: true })
+    mkdirSync(join(dependencies, '@deepseek-ai', 'dsh'), { recursive: true })
+    mkdirSync(owned, { recursive: true })
+    writeFileSync(join(owned, 'package.json'), '{"name":"@deepseek-ai/dsh-client-ui-computer-use","version":"0.1.20"}\n')
+    for (const app of [cli, host]) {
+      mkdirSync(join(app, 'node_modules', '@deepseek-ai'), { recursive: true })
+      symlinkSync(owned, join(app, 'node_modules', '@deepseek-ai', 'dsh-client-ui-computer-use'), 'dir')
+    }
+    writeFileSync(join(cli, 'package.json'), `${JSON.stringify({
+      name: '@deepseek-ai/dsh',
+      version: '1.2.3',
+      dependencies: { '@deepseek-ai/dsh-client-ui-computer-use': 'workspace:^' },
+    })}\n`)
+    writeFileSync(join(host, 'package.json'), `${JSON.stringify({
+      name: '@deepseek-ai/dsh-desktop-host',
+      version: '1.2.3',
+      dependencies: { '@deepseek-ai/dsh-client-ui-computer-use': 'workspace:^' },
+    })}\n`)
+    writeFileSync(join(host, 'lib', 'index.js'), '')
+    writeFileSync(join(dependencies, '@deepseek-ai', 'dsh', 'package.json'), '{}\n')
+
+    const project = prepareDevelopmentProject({
+      projectDir: join(root, 'development'),
+      cliDir: cli,
+      hostDir: host,
+      dependencyDir: dependencies,
+      release: release(),
+    })
+    const linked = join(project, 'node_modules', '@deepseek-ai', 'dsh-client-ui-computer-use')
+    expect(realpathSync(linked)).toBe(realpathSync(owned))
+  })
+
+  it('keeps the mirrored hoist link when a direct dependency collides', () => {
+    const root = temporaryRoot()
+    const cli = join(root, 'apps', 'cli')
+    const host = join(root, 'apps', 'desktop-host')
+    const dependencies = join(root, 'workspace-dependencies')
+    const hoisted = join(dependencies, '@deepseek-ai', 'dsh-client-ui-computer-use')
+    const owned = join(root, 'packages', 'ui-computer-use')
+    mkdirSync(join(cli, 'lib'), { recursive: true })
+    mkdirSync(join(host, 'lib'), { recursive: true })
+    mkdirSync(hoisted, { recursive: true })
+    mkdirSync(owned, { recursive: true })
+    writeFileSync(join(hoisted, 'package.json'), '{"name":"@deepseek-ai/dsh-client-ui-computer-use","version":"0.1.20"}\n')
+    writeFileSync(join(owned, 'package.json'), '{"name":"@deepseek-ai/dsh-client-ui-computer-use","version":"0.1.20"}\n')
+    mkdirSync(join(cli, 'node_modules', '@deepseek-ai'), { recursive: true })
+    symlinkSync(owned, join(cli, 'node_modules', '@deepseek-ai', 'dsh-client-ui-computer-use'), 'dir')
+    writeFileSync(join(cli, 'package.json'), `${JSON.stringify({
+      name: '@deepseek-ai/dsh',
+      version: '1.2.3',
+      dependencies: { '@deepseek-ai/dsh-client-ui-computer-use': 'workspace:^' },
+    })}\n`)
+    writeFileSync(join(host, 'package.json'), '{"name":"@deepseek-ai/dsh-desktop-host","version":"1.2.3"}\n')
+    writeFileSync(join(host, 'lib', 'index.js'), '')
+
+    const project = prepareDevelopmentProject({
+      projectDir: join(root, 'development'),
+      cliDir: cli,
+      hostDir: host,
+      dependencyDir: dependencies,
+      release: release(),
+    })
+    const linked = join(project, 'node_modules', '@deepseek-ai', 'dsh-client-ui-computer-use')
+    expect(realpathSync(linked)).toBe(realpathSync(hoisted))
+    expect(realpathSync(linked)).not.toBe(realpathSync(owned))
   })
 
   it('rejects a CLI package from another release', () => {
