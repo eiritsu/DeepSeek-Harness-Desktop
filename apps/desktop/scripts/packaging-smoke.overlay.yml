@@ -1,0 +1,6 @@
+# The packaging smoke boots the Desktop Host from a non-interactive service
+# session, where the native Cua Driver cannot create its interactive desktop
+# session. Disable only that provider row for this overlay; the installed
+# Desktop and Lite products keep it enabled by default.
+- id: computer-use-cua-driver-native
+  disabled: true

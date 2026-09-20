@@ -92,6 +92,7 @@ export class DesktopHostProcess {
    * @param inspectPort - optional loopback inspector port for workspace development.
    * @param environment - Child environment; runtime and package-manager overrides are removed.
    * @param onFailure - Receives the first fatal child or transport failure, including after readiness.
+   * @param overlayPatchFiles - explicit patch overlays applied above the product patch.
    */
   constructor(
     private readonly node: string,
@@ -100,6 +101,7 @@ export class DesktopHostProcess {
     private readonly inspectPort?: number,
     private readonly environment: NodeJS.ProcessEnv = process.env,
     private readonly onFailure?: (error: Error) => void,
+    private readonly overlayPatchFiles: readonly string[] = [],
   ) {}
 
   /** Start the child once and resolve only after its complete composition is active. */
@@ -112,6 +114,7 @@ export class DesktopHostProcess {
       this.runtimeDir,
       this.projectDir,
       ...(this.inspectPort === undefined ? [] : ['--allow-linked-profile']),
+      ...this.overlayPatchFiles.flatMap(path => ['--patch', path]),
     ], {
       cwd: this.projectDir,
       env: Object.fromEntries(Object.entries(this.environment).filter(([name]) => (

@@ -6,6 +6,7 @@ import { rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { checkCuaDriverApi, cuaDriverEntry } from './cua-driver-payload-check.mjs'
 
 const runtime = process.argv[2]
 assert.ok(runtime, 'Pass the filtered resources/dsh directory')
@@ -124,6 +125,7 @@ try {
   checkKoffi()
   await checkSharp()
   checkHtml()
+  await checkCuaDriverApi(cuaDriverEntry(root))
   await checkPty()
 } finally {
   // This private tree contains only fixture files; Windows may release handles after terminal exit.
@@ -133,5 +135,5 @@ try {
 // Natural event-loop drain includes node-pty's worker and console-list helper teardown.
 process.once('beforeExit', () => {
   console.log(JSON.stringify({ node: process.versions.node, platform: process.platform, arch: process.arch,
-    systemFlock, koffi: true, sharp: true, html: true, pty: true }))
+    systemFlock, koffi: true, sharp: true, html: true, cuaDriver: true, pty: true }))
 })

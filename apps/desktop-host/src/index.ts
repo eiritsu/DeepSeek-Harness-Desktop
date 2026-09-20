@@ -149,7 +149,9 @@ function isProjectPath(projectDir: string, target: string): boolean {
   return path === root || path.startsWith(root + sep)
 }
 
-function desktopPatches(runtimeDir: string, projectDir: string, allowLinkedPackages: boolean): PatchOptions[] {
+function desktopPatches(
+  runtimeDir: string, projectDir: string, allowLinkedPackages: boolean, overlays: readonly PatchOptions[][],
+): PatchOptions[] {
   const dshRoot = dirname(packageManifestPath(runtimeDir, '@deepseek-ai/dsh'))
   const profile = loadProfileDirectory('dsh desktop', projectDir, join(dshRoot, 'package.json'))
   for (const layer of profile.layers) {
@@ -157,10 +159,13 @@ function desktopPatches(runtimeDir: string, projectDir: string, allowLinkedPacka
       throw new Error(`dsh desktop: profile bundle ${JSON.stringify(layer.packageName)} resolved outside the Desktop runtime and profile`)
     }
   }
+  // Explicit overlays stay above the product patch so a caller can adjust a
+  // row the product patch inserted; every other layer stays below it.
   const layers = [
     ...profile.layers.map(layer => layer.patches),
     profile.patches,
     loadOverlayPatches('dsh desktop', DESKTOP_PATCH),
+    ...overlays,
   ]
   const rows = new Map(composeEntries(layers).flatMap(row => typeof row.id === 'string' ? [[row.id, row] as const] : []))
   const agentPresets = rows.get('agent-presets')
@@ -273,14 +278,15 @@ interface NodeRequestInit extends RequestInit {
  * @param runtimeDir - immutable dsh packages supplied by the Electron application.
  * @param projectDir - active or staged Electron-owned desktop profile.
  * @param writeResponse - serialized response-pipe writer that applies byte backpressure.
- * @param options - development-only allowance for workspace-linked bundle packages.
+ * @param options - development-only allowance for workspace-linked bundle packages
+ * plus explicit patch overlays applied above the product patch.
  * @returns controller after every Host and client-manifest row is active.
  */
 export async function runDesktopHost(
   runtimeDir: string,
   projectDir: string,
   writeResponse: (frame: Buffer) => Promise<void>,
-  options: { allowLinkedPackages?: boolean } = {},
+  options: { allowLinkedPackages?: boolean; overlayPatches?: readonly PatchOptions[][] } = {},
 ): Promise<DesktopHostController> {
   const absoluteProject = resolve(projectDir)
   mkdirSync(absoluteProject, { recursive: true })
@@ -292,6 +298,7 @@ export async function runDesktopHost(
     resolve(runtimeDir),
     absoluteProject,
     options.allowLinkedPackages === true,
+    options.overlayPatches ?? [],
   )), (hostCtx) => {
     current = hostCtx
     hostCtx.provide(DSH_LAUNCH_ENVIRONMENT_KEY, environment)
@@ -382,8 +389,22 @@ async function main(): Promise<void> {
   if (runtimeDir === undefined || projectDir === undefined || process.send === undefined) {
     throw new Error('dsh desktop: expected runtime and profile directories, byte pipes, and a Node IPC channel')
   }
-  const option = process.argv[4]
-  if (option !== undefined && option !== '--allow-linked-profile') {
+  let allowLinkedPackages = false
+  const overlayPatchPaths: string[] = []
+  const options = process.argv.slice(4)
+  for (let index = 0; index < options.length; index += 1) {
+    const option = options[index]
+    if (option === '--allow-linked-profile') {
+      allowLinkedPackages = true
+      continue
+    }
+    if (option === '--patch') {
+      const path = options[index + 1]
+      if (path === undefined) throw new Error('dsh desktop: --patch requires an overlay file path')
+      overlayPatchPaths.push(path)
+      index += 1
+      continue
+    }
     throw new Error(`dsh desktop: unsupported internal option ${JSON.stringify(option)}`)
   }
   const requestPipe = createReadStream('', { fd: DESKTOP_REQUEST_PIPE_FD, autoClose: false })
@@ -407,7 +428,8 @@ async function main(): Promise<void> {
       if ((error as NodeJS.ErrnoException).code !== 'ERR_IPC_CHANNEL_CLOSED') throw error
     }
   }
-  const controller = await runDesktopHost(runtimeDir, projectDir, writeResponse, { allowLinkedPackages: option !== undefined })
+  const overlayPatches = overlayPatchPaths.map(path => loadOverlayPatches('dsh desktop', resolve(path)))
+  const controller = await runDesktopHost(runtimeDir, projectDir, writeResponse, { allowLinkedPackages, overlayPatches })
   send({
     type: 'ready',
     protocolVersion: DESKTOP_HOST_PROTOCOL_VERSION,

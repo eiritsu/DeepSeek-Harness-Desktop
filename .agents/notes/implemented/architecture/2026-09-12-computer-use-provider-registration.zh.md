@@ -32,6 +32,6 @@ DSH 能力称为 **computer use（计算机操作）**。[`dsh-computer-use`](..
 
 服务保持独立于实验性包。公开发布允许列表只接纳 MCP 提供方，但不提升其支持状态。配置选择提供方，切换需要先卸载当前提供方。
 
-Desktop 与 Lite bundle 在基础 bundle 的 `dsh-computer-use` 行之上挂载原生提供方；`dsh` 安装和 Desktop payload 在生产闭包中携带原生提供方。headless、web、ACP 与 SDK profile 都不选择提供方。workspace-constraints 门禁会拒绝任何 release 成员运行时依赖段引用实验性包。
+Desktop 与 Lite bundle 在基础 bundle 的 `dsh-computer-use` 行之上挂载原生提供方；`dsh` 安装和 Desktop payload 在生产闭包中携带原生提供方。headless、web、ACP 与 SDK profile 都不选择提供方。[Desktop packaging smoke](../../../../apps/desktop/scripts/smoke-runtime.ts)在没有交互式桌面会话的情况下启动 Host，因此其 profile overlay 仅对该 smoke 禁用原生提供方；安装后的 Desktop 与 Lite 应用仍默认挂载提供方。workspace-constraints 门禁会拒绝任何 release 成员运行时依赖段引用实验性包。
 
 原生平台支持和宿主权限仍由上游和部署负责。macOS 上由用户向启动应用授予桌面权限；Windows 需要交互式桌面会话。macOS 光标叠加层托管和专用 Desktop 权限界面暂缓实现。取消会停止等待并传播到驱动；不承诺回滚已交付的桌面输入。
