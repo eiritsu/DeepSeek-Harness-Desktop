@@ -1181,6 +1181,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     operation: @escaping @MainActor @Sendable () throws -> [String: Any]
   ) {
     updating = true
+    showStatus("正在维护本地数据…")
     runtime.stop {
       DispatchQueue.main.async { [weak self] in
         guard let self else {
@@ -1234,6 +1235,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
       return
     }
     updating = true
+    showStatus("正在应用桌面更改…")
     runtime.stop {
       DispatchQueue.main.async {
         operation(source, { _ in }) { [weak self] result in
@@ -1272,6 +1274,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
     if terminating { return .terminateNow }
     terminating = true
+    showStatus("正在关闭 DeepSeek Harness…")
     let recovery = activeRecoveryProfile
     activeRecoveryProfile = nil
     runtime.stop {

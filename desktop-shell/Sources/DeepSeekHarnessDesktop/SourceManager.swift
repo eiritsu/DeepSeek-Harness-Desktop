@@ -290,6 +290,16 @@ final class SourceManager: @unchecked Sendable {
       let source = URL(fileURLWithPath: path, isDirectory: true)
       if isSourceRoot(source) { return source }
     }
+    // An installed release may point activeSourceRoot at an older managed
+    // worktree. Apply a newer application snapshot before consulting that
+    // pointer; the bootstrap identity prevents an older app copy from
+    // replacing source installed by a newer build.
+    if let archive = bootstrapArchive, shouldInstallBootstrap(at: bootstrap) {
+      progress("正在更新随应用提供的 DeepSeek Harness 源码…\n")
+      try installBootstrap(archive, at: bootstrap, progress: progress)
+      defaults.set(bootstrap.path, forKey: "activeSourceRoot")
+      return bootstrap
+    }
     if let path = defaults.string(forKey: "activeSourceRoot") {
       let source = URL(fileURLWithPath: path, isDirectory: true)
       let isInsideSupport = source.standardizedFileURL.path.hasPrefix(
@@ -312,11 +322,7 @@ final class SourceManager: @unchecked Sendable {
         return source
       }
     }
-    if let archive = bootstrapArchive {
-      if shouldInstallBootstrap(at: bootstrap) {
-        progress("正在更新随应用提供的 DeepSeek Harness 源码…\n")
-        try installBootstrap(archive, at: bootstrap, progress: progress)
-      }
+    if bootstrapArchive != nil {
       defaults.set(bootstrap.path, forKey: "activeSourceRoot")
       return bootstrap
     }

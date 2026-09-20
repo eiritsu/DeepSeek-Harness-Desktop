@@ -800,7 +800,7 @@ private func createSourceArchive(from source: URL, at archive: URL) throws {
   let support = temporaryRoot.appendingPathComponent("support", isDirectory: true)
   let installed = support.appendingPathComponent("source", isDirectory: true)
   try writePreparedSource(at: installed, revision: "old")
-  try "0.1.1\n".write(
+  try "0.1.1+1\n".write(
     to: installed.appendingPathComponent(".dsh-desktop-bootstrap-version"),
     atomically: true,
     encoding: .utf8
@@ -817,7 +817,7 @@ private func createSourceArchive(from source: URL, at archive: URL) throws {
     supportRoot: support,
     defaults: defaults,
     bootstrapArchive: archive,
-    bootstrapVersion: "0.1.2"
+    bootstrapVersion: "0.1.2+2"
   )
 
   let source = try await withCheckedThrowingContinuation { continuation in
@@ -825,7 +825,93 @@ private func createSourceArchive(from source: URL, at archive: URL) throws {
   }
 
   #expect(try String(contentsOf: source.appendingPathComponent("revision.txt"), encoding: .utf8) == "new\n")
-  #expect(try String(contentsOf: source.appendingPathComponent(".dsh-desktop-bootstrap-version"), encoding: .utf8) == "0.1.2\n")
+  #expect(try String(contentsOf: source.appendingPathComponent(".dsh-desktop-bootstrap-version"), encoding: .utf8) == "0.1.2+2\n")
+}
+
+@Test func newerApplicationReplacesAnOlderActiveManagedRelease() async throws {
+  let temporaryRoot = FileManager.default.temporaryDirectory
+    .appendingPathComponent("dsh-active-release-upgrade-\(UUID().uuidString)", isDirectory: true)
+  defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+  let support = temporaryRoot.appendingPathComponent("support", isDirectory: true)
+  let installed = support.appendingPathComponent("source", isDirectory: true)
+  try writePreparedSource(at: installed, revision: "old-bootstrap")
+  try "0.1.1+1\n".write(
+    to: installed.appendingPathComponent(".dsh-desktop-bootstrap-version"),
+    atomically: true,
+    encoding: .utf8
+  )
+  let active = support.appendingPathComponent("releases/old-commit", isDirectory: true)
+  try writePreparedSource(at: active, revision: "old-active-release")
+  let fixture = temporaryRoot.appendingPathComponent("fixture", isDirectory: true)
+  try writePreparedSource(at: fixture, revision: "new-application")
+  let archive = temporaryRoot.appendingPathComponent("SourceBootstrap.tar.gz")
+  try createSourceArchive(from: fixture, at: archive)
+  let suiteName = "dsh-active-release-upgrade-\(UUID().uuidString)"
+  let defaults = try #require(UserDefaults(suiteName: suiteName))
+  defer { defaults.removePersistentDomain(forName: suiteName) }
+  defaults.set(active.path, forKey: "activeSourceRoot")
+  let manager = SourceManager(
+    supportRoot: support,
+    defaults: defaults,
+    bootstrapArchive: archive,
+    bootstrapVersion: "0.1.2+2"
+  )
+
+  let source = try await withCheckedThrowingContinuation { continuation in
+    manager.resolveAndPrepare(progress: { _ in }) { continuation.resume(with: $0) }
+  }
+
+  #expect(source == installed)
+  #expect(defaults.string(forKey: "activeSourceRoot") == installed.path)
+  #expect(
+    try String(contentsOf: source.appendingPathComponent("revision.txt"), encoding: .utf8)
+      == "new-application\n"
+  )
+  #expect(
+    try String(contentsOf: active.appendingPathComponent("revision.txt"), encoding: .utf8)
+      == "old-active-release\n"
+  )
+}
+
+@Test func olderApplicationKeepsNewerActiveManagedRelease() async throws {
+  let temporaryRoot = FileManager.default.temporaryDirectory
+    .appendingPathComponent("dsh-active-release-no-downgrade-\(UUID().uuidString)", isDirectory: true)
+  defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+  let support = temporaryRoot.appendingPathComponent("support", isDirectory: true)
+  let installed = support.appendingPathComponent("source", isDirectory: true)
+  try writePreparedSource(at: installed, revision: "newer-bootstrap")
+  try "0.1.3+3\n".write(
+    to: installed.appendingPathComponent(".dsh-desktop-bootstrap-version"),
+    atomically: true,
+    encoding: .utf8
+  )
+  let active = support.appendingPathComponent("releases/newer-commit", isDirectory: true)
+  try writePreparedSource(at: active, revision: "newer-active-release")
+  let fixture = temporaryRoot.appendingPathComponent("fixture", isDirectory: true)
+  try writePreparedSource(at: fixture, revision: "older-application")
+  let archive = temporaryRoot.appendingPathComponent("SourceBootstrap.tar.gz")
+  try createSourceArchive(from: fixture, at: archive)
+  let suiteName = "dsh-active-release-no-downgrade-\(UUID().uuidString)"
+  let defaults = try #require(UserDefaults(suiteName: suiteName))
+  defer { defaults.removePersistentDomain(forName: suiteName) }
+  defaults.set(active.path, forKey: "activeSourceRoot")
+  let manager = SourceManager(
+    supportRoot: support,
+    defaults: defaults,
+    bootstrapArchive: archive,
+    bootstrapVersion: "0.1.2+2"
+  )
+
+  let source = try await withCheckedThrowingContinuation { continuation in
+    manager.resolveAndPrepare(progress: { _ in }) { continuation.resume(with: $0) }
+  }
+
+  #expect(source == active)
+  #expect(defaults.string(forKey: "activeSourceRoot") == active.path)
+  #expect(
+    try String(contentsOf: installed.appendingPathComponent("revision.txt"), encoding: .utf8)
+      == "newer-bootstrap\n"
+  )
 }
 
 @Test func desktopPluginInspectionClassifiesBundleEligibility() throws {

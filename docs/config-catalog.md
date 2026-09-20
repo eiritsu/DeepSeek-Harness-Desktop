@@ -797,7 +797,7 @@ export interface RecognitionEndpointConfig {
 }
 ```
 
-Source: [`packages/attachment/file-recognizer-office/src/index.ts:46`](../packages/attachment/file-recognizer-office/src/index.ts)
+Source: [`packages/attachment/file-recognizer-office/src/index.ts:52`](../packages/attachment/file-recognizer-office/src/index.ts)
 
 <a id="deepseek-aidsh-file-reference-local"></a>
 

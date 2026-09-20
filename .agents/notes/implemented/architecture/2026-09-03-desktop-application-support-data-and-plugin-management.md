@@ -14,6 +14,8 @@ The desktop shell owns `~/Library/Application Support/DeepSeek Harness Desktop/d
 
 The shell initializes `data/dsh-desktop.sqlite` before runtime startup. The database stores the schema version, a complete inventory of legacy durable files, and destination tables for settings, credentials, workspaces, sessions, profiles, plugins, skills, model catalogs, audit records, and source releases. Sessions, settings, credentials, storage units, profile/Skill metadata, plugin audit records, and source-release records use SQLite at runtime. Profile manifests and Skill source remain executable file artifacts; the legacy audit JSONL remains only as a compatibility export.
 
+Lite compares the application build identity with the installed bootstrap before reading `activeSourceRoot`. A newer application installs and activates its embedded source snapshot even when an older managed release was active; an older application copy retains source installed by a newer build. Runtime maintenance and application termination hide the WebView before stopping the Host, preventing new submissions from targeting a process whose shutdown has begun.
+
 The desktop Web profile mounts the model-facing session query consumer only when `DSH_DESKTOP_SHELL=1`. Its full-text search index opens lazily at `data/dsh-session-query.sqlite` and is derived from the authoritative session persistence service. Exact Workspace equality authorizes cross-session reads; the model never receives an unrestricted database or filesystem search surface.
 
 Session exports continue to stream from the authenticated loopback route. The macOS shell claims WebKit download navigations and saves each archive with a unique name in the user's Downloads directory, so the browser-oriented client action does not escape to an external browser or report success without a file. Runtime output is redacted for credential-bearing fields and authentication query parameters before it is appended to the desktop log, and shell startup applies the same redaction to the existing log.
@@ -22,7 +24,7 @@ The desktop plugin library lists shipped Web profile bundles as app-managed entr
 
 ## Verification
 
-The desktop Swift test suite covers legacy-home merging without deletion and app-managed bundle inventory. Bundle composition tests evaluate both ordinary Web and desktop session-query settings. A packaged-App smoke test verifies that the Session log action creates and validates a ZIP in Downloads. The plugin-library locale and package documentation describe the Application Support ownership and the distinction between built-in and removable entries. Project-manager and CLI tests cover declared namespace cleanup, preservation of unrelated settings, and transactional restoration.
+The desktop Swift test suite covers legacy-home merging without deletion, app-managed bundle inventory, activation of a newer embedded snapshot over an older managed release, and rejection of an older application's downgrade attempt. Bundle composition tests evaluate both ordinary Web and desktop session-query settings. A packaged-App smoke test verifies that the Session log action creates and validates a ZIP in Downloads. The plugin-library locale and package documentation describe the Application Support ownership and the distinction between built-in and removable entries. Project-manager and CLI tests cover declared namespace cleanup, preservation of unrelated settings, and transactional restoration.
 
 ## Alternatives considered
 
@@ -30,6 +32,6 @@ Keeping `~/.dsh` as the desktop home would preserve the old path but would mix d
 
 ## Consequences
 
-Replacing the app binary no longer requires users to move plugin or Skill data manually. The legacy home remains as a recovery copy; later writes through the desktop UI do not update it. App-managed bundles cannot be removed from the external-plugin workflow, while external dependencies remain subject to the existing review and audit path.
+Replacing the app binary no longer requires users to move plugin or Skill data manually, and the next launch activates that build's embedded runtime instead of a stale managed release. The legacy home remains as a recovery copy; later writes through the desktop UI do not update it. App-managed bundles cannot be removed from the external-plugin workflow, while external dependencies remain subject to the existing review and audit path.
 
 Desktop model requests carry five additional read-only session-history schemas. The derived full-text index can be deleted and rebuilt without losing session data. Ordinary browser, TUI, and headless profiles retain the prior opt-in behavior.
