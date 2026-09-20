@@ -47,7 +47,7 @@ function bundlePatch(name: string): string {
 function rowsFor(
   bundles: readonly string[],
   ...overlays: string[]
-): Map<string, { name?: string; config?: Record<string, unknown> }> {
+): Map<string, { name?: string; config?: Record<string, unknown>; disabled?: boolean | null }> {
   const layers = bundles.map(name => loadOverlayPatches('test', bundlePatch(name)))
   layers.push(...overlays.map(path => loadOverlayPatches('test', path)))
   return new Map(composeEntries(layers).flatMap(entry => typeof entry.id === 'string' ? [[entry.id, entry] as const] : []))
@@ -72,6 +72,24 @@ describe('shipped profile composition selects the computer-use provider', () => 
       expect(rows.has('computer-use-cua-driver-native'), profile).toBe(false)
     }
     expect(rowsFor(PROFILE_TEMPLATES['sdk-minimal']!.bundles).has('computer-use-cua-driver-native')).toBe(false)
+  })
+
+  it('lets the packaging smoke overlay disable only the native provider', () => {
+    const desktopPatch = join(repoRoot, 'apps/desktop-host/config/desktop.cordis.patch.yml')
+    const smokeOverlay = join(repoRoot, 'apps/desktop/scripts/packaging-smoke.overlay.yml')
+    const formal = rowsFor(['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'], desktopPatch)
+    const smoke = rowsFor(['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'], desktopPatch, smokeOverlay)
+
+    expect([...smoke.keys()]).toEqual([...formal.keys()])
+    for (const [id, row] of formal) {
+      if (id === 'computer-use-cua-driver-native') continue
+      expect(smoke.get(id), id).toEqual(row)
+    }
+    expect(formal.get('computer-use-cua-driver-native')?.disabled).toBeUndefined()
+    expect(smoke.get('computer-use-cua-driver-native')).toEqual({
+      ...formal.get('computer-use-cua-driver-native'),
+      disabled: true,
+    })
   })
 
   it('keeps the Desktop model-catalog config on model-catalog, not the native provider', () => {

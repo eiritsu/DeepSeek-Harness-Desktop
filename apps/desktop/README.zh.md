@@ -31,7 +31,7 @@ Electron 拥有 `$DSH_HOME/profiles/desktop`。其 `dependencies` 只包含已�
 
 应用还会获得类型化 SkillHub 请求 bridge。目录响应与压缩包都有字节上限；安装会拒绝非法标识符、符号链接、条目过多、缺少 `SKILL.md` 和目标已存在的压缩包。安装和按精确名称移除会先停止 Host，再修改 `$DSH_HOME/skills`。Web Client 不会获得通用文件系统、任意 URL、原始 IPC、shell 或 package-manager 能力。内置 Desktop 组合也会挂载共享的 DeepSeek Files、external-tools、SkillHub 和 Lark 包。
 
-签名的 Desktop payload 会包含 Computer Use runtime 及其 native provider，内置 Desktop 组合默认挂载它们。携带并挂载 runtime 不会授予 macOS 或 Windows 桌面权限：macOS 仍需用户授予辅助功能与屏幕录制权限，Windows 仍需交互桌面会话，provider 保留 Cua Driver SDK 的 standard permission 流程。
+签名的 Desktop payload 会包含 Computer Use runtime 及其 native provider，内置 Desktop 组合默认挂载它们。携带并挂载 runtime 不会授予 macOS 或 Windows 桌面权限：macOS 仍需用户授予辅助功能与屏幕录制权限，Windows 仍需交互桌面会话，provider 保留 Cua Driver SDK 的 standard permission 流程。packaging smoke 在没有交互桌面会话的情况下启动 Host，因此其 profile overlay 仅对该 smoke 禁用 native provider；安装后的应用仍默认挂载它。
 
 Electron 根据应用 locale 选择类型化的英文或中文桌面壳文案，并以英文作为 fallback。菜单、原生对话框、启动页与插件管理渲染进程使用同一 locale 数据；仓库的 Client UI i18n gate 会检查这些桌面源文件。
 
@@ -116,7 +116,7 @@ pnpm run package:desktop:mac:arm64:local
 
 生产包首先经过 npm 发布规则和依赖安装。[桌面文件规则](scripts/runtime-file-policy.ts)随后在签名和完整性封存之前过滤不可变的 `resources/dsh/node_modules` 副本。它排除 TypeScript 声明、明确属于 JavaScript/CSS/TypeScript 的 source map、TypeScript 构建缓存、Domino 测试目录、指定的原生编译产物，以及其他平台的 node-pty 预构建文件。它保留运行时 JavaScript、原生模块及其 DLL/EXE 辅助程序、WASM、未知资源、许可证和声明。规则不会修改 npm tarball、内置包管理器或用户安装的插件文件。
 
-打包应用运行编译后的 JavaScript 和预生成的 Typert 元数据，不编译 TypeScript 插件。源码级调试导航和编辑器声明仍可从开发包中获取。[复制规则测试](tests/runtime-file-policy.spec.ts)覆盖排除项和保留资源；`prepare:dsh` 在 Host smoke 和最终清单验证之前，使用内置 Node 执行[产物 smoke](tests/fixtures/runtime-payload-smoke.mjs)。
+打包应用运行编译后的 JavaScript 和预生成的 Typert 元数据，不编译 TypeScript 插件。源码级调试导航和编辑器声明仍可从开发包中获取。[复制规则测试](tests/runtime-file-policy.spec.ts)覆盖排除项和保留资源；`prepare:dsh` 在 Host smoke 和最终清单验证之前，使用内置 Node 执行[产物 smoke](tests/fixtures/runtime-payload-smoke.mjs)，其中包括导入打包后的 native Cua Driver SDK。Host smoke 没有交互桌面会话，因此其 profile overlay 仅对这次启动禁用 native provider。
 
 Windows 发布验收还需在 Desktop 构建后手动运行[原生清理和替换检查](scripts/smoke-windows.ps1)。将 `$Electron` 设为已准备的 Electron 可执行文件，将 `$Makensis`、`$SevenZip` 和 `$PluginDir` 分别设为锁定版本构建器的 NSIS 编译器、7-Zip 可执行文件和 x86-unicode NSIS 插件目录。从仓库根目录运行以下命令。它验证 Electron junction 清理、安装器临时目录清理和两种文件占用替换方式；不属于单元测试通道。
 

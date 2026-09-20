@@ -10,6 +10,8 @@ import type { DesktopRuntimeDescriptor } from '../src/runtime-tree.ts'
 
 /**
  * Prove the final resource tree boots and serves its matching Web frontend.
+ * The smoke has no interactive desktop session, so its profile overlay disables
+ * the native Cua Driver provider for this boot only.
  * @param root - Materialized dsh resources.
  * @param node - Prepared target Node executable.
  * @param runtime - Verified resource descriptor.
@@ -17,9 +19,11 @@ import type { DesktopRuntimeDescriptor } from '../src/runtime-tree.ts'
 export async function smokeDesktopRuntime(root: string, node: string, runtime: DesktopRuntimeDescriptor): Promise<void> {
   const home = mkdtempSync(join(tmpdir(), 'dsh-desktop-smoke-'))
   const profile = join(home, 'profiles', 'desktop')
-  const host = new DesktopHostProcess(node, root, profile, undefined, { ...process.env, DSH_HOME: home })
+  const overlay = join(profile, 'packaging-smoke.overlay.yml')
+  const host = new DesktopHostProcess(node, root, profile, undefined, { ...process.env, DSH_HOME: home }, undefined, [overlay])
   try {
     createPluginProfile(profile)
+    writeFileSync(overlay, readFileSync(new URL('./packaging-smoke.overlay.yml', import.meta.url)))
     const pluginName = 'desktop-runtime-smoke-plugin'
     const plugin = join(profile, 'node_modules', pluginName)
     mkdirSync(plugin, { recursive: true })
