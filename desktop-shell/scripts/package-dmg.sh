@@ -56,7 +56,10 @@ for PACKAGE in \
   packages/extensions/external-tools \
   packages/llm/model-catalog \
   packages/session/session-persistence-sqlite \
-  packages/bundle/desktop-lite
+  packages/bundle/desktop-lite \
+  packages/mcp/mcp-client \
+  packages/computer-use/computer-use \
+  packages/computer-use/cua-driver-native
 do
   if ! grep -F "./$PACKAGE/package.json" "$ARCHIVE_LIST" >/dev/null; then
     echo "package-dmg: bundled plugin $PACKAGE is missing" >&2

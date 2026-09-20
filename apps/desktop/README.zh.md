@@ -31,6 +31,8 @@ Electron 拥有 `$DSH_HOME/profiles/desktop`。其 `dependencies` 只包含已�
 
 应用还会获得类型化 SkillHub 请求 bridge。目录响应与压缩包都有字节上限；安装会拒绝非法标识符、符号链接、条目过多、缺少 `SKILL.md` 和目标已存在的压缩包。安装和按精确名称移除会先停止 Host，再修改 `$DSH_HOME/skills`。Web Client 不会获得通用文件系统、任意 URL、原始 IPC、shell 或 package-manager 能力。内置 Desktop 组合也会挂载共享的 DeepSeek Files、external-tools、SkillHub 和 Lark 包。
 
+签名的 Desktop payload 会包含 Computer Use runtime 及其 native provider，内置 Desktop 组合默认挂载它们。携带并挂载 runtime 不会授予 macOS 或 Windows 桌面权限：macOS 仍需用户授予辅助功能与屏幕录制权限，Windows 仍需交互桌面会话，provider 保留 Cua Driver SDK 的 standard permission 流程。
+
 Electron 根据应用 locale 选择类型化的英文或中文桌面壳文案，并以英文作为 fallback。菜单、原生对话框、启动页与插件管理渲染进程使用同一 locale 数据；仓库的 Client UI i18n gate 会检查这些桌面源文件。
 
 ### 运行时与插件激活

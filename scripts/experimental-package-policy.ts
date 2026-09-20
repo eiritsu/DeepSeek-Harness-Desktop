@@ -5,6 +5,7 @@ export const PUBLIC_EXPERIMENTAL_PACKAGE_DIRECTORIES = [
   'packages/experimental/agent-team-web-profile',
   'packages/experimental/client-ui-agent-team',
   'packages/experimental/tool-agent-team',
+  'packages/experimental/computer-use-cua-driver-mcp',
 ] as const
 
 const publicExperimentalPackageDirectories = new Set<string>(PUBLIC_EXPERIMENTAL_PACKAGE_DIRECTORIES)

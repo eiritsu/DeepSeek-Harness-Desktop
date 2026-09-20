@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-desktop-host",
   "description": "Private upstream-Node host process for the Electron desktop application",
-  "version": "0.1.19",
+  "version": "0.1.20",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -24,6 +24,7 @@
     "@deepseek-ai/dsh-client-ui-skill-library": "workspace:^",
     "@deepseek-ai/dsh-client-ui-directory-picker-native": "workspace:^",
     "@deepseek-ai/dsh-cmdline": "workspace:^",
+    "@deepseek-ai/dsh-computer-use-cua-driver-native": "workspace:^",
     "@deepseek-ai/dsh-external-tools": "workspace:^",
     "@deepseek-ai/dsh-file-recognizer-office": "workspace:^",
     "@deepseek-ai/dsh-host-directory-picker-native": "workspace:^",

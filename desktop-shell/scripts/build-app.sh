@@ -57,6 +57,9 @@ const packagePaths = [
   'packages/llm/model-catalog',
   'packages/session/session-persistence-sqlite',
   'packages/bundle/desktop-lite',
+  'packages/mcp/mcp-client',
+  'packages/computer-use/computer-use',
+  'packages/computer-use/cua-driver-native',
 ]
 const artifactRoots = [
   'apps/cli/lib',
@@ -165,7 +168,10 @@ if [ "$DISTRIBUTION" = true ]; then
     packages/attachment/file-recognizer-office \
     packages/extensions/external-tools \
     packages/session/session-persistence-sqlite \
-    packages/bundle/desktop-lite
+    packages/bundle/desktop-lite \
+    packages/mcp/mcp-client \
+    packages/computer-use/computer-use \
+    packages/computer-use/cua-driver-native
   do
     if [ ! -d "$SOURCE_ROOT/$PACKAGE/lib" ]; then
       echo "build-app: built plugin artifacts are missing at $SOURCE_ROOT/$PACKAGE/lib; run pnpm run build first" >&2

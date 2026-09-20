@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/computer-use/cua-driver-native/README.md
+README.md: 1ecade6da69d17608076da00ef008b7a6f642157
+README.zh.md: 52b8df76baae90995fcdda1fd288d3b13d90906a

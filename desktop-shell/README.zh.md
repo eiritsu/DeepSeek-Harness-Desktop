@@ -34,6 +34,8 @@ Swift 壳把自身的源码/更新审计 catalog 保存在 `~/Library/Applicatio
 
 配置导出会脱敏：凭据、Session 正文、附件字节、日志和机器身份不会导出。导入会合并 profile 与 Skill，在不替换权威 Session 数据库的情况下恢复设置，把旧 `llm-dsh-ai` namespace 迁移为 `llm-pi-ai`，并将旧 Web profile 的第三方插件带入 `desktop-lite`。重置会先停止 Node runtime，再清理其拥有的数据。在同时分发两个壳之前，打包还必须保证同一时间只有一个桌面写入者。
 
+Lite payload 会携带 Computer Use service、native Cua provider 及其 runtime 依赖，随应用发布的 `desktop-lite` profile 默认挂载它们。payload 不会授予 macOS 辅助功能或屏幕录制权限，所需的 TCC 授权仍须由用户完成；在 Windows 上 provider 需要交互桌面会话。Cua Driver 使用 standard permission 流程。
+
 ## 开发
 
 在仓库根目录执行：

@@ -99,6 +99,15 @@ const GROUP_ORDER = [
 
 const SERVICE_ROLES: ServiceRole[] = [
   {
+    key: 'computerUse',
+    pkg: 'computer-use',
+    title: 'Computer-use provider registration',
+    mode: 'seam',
+    implementations: ['computer-use-cua-driver-native', 'experimental-computer-use-cua-driver-mcp'],
+    consumers: ['computer-use-cua-driver-native', 'experimental-computer-use-cua-driver-mcp'],
+    note: 'One provider-owned name per service instance. Each provider also owns its model tools; the service has no common action API, runtime selection, or Session workflow lock.',
+  },
+  {
     key: 'externalTools',
     pkg: 'external-tools',
     title: 'Credential-gated external tool registry',

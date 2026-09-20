@@ -503,11 +503,15 @@ const dependencySections = ['dependencies', 'devDependencies', 'peerDependencies
 const runtimeDependencySections = ['dependencies', 'optionalDependencies', 'peerDependencies'] as const
 
 /**
- * Prevent an official runtime from requiring a package its release omits.
+ * Prevent a release member from requiring an experimental package its release
+ * does not include. Every runtime dependency section rejects an experimental
+ * name, so a shipped profile cannot reach one.
  * @param manifests - release, private experimental, and deployment-root manifests.
  * @returns One error for each forbidden runtime dependency.
  */
-export function checkExperimentalDependencyIsolation(manifests: readonly WorkspaceManifest[]): string[] {
+export function checkExperimentalDependencyIsolation(
+  manifests: readonly WorkspaceManifest[],
+): string[] {
   const experimentalNames = new Set(manifests
     .filter(entry => experimentalPackageDirectory.test(entry.dir))
     .map(entry => entry.manifest.name)
