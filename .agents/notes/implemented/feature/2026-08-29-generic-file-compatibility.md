@@ -10,7 +10,7 @@ The attachment refactor retained image-only admission and transient recognition,
 
 ## Decision
 
-`AttachmentStore` keeps generic file limits, content-addressed `saveFile`/`readFile`, and durable recognizer inputs alongside the image path. Session prompt admission stores file references and records bounded recognizer text in a `file` content block. Provider adapters project file blocks to deterministic text, preserving original bytes in the session attachment store while supporting text-only model routes. The browser composer accepts non-image files through the existing draft-id path, exposes the files-and-folders picker from the bottom-left plus menu, and renders one Codex-style horizontal document card with the file name, extension, and document icon; images retain preview and normalization behavior.
+`AttachmentStore` keeps generic file limits, content-addressed `saveFile`/`readFile`, and durable recognizer inputs alongside the image path. Session prompt admission stores file references and records bounded recognizer text in a `file` content block. Provider adapters project file blocks to deterministic text, preserving original bytes in the session attachment store while supporting text-only model routes. The browser composer accepts non-image files through the existing draft-id path, exposes the files-and-folders picker from the bottom-left plus menu, and renders one Codex-style horizontal document card with the file name, extension, and document icon; images retain preview and normalization behavior. The office recognizer extracts SVG files as bounded UTF-8 source when the MIME type is `image/svg+xml` or the name ends in `.svg`; invalid UTF-8 SVG and unsupported design/CAD binaries remain generic files without remote image recognition.
 
 Models without provider reasoning metadata expose the fixed provider-neutral `off`, `low`, `high`, and `max` efforts. Explicit levels remain validated when a provider declares a capability map.
 
@@ -34,4 +34,4 @@ Text-only model routes can process image attachments when a configured OCR recog
 
 ## Verification
 
-Harness `pnpm run typecheck` and focused attachment, conversation, UI attachment, and pi-ai tests pass. Plugin `pnpm run build` passes for the file recognizer, Lark, model catalog, and Deepseek-Files packages.
+Focused `file-recognizer-office` tests cover SVG MIME and suffix recognition, source extraction, invalid UTF-8 fallback, unsupported design-file routing, and no-fetch behavior alongside existing registration, Office, PDF, audio, video, and OCR coverage. Harness `pnpm run typecheck` and focused attachment, conversation, UI attachment, and pi-ai tests pass. Plugin `pnpm run build` passes for the file recognizer, Lark, model catalog, and Deepseek-Files packages.

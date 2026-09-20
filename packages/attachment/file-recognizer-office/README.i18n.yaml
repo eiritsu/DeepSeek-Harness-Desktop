@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/attachment/file-recognizer-office/README.md
-README.md: 5b0be803744100000a7d2845cf3d75039051fb5c
-README.zh.md: 4379c270fbc68196d2532c7fd771e70b6af6c2fd
+README.md: 9a14b71ab8a79a815455bacff17d84b249b2a047
+README.zh.md: 2a3e3384f710f016d1ea60ae55bf58187105d584

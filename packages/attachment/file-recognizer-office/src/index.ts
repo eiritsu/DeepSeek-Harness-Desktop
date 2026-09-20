@@ -23,6 +23,12 @@ type PdfCanvasFactory = {
 const OFFICE_EXTENSIONS = new Set(['docx', 'pptx', 'xlsx', 'odt', 'odp', 'ods', 'pdf'])
 const ZIP_OFFICE_EXTENSIONS = new Set(['docx', 'pptx', 'xlsx', 'odt', 'odp', 'ods'])
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'tif', 'tiff'])
+const SVG_EXTENSIONS = new Set(['svg'])
+const DESIGN_EXTENSIONS = new Set(['psd', 'ai', 'eps', 'indd', 'sketch', 'dxf', 'dwg', 'rvt'])
+const DESIGN_MEDIA_TYPES = new Set([
+  'image/vnd.adobe.photoshop', 'image/x-photoshop', 'application/postscript',
+  'application/illustrator', 'application/vnd.adobe.illustrator',
+])
 const AUDIO_EXTENSIONS = new Set(['mp3', 'mp4', 'mpeg', 'mpga', 'm4a', 'wav', 'webm', 'flac', 'ogg', 'oga'])
 const VIDEO_EXTENSIONS = new Set(['mp4', 'mpeg', 'mpg', 'mov', 'webm', 'mkv', 'avi', 'm4v'])
 const TEXT_EXTENSIONS = new Set([
@@ -131,6 +137,29 @@ function extension(file: { name?: string }): string | undefined {
 function truncate(text: string, limit: number): string {
   if (text.length <= limit) return text
   return text.slice(0, limit) + '\n[attachment text truncated]'
+}
+
+function isSvg(file: { mediaType?: string; name?: string }): boolean {
+  const suffix = extension(file)
+  return file.mediaType === 'image/svg+xml' || suffix !== undefined && SVG_EXTENSIONS.has(suffix)
+}
+
+function isRasterImage(file: { mediaType?: string; name?: string }): boolean {
+  const suffix = extension(file)
+  if (file.mediaType === 'image/svg+xml' || suffix === 'svg') return false
+  if (suffix !== undefined && DESIGN_EXTENSIONS.has(suffix)) return false
+  if (file.mediaType !== undefined && DESIGN_MEDIA_TYPES.has(file.mediaType)) return false
+  return file.mediaType?.startsWith('image/') === true
+    || suffix !== undefined && IMAGE_EXTENSIONS.has(suffix)
+}
+
+function decodeSvg(data: Uint8Array): string | undefined {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(data) || undefined
+  } catch {
+    // Invalid UTF-8 remains available as a generic attachment.
+    return undefined
+  }
 }
 
 function configured(endpoint: RecognitionEndpointConfig | undefined): endpoint is ConfiguredRecognitionEndpoint {
@@ -349,10 +378,10 @@ export function apply(ctx: Context, config: Config): void {
       const suffix = extension(file)
       const settings = current()
       const mediaType = file.mediaType ?? ''
-      return mediaType.startsWith('text/')
+      return isSvg(file)
+        || mediaType.startsWith('text/')
         || (suffix !== undefined && (OFFICE_EXTENSIONS.has(suffix) || TEXT_EXTENSIONS.has(suffix)))
-        || (configured(settings.ocr)
-          && ((file.mediaType ?? '').startsWith('image/') || (suffix !== undefined && IMAGE_EXTENSIONS.has(suffix))))
+        || (configured(settings.ocr) && isRasterImage(file))
         || (configured(settings.audioTranscription)
           && ((file.mediaType ?? '').startsWith('audio/') || (suffix !== undefined && AUDIO_EXTENSIONS.has(suffix))))
         || (configured(settings.videoUnderstanding)
@@ -365,6 +394,10 @@ export function apply(ctx: Context, config: Config): void {
       const mediaType = input.mediaType ?? ''
       const suffix = extension(input)
       const settings = current()
+      if (isSvg(input)) {
+        const text = decodeSvg(file.data)
+        return text === undefined ? undefined : { text: truncate(text, maxExtractedChars) }
+      }
       if (mediaType.startsWith('text/') || (suffix !== undefined && TEXT_EXTENSIONS.has(suffix))) {
         const text = new TextDecoder('utf-8', { fatal: true }).decode(file.data)
         return text === '' ? undefined : { text: truncate(text, maxExtractedChars) }
@@ -380,7 +413,7 @@ export function apply(ctx: Context, config: Config): void {
           const text = await transcribeAudio(ctx, input as RecognizerFile & FileAttachmentRef, settings.audioTranscription ?? {}, signal)
           return text === undefined ? undefined : { text: truncate(text, maxExtractedChars) }
         }
-        if (mediaType.startsWith('image/') || (suffix !== undefined && IMAGE_EXTENSIONS.has(suffix))) {
+        if (isRasterImage(input)) {
           const text = await recognizeChatFile(ctx, input, settings.ocr ?? {}, 'ocr', signal)
           return text === undefined ? undefined : { text: truncate(text, maxExtractedChars) }
         }
@@ -397,8 +430,8 @@ export function apply(ctx: Context, config: Config): void {
         return text === '' ? undefined : { text: truncate(text, maxExtractedChars) }
       } catch (error) {
         signal?.throwIfAborted()
-        if (mediaType.startsWith('image/') || mediaType.startsWith('audio/') || mediaType.startsWith('video/')
-          || (suffix !== undefined && (IMAGE_EXTENSIONS.has(suffix) || AUDIO_EXTENSIONS.has(suffix) || VIDEO_EXTENSIONS.has(suffix) || suffix === 'pdf'))) throw error
+        if (isRasterImage(input) || mediaType.startsWith('audio/') || mediaType.startsWith('video/')
+          || (suffix !== undefined && (AUDIO_EXTENSIONS.has(suffix) || VIDEO_EXTENSIONS.has(suffix) || suffix === 'pdf'))) throw error
         return undefined
       }
     },

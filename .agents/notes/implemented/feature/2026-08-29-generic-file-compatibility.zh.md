@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-`AttachmentStore` 在图片路径旁保留通用文件限制、内容寻址的 `saveFile`/`readFile`，以及面向持久化识别器的输入。会话提示接收时保存文件引用，并在 `file` 内容块中记录有界识别文本。Provider adapter 将文件块投影为确定性文本，同时在附件存储中保留原始字节，使仅支持文本的模型也能处理文档。浏览器 composer 通过现有 draft id 路径接收非图片文件，从左下角加号菜单提供文件和文件夹选择器，并用统一的 Codex 风格横向文档卡片显示文件名、扩展名和文档图标；图片继续使用预览和规范化流程。
+`AttachmentStore` 在图片路径旁保留通用文件限制、内容寻址的 `saveFile`/`readFile`，以及面向持久化识别器的输入。会话提示接收时保存文件引用，并在 `file` 内容块中记录有界识别文本。Provider adapter 将文件块投影为确定性文本，同时在附件存储中保留原始字节，使仅支持文本的模型也能处理文档。浏览器 composer 通过现有 draft id 路径接收非图片文件，从左下角加号菜单提供文件和文件夹选择器，并用统一的 Codex 风格横向文档卡片显示文件名、扩展名和文档图标；图片继续使用预览和规范化流程。office recognizer 会在 MIME 类型为 `image/svg+xml` 或文件名以 `.svg` 结尾时，把 SVG 提取为有界 UTF-8 源码；无效 UTF-8 的 SVG 与不支持的设计／CAD 二进制会继续作为通用文件，不进行远程图片识别。
 
 没有供应商推理元数据的模型显示固定的 `off`、`low`、`high`、`max` 等级；供应商声明能力映射时仍按映射校验显式等级。
 
@@ -34,4 +34,4 @@ macOS WebView 通过 `WKDownloadDelegate` 接管会话日志下载，将不覆�
 
 ## Verification
 
-Harness 的 `pnpm run typecheck` 以及附件、conversation、UI attachment、pi-ai 定向测试通过。插件仓库的 `pnpm run build` 对文件识别器、Lark、model catalog、Deepseek-Files 包通过。
+`file-recognizer-office` 定向测试覆盖 SVG MIME 与后缀识别、源码提取、无效 UTF-8 回退、不支持设计文件的路由和不发起 fetch，并继续覆盖已有的注册、Office、PDF、音频、视频和 OCR 路径。Harness 的 `pnpm run typecheck` 以及附件、conversation、UI attachment、pi-ai 定向测试通过。插件仓库的 `pnpm run build` 对文件识别器、Lark、model catalog、Deepseek-Files 包通过。

@@ -170,6 +170,65 @@ describe('file-recognizer-office', () => {
     ))).resolves.toEqual({ text: '# Harness' })
   })
 
+  it('extracts SVG source instead of sending it to OCR', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('SVG must not use OCR'))
+    const recognizer = registered({
+      ocr: { endpoint: 'https://vision.test/chat', model: 'vision' },
+    })
+    const attachment = ref('logo.svg', 'image/svg+xml')
+    const source = '<svg xmlns="http://www.w3.org/2000/svg"><text>DSH</text></svg>'
+    expect(recognizer.supports(attachment)).toBe(true)
+    await expect(recognizer.recognize(stored(attachment, new TextEncoder().encode(source))))
+      .resolves.toEqual({ text: source })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('extracts SVG source by filename when the transport reports a generic MIME type', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('SVG must not use OCR'))
+    const recognizer = registered({
+      ocr: { endpoint: 'https://vision.test/chat', model: 'vision' },
+    })
+    const attachment = ref('logo.svg', 'application/octet-stream')
+    const source = '<svg viewBox="0 0 1 1" />'
+    expect(recognizer.supports(attachment)).toBe(true)
+    await expect(recognizer.recognize(stored(attachment, new TextEncoder().encode(source))))
+      .resolves.toEqual({ text: source })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('declines invalid UTF-8 SVG without calling OCR', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('SVG must not use OCR'))
+    const recognizer = registered({
+      ocr: { endpoint: 'https://vision.test/chat', model: 'vision' },
+    })
+    const attachment = ref('broken.svg', 'image/svg+xml')
+    expect(recognizer.supports(attachment)).toBe(true)
+    await expect(recognizer.recognize(stored(attachment, new Uint8Array([0x3c, 0xff, 0x3e]))))
+      .resolves.toBeUndefined()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('keeps unsupported design files out of raster OCR', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('design files must not use OCR'))
+    const recognizer = registered({
+      ocr: { endpoint: 'https://vision.test/chat', model: 'vision' },
+    })
+    for (const [filename, mediaType] of [
+      ['design.psd', 'application/octet-stream'],
+      ['design', 'image/vnd.adobe.photoshop'],
+      ['illustration.ai', 'application/postscript'],
+      ['illustration.eps', 'application/postscript'],
+      ['drawing.dxf', 'application/octet-stream'],
+      ['model.dwg', 'application/octet-stream'],
+    ] as const) {
+      const attachment = ref(filename, mediaType)
+      expect(recognizer.supports(attachment)).toBe(false)
+      await expect(recognizer.recognize(stored(attachment, new Uint8Array([1, 2, 3]))))
+        .resolves.toBeUndefined()
+    }
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('recognizes JSON documents by filename when the browser reports application/json', async () => {
     const recognizer = registered()
     const attachment = ref('settings.json', 'application/json')
