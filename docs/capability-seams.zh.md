@@ -9,6 +9,10 @@
 
 ```mermaid
 flowchart LR
+  pkg_computer_use["computer-use"]
+  svc_computerUse["ctx.computerUse<br/>Computer-use provider registration"]
+  pkg_computer_use_cua_driver_native["computer-use-cua-driver-native"]
+  pkg_experimental_computer_use_cua_driver_mcp["experimental-computer-use-cua-driver-mcp"]
   pkg_external_tools["external-tools"]
   svc_externalTools["ctx.externalTools<br/>Credential-gated external tool registry"]
   pkg_lark["lark"]
@@ -257,6 +261,8 @@ flowchart LR
   pkg_compaction --> svc_compaction
   pkg_compaction_basic --> svc_compaction
   pkg_compaction_tool_result_pruner --> svc_toolResultPruner
+  pkg_computer_use --> svc_computerUse
+  pkg_computer_use_cua_driver_native --> svc_computerUse
   pkg_cordis_host_runner --> svc_cordisInspect
   pkg_cordis_host_runner --> svc_dynamicCordisRunner
   pkg_credentials --> svc_credentials
@@ -265,6 +271,7 @@ flowchart LR
   pkg_e2b --> svc_e2b
   pkg_experimental_agent_team --> svc_agentTeams
   pkg_experimental_code_runtime_python --> svc_codeRuntime
+  pkg_experimental_computer_use_cua_driver_mcp --> svc_computerUse
   pkg_external_tools --> svc_externalTools
   pkg_file_reference --> svc_fileReferences
   pkg_file_reference_local --> svc_fileReferences
@@ -371,6 +378,8 @@ flowchart LR
   svc_clientModules --> pkg_client_hmr
   svc_codeRuntime --> pkg_tools
   svc_compaction --> pkg_compaction_basic
+  svc_computerUse --> pkg_computer_use_cua_driver_native
+  svc_computerUse --> pkg_experimental_computer_use_cua_driver_mcp
   svc_cordisInspect --> pkg_tool_cordis
   svc_credentials --> pkg_api_settings_controller
   svc_credentials --> pkg_llm_deepseek
@@ -482,6 +491,7 @@ flowchart LR
 
 | ctx 键 | 角色 | 所属包 | 实现 | 直接消费方 | 配套插件 | 说明 |
 | --- | --- | --- | --- | --- | --- | --- |
+| `ctx.computerUse` | `seam` | [`computer-use`](../packages/computer-use/computer-use) | [`computer-use-cua-driver-native`](../packages/computer-use/cua-driver-native), [`experimental-computer-use-cua-driver-mcp`](../packages/experimental/computer-use-cua-driver-mcp) | [`computer-use-cua-driver-native`](../packages/computer-use/cua-driver-native), [`experimental-computer-use-cua-driver-mcp`](../packages/experimental/computer-use-cua-driver-mcp) | - | 每个服务实例只注册一个提供方自定的名称。各提供方也拥有自己的模型工具；服务不提供通用操作 API、运行时选择或 Session 流程锁。 |
 | `ctx.externalTools` | `core` | [`external-tools`](../packages/extensions/external-tools) | - | - | - | 根据已验证的 Settings 与 credential reference 协调 provider 工具和原生 Web 搜索覆盖。 |
 | `ctx.larkManagement` | `core` | [`lark`](../packages/lark/lark) | - | - | - | 拥有无 secret 管理状态、官方 CLI 派发、OAuth 进度与私聊 Session 准入。 |
 | `ctx.attachments` | `seam` | [`attachment`](../packages/attachment/attachment) | [`attachment-local`](../packages/attachment/attachment-local) | [`api-session-controller`](../packages/api/session-controller), [`tool-fs`](../packages/fs/tool-fs), [`llm-pi-ai`](../packages/llm/llm-pi-ai), [`llm-deepseek`](../packages/llm/llm-deepseek) | - | 宿主会在会话事件之前提交已接受的图片；提供方适配器将已授权的持久引用解析为提供方原生内容。 |

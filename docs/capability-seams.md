@@ -7,6 +7,10 @@ A service can be a core spine service, a swappable capability seam, or a bundle/
 
 ```mermaid
 flowchart LR
+  pkg_computer_use["computer-use"]
+  svc_computerUse["ctx.computerUse<br/>Computer-use provider registration"]
+  pkg_computer_use_cua_driver_native["computer-use-cua-driver-native"]
+  pkg_experimental_computer_use_cua_driver_mcp["experimental-computer-use-cua-driver-mcp"]
   pkg_external_tools["external-tools"]
   svc_externalTools["ctx.externalTools<br/>Credential-gated external tool registry"]
   pkg_lark["lark"]
@@ -255,6 +259,8 @@ flowchart LR
   pkg_compaction --> svc_compaction
   pkg_compaction_basic --> svc_compaction
   pkg_compaction_tool_result_pruner --> svc_toolResultPruner
+  pkg_computer_use --> svc_computerUse
+  pkg_computer_use_cua_driver_native --> svc_computerUse
   pkg_cordis_host_runner --> svc_cordisInspect
   pkg_cordis_host_runner --> svc_dynamicCordisRunner
   pkg_credentials --> svc_credentials
@@ -263,6 +269,7 @@ flowchart LR
   pkg_e2b --> svc_e2b
   pkg_experimental_agent_team --> svc_agentTeams
   pkg_experimental_code_runtime_python --> svc_codeRuntime
+  pkg_experimental_computer_use_cua_driver_mcp --> svc_computerUse
   pkg_external_tools --> svc_externalTools
   pkg_file_reference --> svc_fileReferences
   pkg_file_reference_local --> svc_fileReferences
@@ -369,6 +376,8 @@ flowchart LR
   svc_clientModules --> pkg_client_hmr
   svc_codeRuntime --> pkg_tools
   svc_compaction --> pkg_compaction_basic
+  svc_computerUse --> pkg_computer_use_cua_driver_native
+  svc_computerUse --> pkg_experimental_computer_use_cua_driver_mcp
   svc_cordisInspect --> pkg_tool_cordis
   svc_credentials --> pkg_api_settings_controller
   svc_credentials --> pkg_llm_deepseek
@@ -480,6 +489,7 @@ flowchart LR
 
 | ctx key | Role | Owner | Implementations | Direct consumers | Companion plugins | Note |
 | --- | --- | --- | --- | --- | --- | --- |
+| `ctx.computerUse` | `seam` | [`computer-use`](../packages/computer-use/computer-use) | [`computer-use-cua-driver-native`](../packages/computer-use/cua-driver-native), [`experimental-computer-use-cua-driver-mcp`](../packages/experimental/computer-use-cua-driver-mcp) | [`computer-use-cua-driver-native`](../packages/computer-use/cua-driver-native), [`experimental-computer-use-cua-driver-mcp`](../packages/experimental/computer-use-cua-driver-mcp) | - | One provider-owned name per service instance. Each provider also owns its model tools; the service has no common action API, runtime selection, or Session workflow lock. |
 | `ctx.externalTools` | `core` | [`external-tools`](../packages/extensions/external-tools) | - | - | - | Reconciles provider tools and the native Web search override from validated Settings and credential references. |
 | `ctx.larkManagement` | `core` | [`lark`](../packages/lark/lark) | - | - | - | Owns secret-free management status, official CLI dispatch, OAuth progress, and private-chat Session admission. |
 | `ctx.attachments` | `seam` | [`attachment`](../packages/attachment/attachment) | [`attachment-local`](../packages/attachment/attachment-local) | [`api-session-controller`](../packages/api/session-controller), [`tool-fs`](../packages/fs/tool-fs), [`llm-pi-ai`](../packages/llm/llm-pi-ai), [`llm-deepseek`](../packages/llm/llm-deepseek) | - | The host commits accepted images before session events; provider adapters resolve authorized durable references into provider-native content. |

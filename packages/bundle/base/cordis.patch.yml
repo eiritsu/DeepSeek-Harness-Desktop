@@ -455,6 +455,12 @@
 
     # ── rows every mode mounts, whose values each overlay may state ──────────────
 
+    # The exclusive computer-use provider registry. It is inert without a
+    # provider: the Desktop and Lite overlays mount the native Cua Driver
+    # provider, and no headless, web, ACP, or SDK profile selects one.
+    - id: computer-use
+      name: '@deepseek-ai/dsh-computer-use'
+
     # The tool registry. Presentation mode is a deployment choice; omitting it here
     # keeps the schema default (native).
     - id: tools

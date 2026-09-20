@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-desktop-lite",
   "description": "The lightweight macOS WKWebView bundle over the shared dsh Web application",
-  "version": "0.1.19",
+  "version": "0.1.20",
   "publishConfig": {
     "access": "public"
   },
@@ -37,6 +37,7 @@
     "@deepseek-ai/dsh-client-ui-lark": "workspace:^",
     "@deepseek-ai/dsh-client-ui-plugin-library": "workspace:^",
     "@deepseek-ai/dsh-client-ui-skill-library": "workspace:^",
+    "@deepseek-ai/dsh-computer-use-cua-driver-native": "workspace:^",
     "@deepseek-ai/dsh-external-tools": "workspace:^",
     "@deepseek-ai/dsh-file-recognizer-office": "workspace:^",
     "@deepseek-ai/dsh-lark": "workspace:^",

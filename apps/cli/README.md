@@ -51,6 +51,8 @@ The [CLI behavior reference](reference/README.md) owns exact layer precedence, f
 
 `config/examples/` ships opt-in overlays for GitHub review webhooks, session-local Schedule, memory MCP servers, and runtime Cordis tools. They are never part of a default profile; the [user guides](../../docs/user/guide/index.md) and [developer practice guides](../../docs/user/develop/practice/index.md) own setup and safety instructions.
 
+The CLI distribution carries the Computer Use runtime and native Cua provider in its dependency closure. The Desktop and Lite products mount the provider by default; no headless, web, ACP, or SDK profile mounts it. This packaging choice does not grant operating-system desktop permissions: on macOS the user grants the provider Accessibility and Screen Recording, on Windows it needs an interactive desktop session, and the provider keeps the Cua Driver SDK standard permission flow.
+
 ## Development
 
 Production runs require built package and frontend artifacts. From the repository root, run `pnpm run build` separately, then use `pnpm dsh <args...>` to run the TypeScript entry and forward every argument; the [source-execution reference](reference/README.md#source-execution) owns the module-resolution contract.

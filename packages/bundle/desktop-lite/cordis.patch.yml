@@ -41,6 +41,11 @@
         requestTimeoutMs: 15000
         maxResponseBytes: 8388608
 
+    # The Lite product ships the native Cua Driver provider; the shared
+    # registration service comes from the base bundle.
+    - id: computer-use-cua-driver-native
+      name: '@deepseek-ai/dsh-computer-use-cua-driver-native'
+
     - id: lark
       name: '@deepseek-ai/dsh-lark'
 

@@ -651,6 +651,30 @@ export interface Config {
 
 来源：[`packages/experimental/code-runtime-python/src/index.ts:42`](../packages/experimental/code-runtime-python/src/index.ts)
 
+<a id="deepseek-aidsh-experimental-computer-use-cua-driver-mcp"></a>
+
+## `@deepseek-ai/dsh-experimental-computer-use-cua-driver-mcp`
+
+需要：`computerUse` · `tools`
+
+```ts config-catalog
+/** Installed executable and MCP connection overrides. */
+export interface Config {
+  /** Executable path or PATH command; defaults to `cua-driver`. */
+  command: string
+  /** Arguments passed without a shell; defaults to `['mcp']`. */
+  args: string[]
+  /** Per-call timeout in milliseconds; omission uses the MCP client's default. */
+  toolCallTimeoutMs?: number
+  /** Reconnection overrides; defaults to the MCP client's policy. */
+  reconnect: McpClient.ReconnectConfig
+}
+```
+
+依赖：[`McpClient`](../packages/mcp/mcp-client/src/index.ts)
+
+来源：[`packages/experimental/computer-use-cua-driver-mcp/src/index.ts:20`](../packages/experimental/computer-use-cua-driver-mcp/src/index.ts)
+
 <a id="deepseek-aidsh-experimental-inspector"></a>
 
 ## `@deepseek-ai/dsh-experimental-inspector`
@@ -3655,6 +3679,8 @@ export interface Config {
 - `@deepseek-ai/dsh-command-feedback` — 需要 `commands`（[`packages/feedback/command-feedback/src/index.ts`](../packages/feedback/command-feedback/src/index.ts)）
 - `@deepseek-ai/dsh-command-goal` — 需要 `commands` · `goals`（[`packages/goal/command-goal/src/index.ts`](../packages/goal/command-goal/src/index.ts)）
 - `@deepseek-ai/dsh-commands`（[`packages/interaction/commands/src/index.ts`](../packages/interaction/commands/src/index.ts)）
+- `@deepseek-ai/dsh-computer-use`（[`packages/computer-use/computer-use/src/index.ts`](../packages/computer-use/computer-use/src/index.ts)）
+- `@deepseek-ai/dsh-computer-use-cua-driver-native` — 需要 `computerUse` · `tools` · `systemPrompt`（[`packages/computer-use/cua-driver-native/src/index.ts`](../packages/computer-use/cua-driver-native/src/index.ts)）
 - `@deepseek-ai/dsh-cordis-client-runner`（[`packages/extensions/cordis-client-runner/src/index.ts`](../packages/extensions/cordis-client-runner/src/index.ts)）
 - `@deepseek-ai/dsh-deepseek-llm-api-extensions`（[`packages/llm/deepseek-llm-api-extensions/src/index.ts`](../packages/llm/deepseek-llm-api-extensions/src/index.ts)）
 - `@deepseek-ai/dsh-experimental-client-ui-agent-team`（[`packages/experimental/client-ui-agent-team/src/index.ts`](../packages/experimental/client-ui-agent-team/src/index.ts)）

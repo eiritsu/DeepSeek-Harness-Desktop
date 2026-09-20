@@ -34,6 +34,8 @@ The `dsh web:` startup line is the shell's readiness signal: the Web profile emi
 
 Configuration export is desensitized: credentials, Session transcripts, attachment bytes, logs, and machine identity are excluded. Import merges profiles and Skills, restores settings without replacing the authoritative Session database, migrates the legacy `llm-dsh-ai` namespace to `llm-pi-ai`, and carries old Web-profile third-party plugins into `desktop-lite`. Reset stops the Node runtime before clearing owned data. Packaging must enforce a single active desktop writer before both shells are distributed together.
 
+The Lite payload carries the Computer Use service, native Cua provider, and their runtime dependencies, and the shipped `desktop-lite` profile mounts them by default. The payload does not grant macOS accessibility or screen-recording permission, so the user must complete any required TCC authorization; on Windows the provider needs an interactive desktop session. Cua Driver uses its standard permission flow.
+
 ## Develop
 
 From the repository root:

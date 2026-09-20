@@ -31,6 +31,8 @@ The loaded application receives three narrow operations for the authoritative Se
 
 The application also receives a typed SkillHub request bridge. Catalog responses and archives have byte limits; archive installation rejects invalid identifiers, symbolic links, excessive entries, missing `SKILL.md`, and existing destinations. Install and exact-name removal stop the Host before changing `$DSH_HOME/skills`. No general filesystem, arbitrary URL, raw IPC, shell, or package-manager capability is exposed to the Web client. The built-in Desktop composition also mounts the shared DeepSeek Files, external-tools, SkillHub, and Lark packages.
 
+The signed Desktop payload includes the Computer Use runtime and its native provider, and the built-in Desktop composition mounts them by default. Carrying and mounting the runtime does not grant macOS or Windows desktop permissions: macOS still requires the user's Accessibility and Screen Recording grants, Windows still requires an interactive desktop session, and the provider keeps the Cua Driver SDK standard permission flow.
+
 Electron chooses typed English or Chinese shell copy from its application locale and falls back to English. Menus, native dialogs, the startup page, and the shared plugin-library overlay use locale-owned copy; the repository Client UI i18n gate checks these desktop sources.
 
 ### Runtime and plugin activation

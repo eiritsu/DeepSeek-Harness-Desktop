@@ -64,6 +64,7 @@ export const SERVICE_PAGE: Record<string, string> = {
   shell: 'shell.md',
   shellEnv: 'shell.md',
   clientModules: 'client-modules.md',
+  computerUse: 'computer-use.md',
   codeRuntime: 'code-runtime.md',
   commands: 'commands.md',
   compaction: 'compaction.md',
@@ -247,6 +248,7 @@ export const EVENT_WALK_EXEMPTIONS: Record<string, string> = {
  * appear on more than one page.
  */
 export const LINK_MAP: Readonly<Record<string, string>> = {
+  ComputerUseProviderName: 'computer-use.md',
   Agent: 'core.md',
   AgentCancelCause: 'core.md',
   AgentFactory: 'core.md',
