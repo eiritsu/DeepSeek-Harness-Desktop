@@ -3,11 +3,13 @@ import type { ReactNode } from 'react'
 import type { PendingSubmission } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { MessageImageSource } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { fileExtension, FileTypeIcon, fileSizeText, JsonBlock, projectUserText, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { ChatNode } from '../contract/chat-nodes.ts'
 import type { ChatNodeOwnerProps, ChatNodeViewProps, ChatViewSlotProps } from '../contract/slots.ts'
 import type { ModelRetryNode, TurnErrorNode, UserMessageNode } from '../contract/snapshot.ts'
 import { CompactionItem } from './CompactionItem.tsx'
 import { ContextInjectionRow } from './ContextInjectionRow.tsx'
 import { MessageIconActions } from './MessageIconActions.tsx'
+import { retryTargetOf, sameRetryTarget } from './retry-interrupted.ts'
 import css from './MessageItem.module.css'
 
 type UserImage = Extract<UserMessageNode['content'][number], { type: 'image' }>
@@ -344,9 +346,37 @@ export function PendingSubmissionBubble({ submission, renderMessageImages, t }: 
 
 /** User and admitted-steering keyed Chat renderer. */
 export const UserMessageNodeView = memo(function UserMessageNodeView({
-  node, renderMessageImages, openFile, openSkill, t,
+  node, renderMessageImages, openFile, openSkill, retryInterrupted, useChat, t,
 }: ChatNodeViewProps<'user' | 'steering'>) {
   const data = node.data
+  // Only an ordinary turn-opening user message owns the Turn's replayable
+  // prompt; a steering message belongs to an already-running Turn. The tail is
+  // read through the Location index so retry appears only on the latest loaded
+  // Turn, and the selector returns the stable node so the subscription never
+  // republishes a fresh object.
+  const retryTail = useChat((snapshot): ChatNode<'turn-tail'> | undefined => {
+    const location = node.location
+    if (location.kind !== 'turn' && location.kind !== 'step') return undefined
+    const turn = location.turn.turn
+    if (snapshot.timeline.turnOrder.at(-1) !== turn) return undefined
+    for (const key of snapshot.locations.getTurn(turn)) {
+      const candidate = snapshot.nodes.get(key) as ChatNode | undefined
+      if (candidate?.kind === 'turn-tail') return candidate
+    }
+    return undefined
+  })
+  const retryTarget = node.kind === 'user'
+    && !retryInterrupted.sessionRunning
+    && retryTail?.data.retryable === true
+    ? retryTargetOf(retryTail.data.closing?.finalNode)
+    : undefined
+  const retryError = retryInterrupted.state.error
+  const retryFailure = retryTarget !== undefined && retryError !== null
+    && sameRetryTarget(retryError.target, retryTarget)
+    ? (retryError.code === 'session/retry-unavailable'
+      ? t('message.retryInterrupted.unavailable')
+      : t('message.retryInterrupted.failed'))
+    : undefined
   return (
     <UserStyleBubble
       content={data.content}
@@ -361,6 +391,9 @@ export const UserMessageNodeView = memo(function UserMessageNodeView({
           time={data.time}
           clock="start"
           className={css.actions}
+          {...retryTarget === undefined ? {} : { onRetry: () => { retryInterrupted.run(retryTarget) } }}
+          retryPending={retryInterrupted.state.pending}
+          {...retryFailure === undefined ? {} : { retryFailure }}
           t={t}
         />
       )}

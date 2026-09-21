@@ -16,7 +16,7 @@ Use this package to render browser Chat from recorded Session conversations, inc
 - [System prompt row](#system-prompt-row)
 - [Turn token usage](#turn-token-usage)
 - [Completed-turn footer](#completed-turn-footer)
-- [Interrupted-answer retry](#interrupted-answer-retry)
+- [Latest-answer retry](#latest-answer-retry)
 - [Turn Process Folding](#turn-process-folding)
 - [Scroll ownership](#scroll-ownership)
 - [Model Experience](#model-experience)
@@ -49,10 +49,10 @@ The completed-turn action footer starts 20px below the preceding prose or extens
 
 -----
 
-<a id="interrupted-answer-retry"></a>
-## Interrupted-answer retry
+<a id="latest-answer-retry"></a>
+## Latest-answer retry
 
-When the latest Turn of an idle Session closes on a genuinely interrupted assistant answer that ran no tool call, the completed-turn footer renders a Retry icon beside copy. The action asks the Host to re-run the Turn's original prompt with the Session's current model, effort, and permission configuration: the durable prompt content (text and attachment references) enters model history once and the interrupted partial is shadowed, while the append-only transcript keeps the old attempt for audit. A closing answer is retryable whether it settled as a surface `assistant/message` or as a log-only `assistant/attempt` (a stop before any surface message); reasoning-only stops count, and the action addresses the durable message id or attempt seq rather than a fabricated id. The button is hidden for a running Session, a non-latest Turn, a Turn that ran tool calls or more than one assistant settlement, and a log-only attempt whose Turn did not end aborted or crash-repaired; a rejected admission reports inline beside the button. One admission per Session is in flight at a time, so a double click admits once, and a connection reset drops a settlement that started on the previous generation.
+When the latest Turn of an idle Session closes on a single assistant answer that ran no tool call, the Turn's opening user message renders a Retry icon beside copy in its action row. The action asks the Host to re-run the Turn's original prompt with the Session's current model, effort, and permission configuration: the durable prompt content (text and attachment references) enters model history once and the previous answer is shadowed, while the append-only transcript keeps the old one for audit. The closing answer is retryable whether it settled as an interrupted surface `assistant/message`, an ordinary completed surface `assistant/message`, or a log-only `assistant/attempt` (a stop before any surface message); reasoning-only and zero-output stops count, and the action addresses the durable message id or attempt seq rather than a fabricated id. The button is hidden for a running Session, a non-latest Turn, a steering message, a Turn that ran tool calls or held more than one assistant settlement, a completed Turn whose end reason is not `completed`, and a log-only attempt whose Turn did not end aborted or crash-repaired; a rejected admission reports inline on the action row. One admission per Session is in flight at a time, so a double click admits once, and a connection reset drops a settlement that started on the previous generation.
 
 -----
 

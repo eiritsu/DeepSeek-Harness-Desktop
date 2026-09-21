@@ -1,22 +1,22 @@
-/** Resolve one retryable interrupted-assistant turn from a Session log. */
+/** Resolve one retryable assistant turn from a Session log. */
 
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { foldSurface } from '@deepseek-ai/dsh-session'
 import type { SessionEvent, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { SessionInterruptedRetryTarget } from './types.ts'
 
-/** Durable facts for one retryable interrupted-assistant turn. */
-export interface InterruptedRetryTarget {
+/** Durable facts for one retryable assistant turn. */
+export interface ResolvedRetryTarget {
   /** Inclusive surface seq of the replayable prompt. */
   readonly promptSeq: SessionSeq
   /**
-   * Inclusive surface seq the replacement ends at: the interrupted
-   * `assistant/message`, or the log-only attempt turn's last surface node.
+   * Inclusive surface seq the replacement ends at: the `assistant/message`, or
+   * the log-only attempt turn's last surface node.
    */
   readonly endSeq: SessionSeq
   /**
    * Every source event the replacement cites, in log order: the shadowed
-   * surface nodes plus a log-only interrupted attempt.
+   * surface nodes plus a log-only attempt.
    */
   readonly sourceSeqs: readonly SessionSeq[]
   /** Durable prompt content the retry replays. */
@@ -27,7 +27,7 @@ export interface InterruptedRetryTarget {
 interface RetryableTurn {
   readonly turn: number
   readonly turnStart: SessionEvent<'turn/start'>
-  /** Durable seq of the interrupted settlement the retry replaces. */
+  /** Durable seq of the settlement the retry replaces. */
   readonly settlementSeq: SessionSeq
   readonly logOnlyAttempt: boolean
 }
@@ -78,12 +78,16 @@ function messageTurn(
   messageId: string,
 ): RetryableTurn | undefined {
   const settlement = events.find((event): event is SessionEvent<'assistant/message'> =>
-    event.type === 'assistant/message'
-    && event.data.message.id === messageId
-    && event.data.interrupted === true)
+    event.type === 'assistant/message' && event.data.message.id === messageId)
   if (settlement === undefined) return undefined
   const turn = latestClosedTurn(events, settlement.data.turn, settlement.seq)
   if (turn === undefined) return undefined
+  // An interrupted answer carries its own marker and is replayable whatever
+  // closed the Turn. An ordinary answer is regenerated only when the Turn
+  // completed normally, so an error or max-tokens close stays untouchable.
+  if (settlement.data.interrupted !== true && turn.turnEnd.data.reason.kind !== 'completed') {
+    return undefined
+  }
   return { turn: settlement.data.turn, turnStart: turn.turnStart, settlementSeq: settlement.seq, logOnlyAttempt: false }
 }
 
@@ -110,28 +114,29 @@ function attemptTurn(
 }
 
 /**
- * Resolve the latest retryable interrupted-assistant turn in one Session log.
+ * Resolve the latest retryable assistant turn in one Session log.
  *
  * The current surface must end with the addressed settlement's turn. An
- * `assistant-message` address requires the last surface node to be the
- * interrupted message; an `assistant-attempt` address requires the latest
- * closed Turn to end `aborted`/`interrupted` with that attempt as its only
- * settlement and no `assistant/message` on its surface. Within that turn's
- * current surface range, the resolver locates the replayable prompt — an
- * ordinary `user/message` or a previous retry's `assistant-retry` — and accepts
- * only injected context and system nodes between it and the surface end. The
- * returned range and provenance cover every shadowed node and, for a log-only
- * attempt, the attempt event itself. A running turn, a tool call or result, a
- * second assistant answer or attempt, a second replayable prompt, or no
- * replayable prompt all reject.
+ * `assistant-message` address requires the last surface node to be that
+ * message, either `interrupted` or a completed Turn's ordinary answer; an
+ * `assistant-attempt` address requires the latest closed Turn to end
+ * `aborted`/`interrupted` with that attempt as its only settlement and no
+ * `assistant/message` on its surface. Within that turn's current surface range,
+ * the resolver locates the replayable prompt — an ordinary `user/message` or a
+ * previous retry's `assistant-retry` — and accepts only injected context and
+ * system nodes between it and the surface end. The returned range and
+ * provenance cover every shadowed node and, for a log-only attempt, the attempt
+ * event itself. A running turn, a tool call or result, a second assistant
+ * answer or attempt, a second replayable prompt, or no replayable prompt all
+ * reject.
  * @param events - complete ordered Session log.
- * @param target - durability-addressed interrupted settlement to regenerate.
+ * @param target - durability-addressed assistant settlement to regenerate.
  * @returns the resolved target, or undefined when the tail is not retryable.
  */
 export function resolveInterruptedRetryTarget(
   events: readonly SessionEvent[],
   target: SessionInterruptedRetryTarget,
-): InterruptedRetryTarget | undefined {
+): ResolvedRetryTarget | undefined {
   const turn = target.kind === 'assistant-message'
     ? messageTurn(events, target.messageId)
     : attemptTurn(events, target.seq)

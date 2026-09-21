@@ -131,6 +131,13 @@ function hasInterruptionEvidence(blocks: readonly AssistantBlock[]): boolean {
   })
 }
 
+/** Whether one Assistant is a log-only attempt that settled without any block. */
+function isEmptyLogOnlyAttempt(data: FinalAssistantChatData): boolean {
+  return data.status === 'interrupted'
+    && data.finalNode.attemptSeq !== undefined
+    && data.blocks.length === 0
+}
+
 /** Count one Turn's durable assistant settlements, surface messages and log-only attempts. */
 function settlementCount(matches: readonly ConversationMatch[]): number {
   let count = 0
@@ -155,7 +162,12 @@ function tailData(context: ConversationNodeContext<TurnTailState>): TurnTailChat
   const finalized = assistants
     .filter((candidate): candidate is Readonly<FinalAssistantChatData> => candidate.finalNode !== undefined)
     .sort((left, right) => left.finalNode.seq - right.finalNode.seq)
-  const closing = finalized.findLast(hasClosingContent) ?? null
+  // A Turn whose sole durable settlement is an empty log-only attempt still has
+  // a stopped answer to own its footer: no block arrived, but the attempt is the
+  // interruption. A content-bearing answer keeps the footer when both exist.
+  const soleSettlement = finalized.length === 1 ? finalized[0] : undefined
+  const closing = finalized.findLast(hasClosingContent)
+    ?? (soleSettlement !== undefined && isEmptyLogOnlyAttempt(soleSettlement) ? soleSettlement : null)
   let latestTranscriptSeq = finalized.at(-1)?.finalNode.seq
   for (const match of context.matches) {
     const event = match.event
@@ -174,22 +186,21 @@ function tailData(context: ConversationNodeContext<TurnTailState>): TurnTailChat
     ? deriveTurnTokenUsage(context.matches.map(match => match.event).filter(isSessionEvent))
     : undefined
   const branchUnavailable = closing === null || latestTranscriptSeq !== closing.finalNode.seq
-  // Retry replays the Turn's original prompt over its interrupted tail, so it
-  // is safe only when the Turn's sole answer is the interrupted closing one and
-  // no tool call or tool result intervened. A surface message carries its own
-  // `interrupted` marker; a log-only attempt has none, so its Turn must have
-  // ended aborted or crash-repaired for the Client to offer the action.
+  // Retry replays the Turn's original prompt over its closing answer, so it is
+  // safe only when that answer is the Turn's sole settlement and no tool call or
+  // result intervened. A surface message is retryable when it was interrupted or
+  // when its Turn completed normally; a log-only attempt carries no interruption
+  // marker, so its Turn must have ended aborted or crash-repaired and must hold
+  // exactly one settlement for the address to be unambiguous.
   const logOnlyAttempt = closing !== null && closing.finalNode.messageId === undefined
   const endReason = end.event.data.reason.kind
   const interruptionReason = endReason === 'aborted' || endReason === 'interrupted'
   const retryable = closing !== null
-    && closing.status === 'interrupted'
     && finalized.length === 1
     && !branchUnavailable
-    // A surface message carries its own `interrupted` marker. A log-only attempt
-    // has none, so its Turn must have ended aborted or crash-repaired and must
-    // hold exactly one settlement for the address to be unambiguous.
-    && (!logOnlyAttempt || (interruptionReason && settlementCount(context.matches) === 1))
+    && (logOnlyAttempt
+      ? closing.status === 'interrupted' && interruptionReason && settlementCount(context.matches) === 1
+      : closing.status === 'interrupted' || (closing.status === 'settled' && endReason === 'completed'))
     && !context.matches.some(match =>
       match.event.type === 'tool/call' || match.event.type === 'tool/result')
   return {

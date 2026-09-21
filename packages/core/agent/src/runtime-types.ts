@@ -236,10 +236,10 @@ declare module './types.ts' {
     followup(message: UserMessage): void
 
     /**
-   * Re-run one interrupted turn by replacing an earlier surface range with a
+   * Re-run one assistant answer by replacing an earlier surface range with a
    * replayed user message. The next accepted step admits `message` as that
    * positional replacement instead of an append, so the replayed prompt enters
-   * model history exactly once while the shadowed interrupted partial does not.
+   * model history exactly once while the shadowed answer does not.
    * The turn still runs the ordinary pre-step, current request configuration,
    * and streaming path. The caller owns retryability and idle checks. Absent on
    * a driver that cannot replay a surface replacement; callers must check.

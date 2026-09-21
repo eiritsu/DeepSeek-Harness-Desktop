@@ -10,10 +10,12 @@ import type { MessageId } from '@deepseek-ai/dsh-api-remotes/client'
 import { SessionSeq } from '@deepseek-ai/dsh-session/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import type { ChatNodeViewProps, RetryInterruptedOwnerProps } from '../src/client/contract/slots.ts'
+import type { RetryInterruptedView } from '../src/client/chat/retry-interrupted.ts'
 import { RetryInterruptedController } from '../src/client/chat/retry-interrupted.ts'
-import { TurnTailNodeView } from '../src/client/chat/TurnTailNodeView.tsx'
+import { AssistantMarkdown } from '../src/client/chat/AssistantMarkdown.tsx'
+import { UserMessageNodeView } from '../src/client/chat/MessageItem.tsx'
 import { en } from '../src/client/locale.ts'
-import type { RetryInterruptedOwnerProps } from '../src/client/contract/slots.ts'
 
 afterEach(cleanup)
 
@@ -119,19 +121,27 @@ describe('RetryInterruptedController', () => {
   })
 })
 
-interface TailOptions {
+interface UserOptions {
   readonly retryable?: boolean
+  /** Defaults to the zero-output aborted attempt: no surface message, empty stream. */
+  readonly surfaceMessage?: boolean
+  /** Render the surface message as an ordinary completed answer rather than interrupted. */
+  readonly settled?: boolean
+  readonly attemptSeq?: number
+  /** Closing settlement carries neither a message id nor an attempt seq. */
+  readonly noAddress?: boolean
   readonly latest?: boolean
   readonly sessionRunning?: boolean
   readonly pending?: boolean
-  readonly omitMessageId?: boolean
-  readonly attemptSeq?: number
-  readonly reasoningOnly?: boolean
-  readonly error?: { readonly target: SessionInterruptedRetryTarget; readonly code: string; readonly message: string } | null
+  readonly kind?: 'user' | 'steering'
+  readonly error?: RetryInterruptedView['error']
   readonly run?: (target: SessionInterruptedRetryTarget) => void
+  /** Render the stopped Assistant marker beside the user row. */
+  readonly withStopped?: boolean
 }
 
-function renderTail(options: TailOptions = {}) {
+/** Render the user row over the same Turn's tail, defaulting to a zero-output stopped answer. */
+function renderUser(options: UserOptions = {}) {
   const t = makeTranslate(en)
   const run = options.run ?? vi.fn<(target: SessionInterruptedRetryTarget) => void>()
   const retryInterrupted: RetryInterruptedOwnerProps = {
@@ -139,133 +149,150 @@ function renderTail(options: TailOptions = {}) {
     state: { pending: options.pending ?? false, error: options.error ?? null },
     run,
   }
-  const nodeKey = 'tail-1'
-  const turnOrder = options.latest === false ? [1, 2] : [1]
-  const snapshot = {
-    locations: { getTurn: () => [{ key: nodeKey }] },
-    timeline: { turnOrder },
+  const blocks: readonly never[] = []
+  const finalNode = {
+    kind: 'assistant',
+    seq: 4,
+    time: 900,
+    turn: 1,
+    step: 1,
+    blocks,
+    ...options.settled === true ? {} : { interrupted: true },
+    ...options.surfaceMessage === true
+      ? { messageId: 'm1' }
+      : options.noAddress === true ? {} : { attemptSeq: options.attemptSeq ?? 4 },
   }
-  const blocks = options.reasoningOnly === true
-    ? [{ kind: 'reasoning', text: 'thinking about it' }]
-    : [{ kind: 'text', text: 'half an answer' }]
-  const node = {
-    key: nodeKey,
+  const userKey = 'user-key'
+  const tailKey = 'tail-key'
+  const turn = { turn: 1, start: { time: 0 }, end: { time: 1_000 } }
+  const userNode = {
+    key: userKey,
+    kind: options.kind ?? 'user',
+    id: 'user-1',
+    target: 'chat',
+    anchorSeq: 2,
+    visibility: 'visible',
+    location: { kind: 'turn', turn },
+    data: options.kind === 'steering'
+      ? { kind: 'steering', messageId: 'steer-1', seq: 2, time: 2_000, turn: 1, content: [{ type: 'text', text: 'question' }], source: null }
+      : { kind: 'user', seq: 2, time: 2_000, content: [{ type: 'text', text: 'question' }], source: null },
+  }
+  const tailNode = {
+    key: tailKey,
     kind: 'turn-tail',
     id: '1',
     target: 'chat',
     anchorSeq: 5,
     visibility: 'visible',
-    location: { kind: 'turn', turn: { turn: 1, start: { time: 0 }, end: { time: 1000 } } },
+    location: { kind: 'turn', turn },
     data: {
       turn: 1,
       seq: 5,
-      time: 1000,
-      closing: {
-        status: 'interrupted',
-        turn: 1,
-        step: 1,
-        time: 900,
-        blocks,
-        finalNode: {
-          kind: 'assistant',
-          seq: 4,
-          ...(options.omitMessageId === true ? {} : { messageId: 'm1' }),
-          ...(options.attemptSeq === undefined ? {} : { attemptSeq: options.attemptSeq }),
-          time: 900,
-          turn: 1,
-          step: 1,
-          blocks,
-          timing: { stepStartTime: 0, firstTokenTime: 1, completedTime: 900 },
-          interrupted: true,
-        },
-      },
+      time: 1_000,
+      closing: { status: options.settled === true ? 'settled' : 'interrupted', turn: 1, step: 1, blocks, time: 900, finalNode },
       branchUnavailable: false,
       retryable: options.retryable ?? true,
     },
   }
+  const turnOrder = options.latest === false ? [1, 2] : [1]
+  const snapshot = {
+    order: [userKey, tailKey],
+    nodes: {
+      get: (key: string) => key === userKey ? userNode : key === tailKey ? tailNode : undefined,
+    },
+    locations: { getTurn: (value: number) => value === 1 ? [userKey, tailKey] : [] },
+    timeline: { turnOrder, turns: new Map() },
+  }
   const props = {
-    node,
+    node: userNode,
+    renderMessageImages: () => null,
     openFile: () => {},
     openSkill: () => {},
-    inspectCall: () => {},
-    forkAt: () => {},
-    loadImage: (() => Promise.reject(new Error('unused'))) as never,
-    renderMessageImages: () => null,
-    fileMentions: () => undefined,
-    useTurnData: () => undefined,
-    renderSlot: () => null,
-    renderSlotChain: () => null,
     retryInterrupted,
-    t: t as never,
     useChat: ((selector: (value: unknown) => unknown) => selector(snapshot)) as never,
-  } as unknown as ComponentProps<typeof TurnTailNodeView>
-  render(<TurnTailNodeView {...props} />)
-  return { run }
+    t: t as never,
+  } as unknown as ChatNodeViewProps<'user' | 'steering'>
+  const renderMessageImages = () => null
+  const view = render(
+    <>
+      {options.withStopped === true && (
+        <AssistantMarkdown
+          blocks={blocks}
+          streaming={false}
+          interrupted
+          renderMessageImages={renderMessageImages}
+          t={t as ComponentProps<typeof AssistantMarkdown>['t']}
+        />
+      )}
+      <UserMessageNodeView {...props} />
+    </>,
+  )
+  return { run, view }
 }
 
-describe('TurnTailNodeView retry action', () => {
-  it('shows the Retry action and admits the addressed message', () => {
-    const { run } = renderTail()
-    const button = screen.getByRole('button', { name: 'Retry' })
-    fireEvent.click(button)
-    expect(run).toHaveBeenCalledWith(MESSAGE_TARGET)
-  })
-
-  it('admits a reasoning-only interrupted answer without durable text', () => {
-    const { run } = renderTail({ reasoningOnly: true })
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
-    expect(run).toHaveBeenCalledWith(MESSAGE_TARGET)
-  })
-
-  it('admits the durable attempt seq of a log-only interrupted settlement', () => {
-    const { run } = renderTail({ omitMessageId: true, attemptSeq: 4 })
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+describe('UserMessageNodeView retry action', () => {
+  it('marks a zero-output stopped answer and offers retry after copy, admitting its attempt seq', () => {
+    const { run } = renderUser({ withStopped: true })
+    // The aborted answer's durable settlement still renders its stopped marker.
+    expect(screen.getByText('Stopped')).toBeTruthy()
+    const copy = screen.getByRole('button', { name: 'copy' })
+    const retry = screen.getByRole('button', { name: 'Retry' })
+    // Retry rides copy's own control chrome and sits immediately after it.
+    expect(retry.className).toBe(copy.className)
+    expect(copy.compareDocumentPosition(retry) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+    fireEvent.click(retry)
     expect(run).toHaveBeenCalledWith(ATTEMPT_TARGET)
   })
 
-  it('hides the action when the turn is not retryable', () => {
-    renderTail({ retryable: false })
+  it('admits the interrupted surface message id', () => {
+    const { run } = renderUser({ surfaceMessage: true })
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(run).toHaveBeenCalledWith(MESSAGE_TARGET)
+  })
+
+  it('admits the completed surface message id of the latest safe answer', () => {
+    const { run } = renderUser({ surfaceMessage: true, settled: true })
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(run).toHaveBeenCalledWith(MESSAGE_TARGET)
+  })
+
+  it('hides retry when the turn is not retryable', () => {
+    renderUser({ retryable: false })
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
   })
 
-  it('hides the action when the closing answer addresses no durable settlement', () => {
-    renderTail({ omitMessageId: true })
+  it('hides retry when a later turn exists', () => {
+    renderUser({ latest: false })
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
   })
 
-  it('hides the action when a later turn exists', () => {
-    renderTail({ latest: false })
+  it('hides retry while the session is running', () => {
+    renderUser({ sessionRunning: true })
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
   })
 
-  it('hides the action while the session is running', () => {
-    renderTail({ sessionRunning: true })
+  it('hides retry for a steering message', () => {
+    renderUser({ kind: 'steering' })
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
   })
 
-  it('disables the action while an admission is pending', () => {
-    renderTail({ pending: true })
+  it('hides retry when the closing answer addresses no durable settlement', () => {
+    renderUser({ noAddress: true })
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+  })
+
+  it('disables retry while an admission is pending', () => {
+    renderUser({ pending: true })
     expect(screen.getByRole('button', { name: 'Retry' }).getAttribute('disabled')).not.toBeNull()
   })
 
-  it('shows the addressed failure beside the action', () => {
-    renderTail({ error: { target: MESSAGE_TARGET, code: 'session/retry-unavailable', message: 'nope' } })
-    expect(screen.getByRole('status').textContent).toBe('This answer can no longer be retried')
-  })
-
-  it('shows the addressed attempt failure beside the action', () => {
-    renderTail({
-      omitMessageId: true,
-      attemptSeq: 4,
-      error: { target: ATTEMPT_TARGET, code: 'session/retry-unavailable', message: 'nope' },
-    })
+  it('shows the addressed failure after the row', () => {
+    renderUser({ error: { target: ATTEMPT_TARGET, code: 'session/retry-unavailable', message: 'nope' } })
     expect(screen.getByRole('status').textContent).toBe('This answer can no longer be retried')
   })
 
   it('does not show a failure addressed to another settlement', () => {
-    renderTail({
-      omitMessageId: true,
-      attemptSeq: 4,
+    renderUser({
       error: { target: { kind: 'assistant-attempt', seq: SessionSeq(99) }, code: 'session/retry-unavailable', message: 'nope' },
     })
     expect(screen.queryByRole('status')).toBeNull()

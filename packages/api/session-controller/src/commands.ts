@@ -490,16 +490,17 @@ export class SessionCommandController {
   }
 
   /**
-   * Re-run the latest interrupted assistant settlement from its original prompt.
+   * Re-run the latest safe assistant answer from its original prompt.
    *
    * Requires an idle Agent and the exact supported surface tail; the replayed
    * prompt keeps its durable text and attachment references and enters model
    * history once, as a positional replacement of the original prompt through
-   * the interrupted settlement. The address names either a durable interrupted
-   * `assistant/message` or a log-only `assistant/attempt`. A concurrent call
-   * while one admission is in flight accepts once, and a later call re-validates
-   * against the current surface; an unsupported tail rejects.
-   * @param request - Session identity and the durability-addressed interrupted settlement.
+   * the address settlement. The address names a durable `assistant/message` —
+   * interrupted, or an ordinary answer whose Turn completed — or a log-only
+   * `assistant/attempt`. A concurrent call while one admission is in flight
+   * accepts once, and a later call re-validates against the current surface; an
+   * unsupported tail rejects.
+   * @param request - Session identity and the durability-addressed assistant settlement.
    * @returns acknowledgement that the retry entered the live Agent.
    * @throws RemoteError when the Session is running or its tail is not retryable.
    */
@@ -508,7 +509,7 @@ export class SessionCommandController {
     if (agent.status !== 'idle') {
       throw new RemoteError(
         'session/agent-busy',
-        'the session is running; retrying an interrupted answer needs an idle session',
+        'the session is running; retrying an answer needs an idle session',
         { reason: 'running' },
       )
     }
@@ -521,7 +522,7 @@ export class SessionCommandController {
       if (target === undefined) {
         throw new RemoteError(
           'session/retry-unavailable',
-          'the addressed answer is not the latest interrupted assistant answer of an idle session',
+          'the addressed answer is not the latest retryable assistant answer of an idle session',
           { reason: 'unsupported-tail' },
         )
       }

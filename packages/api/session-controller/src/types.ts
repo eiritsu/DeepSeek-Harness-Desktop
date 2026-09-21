@@ -340,21 +340,23 @@ export interface SessionPromptValue {
 }
 
 /**
- * Durable address of the interrupted assistant settlement a retry replaces.
- * A cancelled turn carries either a surface `assistant/message` (visible text
- * or reasoning was delivered) or a log-only `assistant/attempt` (nothing the
- * surface could finalize). Neither a fabricated message id nor a chunk position
- * addresses the second form, so the address names the exact durable carrier.
+ * Durable address of the assistant settlement a retry replaces. The settlement
+ * is the latest safe answer of an idle Session: an `interrupted` surface
+ * `assistant/message` (visible text or reasoning was delivered), a completed
+ * Turn's ordinary surface `assistant/message`, or a log-only
+ * `assistant/attempt` (nothing the surface could finalize). Neither a
+ * fabricated message id nor a chunk position addresses the last form, so the
+ * address names the exact durable carrier.
  */
 export type SessionInterruptedRetryTarget =
   | {
     readonly kind: 'assistant-message'
-    /** Durable id of the interrupted `assistant/message`. */
+    /** Durable id of the addressed `assistant/message`. */
     readonly messageId: MessageId
   }
   | {
     readonly kind: 'assistant-attempt'
-    /** Durable `seq` of the interrupted log-only `assistant/attempt`. */
+    /** Durable `seq` of the aborted or crash-repaired log-only `assistant/attempt`. */
     readonly seq: SessionSeq
   }
 
@@ -365,14 +367,14 @@ export type SessionInterruptedRetryTarget =
  */
 export type AssistantRetryProvenance = SessionInterruptedRetryTarget | MessageId
 
-/** Retry request for the latest interrupted assistant answer. */
+/** Retry request for the latest safe assistant answer. */
 export interface SessionRetryInterruptedRequest {
   readonly sessionId: SessionId
-  /** Durable address of the interrupted assistant settlement to regenerate. */
+  /** Durable address of the assistant settlement to regenerate. */
   readonly target: SessionInterruptedRetryTarget
 }
 
-/** Receipt after one interrupted-answer retry is admitted to the live Agent. */
+/** Receipt after one answer retry is admitted to the live Agent. */
 export interface SessionRetryInterruptedValue {
   readonly accepted: true
 }
@@ -432,10 +434,10 @@ declare module '@deepseek-ai/dsh-llm' {
     /** Browser prompt correlation and optional Host-validated time zone. */
     'user-rpc': { kind: 'user'; rpcId: SessionRequestId; clientTimeZone?: string }
     /**
-     * Replayed prompt of an interrupted-assistant retry. The event carries a
-     * positional surface replacement; `retryOf` names the interrupted
-     * settlement it shadows, for audit. A released 0.1.20 log stores the bare
-     * interrupted `MessageId`; current writers store a
+     * Replayed prompt of an assistant-answer retry. The event carries a
+     * positional surface replacement; `retryOf` names the settlement it
+     * shadows, for audit. A released 0.1.20 log stores the bare interrupted
+     * `MessageId`; current writers store a
      * {@link SessionInterruptedRetryTarget}.
      */
     'assistant-retry': { kind: 'assistant-retry'; retryOf: AssistantRetryProvenance }

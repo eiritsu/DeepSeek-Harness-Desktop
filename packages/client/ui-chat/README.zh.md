@@ -16,7 +16,7 @@ kind: "package-reference"
 - [系统提示词行](#system-prompt-row)
 - [轮次 token 用量](#turn-token-usage)
 - [已完成轮次的页脚](#completed-turn-footer)
-- [中断回答重试](#interrupted-answer-retry)
+- [最新回答重试](#latest-answer-retry)
 - [轮次过程折叠](#turn-process-folding)
 - [滚动归属](#scroll-ownership)
 - [模型体验](#model-experience)
@@ -51,10 +51,10 @@ Session 级 token pill 读取持久 `tokenUsage` 投影。已知的正数缓存�
 
 -----
 
-<a id="interrupted-answer-retry"></a>
-## 中断回答重试
+<a id="latest-answer-retry"></a>
+## 最新回答重试
 
-当空闲会话的最新轮次以真正被中断、且未执行任何 tool call 的 assistant 回答结束时，已完成轮次的页脚会在复制按钮旁渲染 Retry 图标。该操作请求 Host 以会话当前的模型、effort 与权限配置重新执行该轮次的原始提示词：持久提示词内容（文本与 attachment 引用）只进入模型历史一次，被中断的半截回答被遮蔽，而 append-only transcript 仍保留旧尝试以供审计。结束回答无论落盘为 surface `assistant/message` 还是仅写入日志的 `assistant/attempt`（在任何 surface message 之前停止）都可重试；只有 reasoning 的停止也算，且操作地址使用持久 message id 或 attempt seq，而不伪造 id。会话运行中、非最新轮次、执行过 tool call 或有多个 assistant settlement 的轮次，以及 Turn 未以 aborted 或崩溃修复结束的仅日志 attempt，都会隐藏该按钮；被拒绝的 admission 会在按钮旁原地显示。每个会话同一时间只允许一次 admission 在途，因此双击只接纳一次；连接 reset 会丢弃在上一个 generation 开始的结算。
+当空闲会话的最新轮次以单条、且未执行任何 tool call 的 assistant 回答结束时，该轮次的开轮 user 消息会在自己的操作栏中、复制按钮旁渲染 Retry 图标。该操作请求 Host 以会话当前的模型、effort 与权限配置重新执行该轮次的原始提示词：持久提示词内容（文本与 attachment 引用）只进入模型历史一次，先前的回答被遮蔽，而 append-only transcript 仍保留旧回答以供审计。结束回答无论落盘为被中断的 surface `assistant/message`、正常完成的 surface `assistant/message`，还是仅写入日志的 `assistant/attempt`（在任何 surface message 之前停止）都可重试；只有 reasoning 或零输出的停止也算，且操作地址使用持久 message id 或 attempt seq，而不伪造 id。会话运行中、非最新轮次、steering 消息、执行过 tool call 或持有多个 assistant settlement 的轮次、结束原因不是 `completed` 的已完成轮次，以及 Turn 未以 aborted 或崩溃修复结束的仅日志 attempt，都会隐藏该按钮；被拒绝的 admission 会在该操作栏原地显示。每个会话同一时间只允许一次 admission 在途，因此双击只接纳一次；连接 reset 会丢弃在上一个 generation 开始的结算。
 
 -----
 

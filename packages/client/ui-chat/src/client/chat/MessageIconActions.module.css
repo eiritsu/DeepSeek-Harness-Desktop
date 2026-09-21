@@ -91,6 +91,26 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
+/* A pending retry disables its control the way a native disabled button does;
+   copy and branch never set it, so they keep their hover chrome. */
+.action:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.action:disabled:hover {
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.retryFailure {
+  padding-left: 4px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: var(--dsh-content-font-size-secondary, 13px);
+  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
+  white-space: nowrap;
+}
+
 .visuallyHidden {
   position: absolute;
   width: 1px;

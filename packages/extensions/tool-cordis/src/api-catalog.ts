@@ -1663,8 +1663,8 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: '@Remote(\'retryInterrupted\') retryInterrupted(request: SessionRetryInterruptedRequest): Promise<SessionRetryInterruptedValue>',
-        description: 'Re-run the latest interrupted assistant answer from its original prompt.',
-        parameters: [{ name: 'request', description: 'Session identity and the interrupted assistant message.' }],
+        description: 'Re-run the latest safe assistant answer from its original prompt.',
+        parameters: [{ name: 'request', description: 'Session identity and the durability-addressed assistant settlement.' }],
         returns: 'acknowledgement that the retry entered the live Agent.',
       },
       {

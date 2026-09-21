@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import {
-  IconBranchOutline16, IconCheckOutline16, IconCopyOutline16, Tooltip, writeClipboard,
+  IconBranchOutline16, IconCheckOutline16, IconCopyOutline16, IconRefreshOutline16, Tooltip, writeClipboard,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ChatViewSlotProps } from '../contract/slots.ts'
 import { formatMessageClock } from './message-chrome.ts'
@@ -29,10 +29,14 @@ export interface MessageIconActionsProps {
    */
   extraActions?: ReactNode
   /**
-   * Built-in retry control for an interrupted answer, seated immediately after
-   * the copy button.
+   * Admit a retry for this message's retryable answer. Omission hides the
+   * built-in control, seated immediately after the copy button.
    */
-  retryAction?: ReactNode
+  onRetry?: (() => void) | undefined
+  /** Whether a retry admission is in flight, disabling the built-in control. */
+  retryPending?: boolean | undefined
+  /** Locale-owned retry failure announced after the icon cluster. */
+  retryFailure?: string | undefined
   /**
    * Icon-row Turn-usage trigger (the TurnUsagePanel pill), seated after the
    * branch control at the end of the icon cluster.
@@ -49,7 +53,7 @@ export interface MessageIconActionsProps {
  */
 export function MessageIconActions({
   text, time, clock, onBranch, branchUnavailable = false, className,
-  extraActions, retryAction, usageAction, t,
+  extraActions, onRetry, retryPending = false, retryFailure, usageAction, t,
 }: MessageIconActionsProps) {
   const day = useCalendarDay()
   const reasonId = useId()
@@ -92,7 +96,19 @@ export function MessageIconActions({
           {copied ? <IconCheckOutline16 /> : <IconCopyOutline16 />}
         </button>
       </Tooltip>
-      {retryAction}
+      {onRetry !== undefined && (
+        <Tooltip label={t('message.retryInterrupted.action')} side="bottom">
+          <button
+            type="button"
+            className={css.action}
+            aria-label={t('message.retryInterrupted.action')}
+            disabled={retryPending}
+            onClick={onRetry}
+          >
+            <IconRefreshOutline16 />
+          </button>
+        </Tooltip>
+      )}
       {extraActions}
       {onBranch !== undefined && (
         <Tooltip label={branchUnavailable ? t('message.branchUnavailable') : t('message.branch')} side="bottom">
@@ -115,6 +131,7 @@ export function MessageIconActions({
       )}
       {usageAction}
       {clock === 'end' ? clockEl : null}
+      {retryFailure !== undefined && <span className={css.retryFailure} role="status">{retryFailure}</span>}
     </div>
   )
 }

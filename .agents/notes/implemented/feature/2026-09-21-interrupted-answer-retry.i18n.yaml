@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-21-interrupted-answer-retry.md
-2026-09-21-interrupted-answer-retry.md: ff2ad26d95b1803b5dc9d528ee9f86b9ec62eeb2
-2026-09-21-interrupted-answer-retry.zh.md: c8c05033a7b296ef8ae02474122492bee887ea77
+2026-09-21-interrupted-answer-retry.md: b1b280002e4cff4eda91135ddbe71fd82ded71ca
+2026-09-21-interrupted-answer-retry.zh.md: 9dfb2b480bd60e3fbf6a861721f99c25d8622079

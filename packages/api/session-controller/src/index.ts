@@ -365,8 +365,8 @@ export class SessionController extends TypertRemoteService {
   }
 
   /**
-   * Re-run the latest interrupted assistant answer from its original prompt.
-   * @param request - Session identity and the interrupted assistant message.
+   * Re-run the latest safe assistant answer from its original prompt.
+   * @param request - Session identity and the durability-addressed assistant settlement.
    * @returns acknowledgement that the retry entered the live Agent.
    */
   @Remote('retryInterrupted')

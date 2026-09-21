@@ -1,13 +1,14 @@
 /**
- * Per-Session retry of the latest interrupted assistant answer. The controller
- * owns one in-flight admission: a click admits once, a connection reset
- * invalidates a settlement that started on the previous generation, and the
- * view reads the published state through the framework-bound hook.
+ * Per-Session retry of the latest safe assistant answer. The controller owns
+ * one in-flight admission: a click admits once, a connection reset invalidates
+ * a settlement that started on the previous generation, and the view reads the
+ * published state through the framework-bound hook.
  * @module @deepseek-ai/dsh-client-ui-chat/client/chat/retry-interrupted
  */
 
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type { SessionInterruptedRetryTarget } from '@deepseek-ai/dsh-api-remotes/client'
+import type { AssistantMessageNode } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 // Type-only: pulls the connection/reset declaration and the ctx.remote merge.
@@ -28,7 +29,25 @@ export interface RetryInterruptedView {
 const INITIAL_VIEW: RetryInterruptedView = Object.freeze({ pending: false, error: null })
 
 /**
- * Whether two durable retry targets address the same interrupted settlement.
+ * Durable address a closing assistant answer can be regenerated from. A surface
+ * message carries its own id; a log-only attempt carries only its seq.
+ * @param finalNode - closing Assistant settlement, or absence.
+ * @returns the durable retry target, or undefined when neither identity exists.
+ */
+export function retryTargetOf(
+  finalNode: AssistantMessageNode | undefined,
+): SessionInterruptedRetryTarget | undefined {
+  if (finalNode?.messageId !== undefined) {
+    return { kind: 'assistant-message', messageId: finalNode.messageId }
+  }
+  if (finalNode?.attemptSeq !== undefined) {
+    return { kind: 'assistant-attempt', seq: finalNode.attemptSeq }
+  }
+  return undefined
+}
+
+/**
+ * Whether two durable retry targets address the same assistant settlement.
  * @param left - first address.
  * @param right - second address.
  * @returns whether both name the same settlement kind and identity.
@@ -67,9 +86,9 @@ export class RetryInterruptedController implements HostObservable<RetryInterrupt
   }
 
   /**
-   * Admit one retry for an interrupted assistant settlement. A call while one
-   * is pending is ignored, so a double click accepts once.
-   * @param target - durability-addressed interrupted settlement to regenerate.
+   * Admit one retry for a retryable assistant settlement. A call while one is
+   * pending is ignored, so a double click accepts once.
+   * @param target - durability-addressed assistant settlement to regenerate.
    */
   retry(target: SessionInterruptedRetryTarget): void {
     if (this.disposed || this.view.pending) return

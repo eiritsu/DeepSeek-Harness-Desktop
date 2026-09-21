@@ -92,9 +92,10 @@ export interface TurnTailChatData {
   /** Whether non-rendered later evidence makes the closing seq non-tail. */
   readonly branchUnavailable: boolean
   /**
-   * Whether this Turn's closing interrupted answer is retryable: the Turn ran a
-   * single assistant settlement (a surface message or a log-only attempt) with
-   * no tool call, so its original prompt can replace the interrupted tail.
+   * Whether this Turn's closing answer is retryable: the Turn ran a single
+   * assistant settlement (an interrupted or ordinarily completed surface
+   * message, or a log-only attempt) with no tool call, so its original prompt
+   * can replace the answer.
    */
   readonly retryable: boolean
   readonly ttftMs?: number

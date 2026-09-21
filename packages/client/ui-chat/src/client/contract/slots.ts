@@ -57,8 +57,8 @@ export interface RetryInterruptedOwnerProps {
   /** Published retry admission state for the Session. */
   readonly state: RetryInterruptedView
   /**
-   * Admit one retry for an interrupted assistant settlement.
-   * @param target - durability-addressed interrupted settlement to regenerate.
+   * Admit one retry for a retryable assistant settlement.
+   * @param target - durability-addressed assistant settlement to regenerate.
    */
   run(target: SessionInterruptedRetryTarget): void
 }
@@ -108,7 +108,7 @@ export interface ChatNodeOwnerProps {
   loadImage: MessageImageLoader
   renderMessageImages: RenderMessageImages
   fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined
-  /** Latest-session interrupted-answer retry state and action. */
+  /** Latest-answer retry state and action for the Session. */
   retryInterrupted: RetryInterruptedOwnerProps
   /** Turn-process state when this Node belongs to a projected Turn. */
   turnProcess?: TurnProcessOwnerProps | undefined

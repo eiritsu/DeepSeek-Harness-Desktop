@@ -75,6 +75,33 @@ function attemptFixture(): InterruptedFixture {
   }
 }
 
+/** A normally completed Turn whose single answer is an ordinary surface message. */
+function completedFixture(): InterruptedFixture {
+  const session = Session.create(SessionId('retry-completed-fixture'))
+  session.append('turn/start', { turn: 1 })
+  const prompt = createUserMessage({ content: [{ type: 'text', text: 'original prompt' }], source: { kind: 'user' } })
+  const promptSeq = session.append('user/message', prompt, { surfaceOp: 'append' }).seq
+  const assistant = createAssistantMessage({
+    content: [{ type: 'text', text: 'full answer' }],
+    source: { provider: 'p', model: 'm' },
+  })
+  const assistantSeq = session.append('assistant/message', {
+    turn: 1,
+    step: 1,
+    message: assistant,
+    stream: [],
+  }, { surfaceOp: 'append' }).seq
+  session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+  return {
+    session,
+    events: session.snapshotEvents(),
+    promptSeq,
+    assistantSeq,
+    messageId: assistant.id,
+    target: messageTarget(assistant.id),
+  }
+}
+
 describe('resolveInterruptedRetryTarget', () => {
   it('resolves the prompt and interrupted message from the current surface tail', () => {
     const fixture = interruptedFixture()
@@ -105,14 +132,73 @@ describe('resolveInterruptedRetryTarget', () => {
     expect(resolveInterruptedRetryTarget(attemptFixture().events, messageTarget('other' as MessageId))).toBeUndefined()
   })
 
-  it('rejects a completed message presented as interrupted', () => {
+  it('resolves an ordinary completed surface message as the latest safe answer', () => {
     const session = Session.create(SessionId('retry-completed-address'))
+    session.append('turn/start', { turn: 1 })
+    const prompt = createUserMessage({ content: [{ type: 'text', text: 'q' }], source: { kind: 'user' } })
+    const promptSeq = session.append('user/message', prompt, { surfaceOp: 'append' }).seq
+    const answer = createAssistantMessage({ content: [{ type: 'text', text: 'done' }], source: { provider: 'p', model: 'm' } })
+    const answerSeq = session.append('assistant/message', { turn: 1, step: 1, message: answer, stream: [] }, { surfaceOp: 'append' }).seq
+    session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    expect(resolveInterruptedRetryTarget(session.snapshotEvents(), messageTarget(answer.id))).toEqual({
+      promptSeq,
+      endSeq: answerSeq,
+      sourceSeqs: [promptSeq, answerSeq],
+      promptContent: [{ type: 'text', text: 'q' }],
+    })
+  })
+
+  it('rejects a completed message whose turn did not end completed', () => {
+    for (const reason of [
+      { kind: 'max-tokens' } as const,
+      { kind: 'error', error: { message: 'boom', code: 'SERVER' } } as const,
+      { kind: 'aborted', reason: { kind: 'user' } } as const,
+    ]) {
+      const session = Session.create(SessionId(`retry-completed-${reason.kind}`))
+      session.append('turn/start', { turn: 1 })
+      const prompt = createUserMessage({ content: [{ type: 'text', text: 'q' }], source: { kind: 'user' } })
+      session.append('user/message', prompt, { surfaceOp: 'append' })
+      const answer = createAssistantMessage({ content: [{ type: 'text', text: 'done' }], source: { provider: 'p', model: 'm' } })
+      session.append('assistant/message', { turn: 1, step: 1, message: answer, stream: [] }, { surfaceOp: 'append' })
+      session.append('turn/end', { turn: 1, reason })
+      expect(resolveInterruptedRetryTarget(session.snapshotEvents(), messageTarget(answer.id))).toBeUndefined()
+    }
+  })
+
+  it('rejects a completed message in a turn with tools or a second settlement', () => {
+    const tools = Session.create(SessionId('retry-completed-tools'))
+    tools.append('turn/start', { turn: 1 })
+    const toolsPrompt = createUserMessage({ content: [{ type: 'text', text: 'q' }], source: { kind: 'user' } })
+    tools.append('user/message', toolsPrompt, { surfaceOp: 'append' })
+    tools.append('tool/call', { turn: 1, step: 1, callId: ToolCallId('call-1'), name: 'tool', arguments: '{}' })
+    const toolAnswer = createAssistantMessage({ content: [{ type: 'text', text: 'done' }], source: { provider: 'p', model: 'm' } })
+    tools.append('assistant/message', { turn: 1, step: 1, message: toolAnswer, stream: [] }, { surfaceOp: 'append' })
+    tools.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    expect(resolveInterruptedRetryTarget(tools.snapshotEvents(), messageTarget(toolAnswer.id))).toBeUndefined()
+
+    const twoSettlements = Session.create(SessionId('retry-completed-two'))
+    twoSettlements.append('turn/start', { turn: 1 })
+    const twoPrompt = createUserMessage({ content: [{ type: 'text', text: 'q' }], source: { kind: 'user' } })
+    twoSettlements.append('user/message', twoPrompt, { surfaceOp: 'append' })
+    const earlier = createAssistantMessage({ content: [{ type: 'text', text: 'working' }], source: { provider: 'p', model: 'm' } })
+    twoSettlements.append('assistant/message', { turn: 1, step: 1, message: earlier, stream: [] }, { surfaceOp: 'append' })
+    const closing = createAssistantMessage({ content: [{ type: 'text', text: 'done' }], source: { provider: 'p', model: 'm' } })
+    twoSettlements.append('assistant/message', { turn: 1, step: 2, message: closing, stream: [] }, { surfaceOp: 'append' })
+    twoSettlements.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    expect(resolveInterruptedRetryTarget(twoSettlements.snapshotEvents(), messageTarget(closing.id))).toBeUndefined()
+  })
+
+  it('rejects a completed answer that is not the current surface tail', () => {
+    const session = Session.create(SessionId('retry-completed-history'))
     session.append('turn/start', { turn: 1 })
     const prompt = createUserMessage({ content: [{ type: 'text', text: 'q' }], source: { kind: 'user' } })
     session.append('user/message', prompt, { surfaceOp: 'append' })
     const answer = createAssistantMessage({ content: [{ type: 'text', text: 'done' }], source: { provider: 'p', model: 'm' } })
     session.append('assistant/message', { turn: 1, step: 1, message: answer, stream: [] }, { surfaceOp: 'append' })
     session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    session.append('turn/start', { turn: 2 })
+    const later = createUserMessage({ content: [{ type: 'text', text: 'later' }], source: { kind: 'user' } })
+    session.append('user/message', later, { surfaceOp: 'append' })
     expect(resolveInterruptedRetryTarget(session.snapshotEvents(), messageTarget(answer.id))).toBeUndefined()
   })
 
@@ -545,6 +631,27 @@ describe('SessionCommandController.retryInterrupted', () => {
     expect(replacement).toEqual({
       startSeq: fixture.promptSeq,
       endSeq: fixture.promptSeq,
+      sourceEventSeqs: [fixture.promptSeq, fixture.assistantSeq],
+    })
+  })
+
+  it('admits one completed surface-message replacement replaying the durable prompt', async () => {
+    const fixture = completedFixture()
+    const harness = commandHarness(fixture)
+    await expect(harness.controller.retryInterrupted(harness.request)).resolves.toEqual({ accepted: true })
+    expect(harness.retryInterrupted).toHaveBeenCalledTimes(1)
+    const [message, replacement] = harness.retryInterrupted.mock.calls[0] as [unknown, {
+      readonly startSeq: number
+      readonly endSeq: number
+      readonly sourceEventSeqs: readonly number[]
+    }]
+    expect(message).toMatchObject({
+      content: [{ type: 'text', text: 'original prompt' }],
+      source: { kind: 'assistant-retry', retryOf: fixture.target },
+    })
+    expect(replacement).toEqual({
+      startSeq: fixture.promptSeq,
+      endSeq: fixture.assistantSeq,
       sourceEventSeqs: [fixture.promptSeq, fixture.assistantSeq],
     })
   })

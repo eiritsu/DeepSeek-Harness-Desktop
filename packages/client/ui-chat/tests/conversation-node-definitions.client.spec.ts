@@ -1000,7 +1000,42 @@ describe('built-in conversation node Definitions', () => {
       at(5, 'step/end', { turn: 1, step: 1 }),
       at(6, 'turn/end', { turn: 1, reason: { kind: 'completed' } }),
     ])
-    expect(tailOf(completed).retryable).toBe(false)
+    // A normally completed single answer is the latest safe answer to regenerate.
+    expect(tailOf(completed).retryable).toBe(true)
+    expect(tailOf(completed).closing?.finalNode).toMatchObject({ messageId: 'assistant-1' })
+    expect(tailOf(completed).closing?.finalNode?.interrupted).toBeUndefined()
+
+    const completedWithTools = assembler([
+      at(1, 'turn/start', { turn: 1 }),
+      at(2, 'user/message', textMessage('user-1', 'question'), { surfaceOp: 'append' }),
+      at(3, 'tool/call', { turn: 1, step: 1, callId: 'call-1', name: 'read', arguments: '{}' }),
+      at(4, 'assistant/message', { turn: 1, step: 1, message: assistantMessage('assistant-1', 'done') }, { surfaceOp: 'append' }),
+      at(5, 'turn/end', { turn: 1, reason: { kind: 'completed' } }),
+    ])
+    expect(tailOf(completedWithTools).retryable).toBe(false)
+
+    const completedTwoSettlements = assembler([
+      at(1, 'turn/start', { turn: 1 }),
+      at(2, 'user/message', textMessage('user-1', 'question'), { surfaceOp: 'append' }),
+      at(3, 'step/start', { turn: 1, step: 1 }),
+      at(4, 'assistant/message', { turn: 1, step: 1, message: assistantMessage('assistant-1', 'working') }, { surfaceOp: 'append' }),
+      at(5, 'step/end', { turn: 1, step: 1 }),
+      at(6, 'step/start', { turn: 1, step: 2 }),
+      at(7, 'assistant/message', { turn: 1, step: 2, message: assistantMessage('assistant-2', 'done') }, { surfaceOp: 'append' }),
+      at(8, 'step/end', { turn: 1, step: 2 }),
+      at(9, 'turn/end', { turn: 1, reason: { kind: 'completed' } }),
+    ])
+    expect(tailOf(completedTwoSettlements).retryable).toBe(false)
+
+    const completedErrored = assembler([
+      at(1, 'turn/start', { turn: 1 }),
+      at(2, 'user/message', textMessage('user-1', 'question'), { surfaceOp: 'append' }),
+      at(3, 'step/start', { turn: 1, step: 1 }),
+      at(4, 'assistant/message', { turn: 1, step: 1, message: assistantMessage('assistant-1', 'done') }, { surfaceOp: 'append' }),
+      at(5, 'step/end', { turn: 1, step: 1 }),
+      at(6, 'turn/end', { turn: 1, reason: { kind: 'error', error: { code: 'TRANSPORT', message: 'failed' } } }),
+    ])
+    expect(tailOf(completedErrored).retryable).toBe(false)
 
     const noAnswer = assembler([
       at(1, 'turn/start', { turn: 1 }),
@@ -1095,6 +1130,33 @@ describe('built-in conversation node Definitions', () => {
       at(5, 'turn/end', { turn: 1, reason: { kind: 'aborted', reason: { kind: 'user' } } }),
     ])
     expect(tailOf(multiple).retryable).toBe(false)
+  })
+
+  it('projects a zero-output aborted attempt as a stopped answer and a retryable tail', () => {
+    // A stop that settled before any stream chunk leaves no block at all, yet
+    // the attempt is the answer's durable interruption and owns the footer.
+    const value = assembler([
+      at(1, 'turn/start', { turn: 1 }),
+      at(2, 'user/message', textMessage('user-1', 'question'), { surfaceOp: 'append' }),
+      at(3, 'step/start', { turn: 1, step: 1 }),
+      at(4, 'assistant/attempt', { turn: 1, step: 1, stream: new AssistantStreamAccumulator().snapshot() }),
+      at(5, 'step/end', { turn: 1, step: 1 }),
+      at(6, 'turn/end', { turn: 1, reason: { kind: 'aborted', reason: { kind: 'user' } } }),
+    ])
+    const snap = snapshot(value)
+    const assistant = node(snap, 'assistant-step')
+    expect(assistant?.visibility).toBe('visible')
+    expect(assistant?.data).toMatchObject({
+      status: 'interrupted',
+      blocks: [],
+      finalNode: { attemptSeq: 4, interrupted: true },
+    })
+    expect((assistant?.data as AssistantChatData).finalNode?.messageId).toBeUndefined()
+
+    const tail = node(snap, 'turn-tail')?.data as TurnTailChatData
+    expect(tail.retryable).toBe(true)
+    expect(tail.closing?.blocks).toEqual([])
+    expect(tail.closing?.finalNode).toMatchObject({ attemptSeq: 4, interrupted: true })
   })
 
   it('projects a released legacy assistant-retry prompt without reading a target', () => {

@@ -261,7 +261,9 @@ function finalNode(
   const boundary = location === undefined ? undefined : closedBoundary(location)
   if (boundary === undefined) return undefined
   const blocks = compactBlocks(state.attempt?.blocks ?? state.blocks)
-  if (!hasInterruptionEvidence(blocks)) return undefined
+  // A log-only attempt is the stopped answer's own durable settlement, so an
+  // empty stream still projects the row instead of hiding the stop entirely.
+  if (!hasInterruptionEvidence(blocks) && state.attempt === undefined) return undefined
   return {
     kind: 'assistant',
     seq: boundary.seq + CHAT_SYNTHETIC_SEQ_OFFSETS.interruptedAssistant,
