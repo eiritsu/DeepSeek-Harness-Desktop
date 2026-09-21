@@ -5,7 +5,9 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach } from 'vitest'
 import type { ComponentProps } from 'react'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type { SessionInterruptedRetryTarget } from '@deepseek-ai/dsh-api-remotes/client'
 import type { MessageId } from '@deepseek-ai/dsh-api-remotes/client'
+import { SessionSeq } from '@deepseek-ai/dsh-session/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { RetryInterruptedController } from '../src/client/chat/retry-interrupted.ts'
@@ -31,6 +33,12 @@ function deferred(): Deferred {
   return { promise, resolve, reject }
 }
 
+const MESSAGE_TARGET: SessionInterruptedRetryTarget = {
+  kind: 'assistant-message',
+  messageId: 'm1' as MessageId,
+}
+const ATTEMPT_TARGET: SessionInterruptedRetryTarget = { kind: 'assistant-attempt', seq: SessionSeq(4) }
+
 function controllerFor(remote: ReturnType<typeof vi.fn>): RetryInterruptedController {
   const ctx = { remote: { session: { retryInterrupted: remote } } } as unknown as ClientContext
   return new RetryInterruptedController(ctx, 's1' as SessionId)
@@ -44,7 +52,7 @@ describe('RetryInterruptedController', () => {
     const seen: unknown[] = []
     controller.subscribe(() => { seen.push(controller.getSnapshot()) })
 
-    controller.retry('m1' as MessageId)
+    controller.retry(MESSAGE_TARGET)
     expect(controller.getSnapshot().pending).toBe(true)
     call.resolve({ ok: true, value: { accepted: true } })
     await act(async () => { await call.promise })
@@ -56,8 +64,8 @@ describe('RetryInterruptedController', () => {
     const call = deferred()
     const remote = vi.fn(() => call.promise)
     const controller = controllerFor(remote)
-    controller.retry('m1' as MessageId)
-    controller.retry('m1' as MessageId)
+    controller.retry(MESSAGE_TARGET)
+    controller.retry(MESSAGE_TARGET)
     expect(remote).toHaveBeenCalledTimes(1)
     call.resolve({ ok: true, value: { accepted: true } })
   })
@@ -65,19 +73,19 @@ describe('RetryInterruptedController', () => {
   it('publishes the addressed failure', async () => {
     const call = deferred()
     const controller = controllerFor(vi.fn(() => call.promise))
-    controller.retry('m1' as MessageId)
+    controller.retry(ATTEMPT_TARGET)
     call.resolve({ ok: false, error: { code: 'session/retry-unavailable', message: 'nope' } })
     await act(async () => { await call.promise })
     expect(controller.getSnapshot()).toEqual({
       pending: false,
-      error: { messageId: 'm1', code: 'session/retry-unavailable', message: 'nope' },
+      error: { target: ATTEMPT_TARGET, code: 'session/retry-unavailable', message: 'nope' },
     })
   })
 
   it('drops a settlement invalidated by a connection reset', async () => {
     const call = deferred()
     const controller = controllerFor(vi.fn(() => call.promise))
-    controller.retry('m1' as MessageId)
+    controller.retry(MESSAGE_TARGET)
     controller.invalidate()
     expect(controller.getSnapshot()).toEqual({ pending: false, error: null })
     call.resolve({ ok: false, error: { code: 'gateway/internal', message: 'stale' } })
@@ -89,7 +97,7 @@ describe('RetryInterruptedController', () => {
     const remote = vi.fn(() => deferred().promise)
     const controller = controllerFor(remote)
     controller.dispose()
-    controller.retry('m1' as MessageId)
+    controller.retry(MESSAGE_TARGET)
     expect(remote).not.toHaveBeenCalled()
     expect(() => { controller.invalidate() }).not.toThrow()
     expect(controller.getSnapshot()).toEqual({ pending: false, error: null })
@@ -100,12 +108,12 @@ describe('RetryInterruptedController', () => {
     const controller = controllerFor(vi.fn(() => call.promise))
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     controller.subscribe(() => { throw new Error('bad subscriber') })
-    controller.retry('m1' as MessageId)
+    controller.retry(MESSAGE_TARGET)
     call.reject(new Error('boom'))
     await act(async () => { await call.promise.catch(() => {}) })
     expect(controller.getSnapshot()).toEqual({
       pending: false,
-      error: { messageId: 'm1', code: 'gateway/internal', message: 'boom' },
+      error: { target: MESSAGE_TARGET, code: 'gateway/internal', message: 'boom' },
     })
     consoleError.mockRestore()
   })
@@ -117,16 +125,18 @@ interface TailOptions {
   readonly sessionRunning?: boolean
   readonly pending?: boolean
   readonly omitMessageId?: boolean
-  readonly error?: { readonly messageId: string; readonly code: string; readonly message: string } | null
-  readonly run?: (messageId: MessageId) => void
+  readonly attemptSeq?: number
+  readonly reasoningOnly?: boolean
+  readonly error?: { readonly target: SessionInterruptedRetryTarget; readonly code: string; readonly message: string } | null
+  readonly run?: (target: SessionInterruptedRetryTarget) => void
 }
 
 function renderTail(options: TailOptions = {}) {
   const t = makeTranslate(en)
-  const run = options.run ?? vi.fn<(messageId: MessageId) => void>()
+  const run = options.run ?? vi.fn<(target: SessionInterruptedRetryTarget) => void>()
   const retryInterrupted: RetryInterruptedOwnerProps = {
     sessionRunning: options.sessionRunning ?? false,
-    state: { pending: options.pending ?? false, error: (options.error ?? null) as never },
+    state: { pending: options.pending ?? false, error: options.error ?? null },
     run,
   }
   const nodeKey = 'tail-1'
@@ -135,6 +145,9 @@ function renderTail(options: TailOptions = {}) {
     locations: { getTurn: () => [{ key: nodeKey }] },
     timeline: { turnOrder },
   }
+  const blocks = options.reasoningOnly === true
+    ? [{ kind: 'reasoning', text: 'thinking about it' }]
+    : [{ kind: 'text', text: 'half an answer' }]
   const node = {
     key: nodeKey,
     kind: 'turn-tail',
@@ -152,15 +165,16 @@ function renderTail(options: TailOptions = {}) {
         turn: 1,
         step: 1,
         time: 900,
-        blocks: [{ kind: 'text', text: 'half an answer' }],
+        blocks,
         finalNode: {
           kind: 'assistant',
           seq: 4,
           ...(options.omitMessageId === true ? {} : { messageId: 'm1' }),
+          ...(options.attemptSeq === undefined ? {} : { attemptSeq: options.attemptSeq }),
           time: 900,
           turn: 1,
           step: 1,
-          blocks: [{ kind: 'text', text: 'half an answer' }],
+          blocks,
           timing: { stepStartTime: 0, firstTokenTime: 1, completedTime: 900 },
           interrupted: true,
         },
@@ -194,7 +208,19 @@ describe('TurnTailNodeView retry action', () => {
     const { run } = renderTail()
     const button = screen.getByRole('button', { name: 'Retry' })
     fireEvent.click(button)
-    expect(run).toHaveBeenCalledWith('m1')
+    expect(run).toHaveBeenCalledWith(MESSAGE_TARGET)
+  })
+
+  it('admits a reasoning-only interrupted answer without durable text', () => {
+    const { run } = renderTail({ reasoningOnly: true })
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(run).toHaveBeenCalledWith(MESSAGE_TARGET)
+  })
+
+  it('admits the durable attempt seq of a log-only interrupted settlement', () => {
+    const { run } = renderTail({ omitMessageId: true, attemptSeq: 4 })
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(run).toHaveBeenCalledWith(ATTEMPT_TARGET)
   })
 
   it('hides the action when the turn is not retryable', () => {
@@ -202,7 +228,7 @@ describe('TurnTailNodeView retry action', () => {
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
   })
 
-  it('hides the action when the closing answer carries no durable message id', () => {
+  it('hides the action when the closing answer addresses no durable settlement', () => {
     renderTail({ omitMessageId: true })
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
   })
@@ -223,7 +249,25 @@ describe('TurnTailNodeView retry action', () => {
   })
 
   it('shows the addressed failure beside the action', () => {
-    renderTail({ error: { messageId: 'm1', code: 'session/retry-unavailable', message: 'nope' } })
+    renderTail({ error: { target: MESSAGE_TARGET, code: 'session/retry-unavailable', message: 'nope' } })
     expect(screen.getByRole('status').textContent).toBe('This answer can no longer be retried')
+  })
+
+  it('shows the addressed attempt failure beside the action', () => {
+    renderTail({
+      omitMessageId: true,
+      attemptSeq: 4,
+      error: { target: ATTEMPT_TARGET, code: 'session/retry-unavailable', message: 'nope' },
+    })
+    expect(screen.getByRole('status').textContent).toBe('This answer can no longer be retried')
+  })
+
+  it('does not show a failure addressed to another settlement', () => {
+    renderTail({
+      omitMessageId: true,
+      attemptSeq: 4,
+      error: { target: { kind: 'assistant-attempt', seq: SessionSeq(99) }, code: 'session/retry-unavailable', message: 'nope' },
+    })
+    expect(screen.queryByRole('status')).toBeNull()
   })
 })

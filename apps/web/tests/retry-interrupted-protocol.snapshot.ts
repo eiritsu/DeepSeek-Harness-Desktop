@@ -13,9 +13,13 @@ import {
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/retry-interrupted-protocol', import.meta.url))
 const SESSION_FIXTURE = join(SNAPSHOT_DIR, 'session.v3.jsonl')
+const ATTEMPT_FIXTURE = join(SNAPSHOT_DIR, 'session.1.v3.jsonl')
 const PROTOCOL_EXPECTED = join(SNAPSHOT_DIR, 'protocol.expected.json')
 const SESSION_ID = 'retry-interrupted-protocol'
+const ATTEMPT_SESSION_ID = 'retry-interrupted-attempt-protocol'
 const MESSAGE_ID = fixtureIdentity('message', 2)
+/** Logical seq of the log-only `assistant/attempt` in {@link ATTEMPT_FIXTURE}. */
+const ATTEMPT_SEQ = 3
 
 interface ProtocolExchange {
   readonly endpoint: string
@@ -51,10 +55,16 @@ function normalizeProtocol(exchanges: readonly ProtocolExchange[]): string {
 describe('interrupted-answer retry Host Remote protocol', () => {
   let scaffold: WebScaffold
   let sessionId: Awaited<ReturnType<typeof seedSession>>
+  let attemptSessionId: Awaited<ReturnType<typeof seedSession>>
 
   beforeAll(async () => {
     scaffold = await launchWebScaffold()
     sessionId = await seedSession(scaffold, await readFile(SESSION_FIXTURE, 'utf8'), SESSION_ID)
+    attemptSessionId = await seedSession(
+      scaffold,
+      await readFile(ATTEMPT_FIXTURE, 'utf8'),
+      ATTEMPT_SESSION_ID,
+    )
   })
 
   afterAll(async () => {
@@ -82,16 +92,27 @@ describe('interrupted-answer retry Host Remote protocol', () => {
 
     const response = await invoke('retry-interrupted', 'session/retryInterrupted', {
       sessionId,
-      messageId: MESSAGE_ID,
+      target: { kind: 'assistant-message', messageId: MESSAGE_ID },
     })
     expect(response).toMatchObject({ result: { ok: true, value: { accepted: true } } })
+
+    // The log-only attempt address crosses the wire as its durable SessionSeq.
+    const attemptResponse = await invoke('retry-interrupted-attempt', 'session/retryInterrupted', {
+      sessionId: attemptSessionId,
+      target: { kind: 'assistant-attempt', seq: ATTEMPT_SEQ },
+    })
+    expect(attemptResponse).toMatchObject({ result: { ok: true, value: { accepted: true } } })
 
     // Read the live Host Session structurally: the snapshot asserts its derived
     // model history without pulling the Session class into this program.
     const session = sessionsOf(scaffold).get(sessionId)
     if (session === undefined) throw new Error('seeded session was not attached')
+    const attemptSession = sessionsOf(scaffold).get(attemptSessionId)
+    if (attemptSession === undefined) throw new Error('seeded attempt session was not attached')
     await vi.waitFor(() => {
       expect(session.deriveMessages().some(message =>
+        message.role === 'user' && message.source.kind === 'assistant-retry')).toBe(true)
+      expect(attemptSession.deriveMessages().some(message =>
         message.role === 'user' && message.source.kind === 'assistant-retry')).toBe(true)
     })
 
@@ -112,7 +133,19 @@ describe('interrupted-answer retry Host Remote protocol', () => {
     expect(assistantTexts.join('')).not.toContain('half an answer')
     expect(userTexts.join('')).not.toContain('half an answer')
 
+    // The attempt-address retry reconstructs no partial into model history and
+    // replays the original prompt exactly once.
+    const attemptDerived = attemptSession.deriveMessages()
+    const attemptUserTexts = attemptDerived
+      .filter(message => message.role === 'user')
+      .flatMap(message => message.content)
+      .flatMap(block => block.type === 'text' ? [block.text] : [])
+    expect(attemptUserTexts.filter(text => text === 'Explain the plan.')).toHaveLength(1)
+    expect(attemptUserTexts.join('')).not.toContain('half an answer')
+
     await compareOrRefreshGolden(PROTOCOL_EXPECTED, normalizeProtocol(exchanges), scaffold.mode)
-    await assertFixtureInventory(SNAPSHOT_DIR, ['protocol.expected.json', 'session.v3.jsonl'])
+    await assertFixtureInventory(SNAPSHOT_DIR, [
+      'protocol.expected.json', 'session.v3.jsonl', 'session.1.v3.jsonl',
+    ])
   })
 })

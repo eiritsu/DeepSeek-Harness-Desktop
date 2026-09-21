@@ -204,6 +204,22 @@ function assistantMessage(id: string, text: string) {
   }
 }
 
+/** One log-only attempt settlement embedding a text or reasoning prefix. */
+function attemptStream(
+  text: string,
+  kind: 'text' | 'reasoning' = 'text',
+) {
+  const accumulator = new AssistantStreamAccumulator()
+  accumulator.push({ time: 1, chunk: { type: 'block-start', index: 0, blockType: kind } })
+  accumulator.push({
+    time: 2,
+    chunk: kind === 'text'
+      ? { type: 'text-delta', index: 0, text }
+      : { type: 'reasoning-delta', index: 0, text },
+  })
+  return accumulator.snapshot()
+}
+
 function toolResult(callId: string, text: string, isError = false) {
   return {
     id: `result-${callId}`,
@@ -956,6 +972,26 @@ describe('built-in conversation node Definitions', () => {
     ])
     expect(tailOf(interrupted).retryable).toBe(true)
 
+    // A prior provider-failed attempt stays off the surface, so it does not
+    // make the interrupted surface message's address ambiguous.
+    const priorAttempt = assembler([
+      at(1, 'turn/start', { turn: 1 }),
+      at(2, 'user/message', textMessage('user-1', 'question'), { surfaceOp: 'append' }),
+      at(3, 'step/start', { turn: 1, step: 1 }),
+      at(4, 'assistant/attempt', { turn: 1, step: 1, stream: attemptStream('failed attempt') }),
+      at(5, 'llm/retry', {
+        retryId: 'retry-1', turn: 1, step: 1, provider: 'fake', mode: 'normal',
+        policyKey: 'fake-normal', retry: 1, maxRetries: 2, delayMs: 10,
+        failure: { code: 'TRANSPORT', message: 'temporary' },
+      }),
+      at(6, 'assistant/message', {
+        turn: 1, step: 1, message: assistantMessage('assistant-1', 'half'), interrupted: true,
+      }, { surfaceOp: 'append' }),
+      at(7, 'step/end', { turn: 1, step: 1 }),
+      at(8, 'turn/end', { turn: 1, reason: { kind: 'completed' } }),
+    ])
+    expect(tailOf(priorAttempt).retryable).toBe(true)
+
     const completed = assembler([
       at(1, 'turn/start', { turn: 1 }),
       at(2, 'user/message', textMessage('user-1', 'question'), { surfaceOp: 'append' }),
@@ -1012,7 +1048,74 @@ describe('built-in conversation node Definitions', () => {
     expect(tailOf(toolEvidence).retryable).toBe(false)
   })
 
-  it('uses live Assistant deltas without replaying settled embedded streams', () => {
+  it('marks a single interrupted log-only attempt turn as retryable', () => {
+    const tailOf = (value: ConversationNodeAssembler): TurnTailChatData =>
+      node(snapshot(value), 'turn-tail')?.data as TurnTailChatData
+    const attemptTurn = (stream: ReturnType<typeof attemptStream>, reason: unknown = { kind: 'aborted', reason: { kind: 'user' } }) => assembler([
+      at(1, 'turn/start', { turn: 1 }),
+      at(2, 'user/message', textMessage('user-1', 'question'), { surfaceOp: 'append' }),
+      at(3, 'step/start', { turn: 1, step: 1 }),
+      at(4, 'assistant/attempt', { turn: 1, step: 1, stream }),
+      at(5, 'step/end', { turn: 1, step: 1 }),
+      at(6, 'turn/end', { turn: 1, reason: reason as never }),
+    ])
+
+    const partial = tailOf(attemptTurn(attemptStream('half an answer')))
+    expect(partial.retryable).toBe(true)
+    expect(partial.closing?.finalNode).toMatchObject({ attemptSeq: 4, interrupted: true })
+    expect(partial.closing?.finalNode?.messageId).toBeUndefined()
+    expect(partial.closing?.blocks).toEqual([{ kind: 'text', text: 'half an answer' }])
+
+    const reasoningOnly = tailOf(attemptTurn(attemptStream('thinking about it', 'reasoning')))
+    expect(reasoningOnly.retryable).toBe(true)
+    expect(reasoningOnly.closing?.blocks).toEqual([{ kind: 'reasoning', text: 'thinking about it' }])
+
+    const completed = tailOf(attemptTurn(attemptStream('half'), { kind: 'completed' }))
+    expect(completed.retryable).toBe(false)
+    const errored = tailOf(attemptTurn(
+      attemptStream('half'),
+      { kind: 'error', error: { code: 'TRANSPORT', message: 'failed' } },
+    ))
+    expect(errored.retryable).toBe(false)
+
+    const tools = assembler([
+      at(1, 'turn/start', { turn: 1 }),
+      at(2, 'user/message', textMessage('user-1', 'question'), { surfaceOp: 'append' }),
+      at(3, 'tool/call', { turn: 1, step: 1, callId: 'call-1', name: 'read', arguments: '{}' }),
+      at(4, 'assistant/attempt', { turn: 1, step: 1, stream: attemptStream('half') }),
+      at(5, 'turn/end', { turn: 1, reason: { kind: 'aborted', reason: { kind: 'user' } } }),
+    ])
+    expect(tailOf(tools).retryable).toBe(false)
+
+    const multiple = assembler([
+      at(1, 'turn/start', { turn: 1 }),
+      at(2, 'user/message', textMessage('user-1', 'question'), { surfaceOp: 'append' }),
+      at(3, 'assistant/attempt', { turn: 1, step: 1, stream: attemptStream('first') }),
+      at(4, 'assistant/attempt', { turn: 1, step: 1, stream: attemptStream('second') }),
+      at(5, 'turn/end', { turn: 1, reason: { kind: 'aborted', reason: { kind: 'user' } } }),
+    ])
+    expect(tailOf(multiple).retryable).toBe(false)
+  })
+
+  it('projects a released legacy assistant-retry prompt without reading a target', () => {
+    const legacy = assembler([
+      at(1, 'turn/start', { turn: 1 }),
+      at(2, 'user/message', {
+        id: 'legacy-retry',
+        role: 'user',
+        content: [{ type: 'text', text: 'original prompt' }],
+        source: { kind: 'assistant-retry', retryOf: 'legacy-message-id' },
+      }, { surfaceOp: 'append' }),
+    ])
+    const context = node(snapshot(legacy), 'context')
+    expect(context?.data).toMatchObject({
+      kind: 'context',
+      content: [{ type: 'text', text: 'original prompt' }],
+      source: { kind: 'assistant-retry', retryOf: 'legacy-message-id' },
+    })
+  })
+
+  it('recovers a log-only interrupted attempt prefix on cold replay', () => {
     const runningHistory = [
       at(1, 'turn/start', { turn: 1 }),
       at(2, 'step/start', { turn: 1, step: 1 }),
@@ -1068,6 +1171,8 @@ describe('built-in conversation node Definitions', () => {
         { kind: 'tool-call', callId: 'call-1', name: '', argsRaw: '{"x":1}' },
       ],
     })
+    // An open step has no closing boundary, so a durable attempt's prefix stays
+    // latent until the step or turn closes.
     expect(snapshot(packed).legacy.partial).toBeNull()
     expect(node(snapshot(packed), 'assistant-step')).toBeUndefined()
 
@@ -1077,7 +1182,16 @@ describe('built-in conversation node Definitions', () => {
       value.flush()
     }
     expect(node(snapshot(scalar), 'assistant-step')?.data).toMatchObject({ status: 'interrupted' })
-    expect(node(snapshot(packed), 'assistant-step')).toBeUndefined()
+    // Once closed, the durable attempt reconstructs the same stopped prefix
+    // from its embedded stream so the answer survives history replay.
+    expect(node(snapshot(packed), 'assistant-step')?.data).toMatchObject({
+      status: 'interrupted',
+      blocks: [
+        { kind: 'text', text: '   \tanswer' },
+        { kind: 'reasoning', text: 'thinking' },
+        { kind: 'tool-call', callId: 'call-1', name: '', argsRaw: '{"x":1}' },
+      ],
+    })
 
     const partialHistory = [
       ...runningHistory.slice(2),
@@ -1086,7 +1200,14 @@ describe('built-in conversation node Definitions', () => {
     ]
     const partialPacked = snapshot(assembler(packedInputs(partialHistory), true))
     expect(partialPacked.legacy.partial).toBeNull()
-    expect(node(partialPacked, 'assistant-step')).toBeUndefined()
+    expect(node(partialPacked, 'assistant-step')?.data).toMatchObject({
+      status: 'interrupted',
+      blocks: [
+        { kind: 'text', text: '   \tanswer' },
+        { kind: 'reasoning', text: 'thinking' },
+        { kind: 'tool-call', callId: 'call-1', name: '', argsRaw: '{"x":1}' },
+      ],
+    })
 
     const finalizedHistory = [
       at(20, 'turn/start', { turn: 2 }),
@@ -1127,6 +1248,39 @@ describe('built-in conversation node Definitions', () => {
     const finalNode = (node(finalizedPacked, 'assistant-step')?.data as AssistantChatData).finalNode
     expect(finalNode).toMatchObject({
       blocks: [{ kind: 'text', text: 'done' }],
+      // A superseded failed attempt contributes no timing; only the successful
+      // message settles the step.
+      timing: { firstTokenTime: null },
+    })
+
+    // A second attempt and a successful message after the first failed attempt
+    // keep the message's own blocks and the message's timing.
+    const retriedHistory = [
+      at(60, 'turn/start', { turn: 4 }),
+      at(61, 'step/start', { turn: 4, step: 1 }),
+      at(62, 'assistant/live-chunk', {
+        turn: 4, step: 1, chunk: { type: 'text-delta', index: 0, text: 'doomed' },
+      }, { time: 5_000 }),
+      at(63, 'llm/retry', {
+        retryId: 'packed-retry-2', turn: 4, step: 1, provider: 'fake', mode: 'normal',
+        policyKey: 'fake-normal', retry: 1, maxRetries: 2, delayMs: 10,
+        failure: { code: 'TRANSPORT', message: 'temporary' },
+      }),
+      at(64, 'assistant/live-chunk', {
+        turn: 4, step: 1, chunk: { type: 'text-delta', index: 0, text: 'recovered' },
+      }, { time: 5_100 }),
+      at(65, 'assistant/message', {
+        turn: 4, step: 1, message: assistantMessage('packed-recovered', 'recovered'),
+      }, { surfaceOp: 'append' }),
+      at(66, 'step/end', { turn: 4, step: 1 }),
+      at(67, 'turn/end', { turn: 4, reason: { kind: 'completed' } }),
+    ]
+    const retriedPacked = snapshot(assembler(packedInputs(retriedHistory)))
+    const retriedStep = node(retriedPacked, 'assistant-step')?.data as AssistantChatData
+    expect(retriedStep.status).toBe('settled')
+    expect(retriedStep.finalNode).toMatchObject({
+      blocks: [{ kind: 'text', text: 'recovered' }],
+      // The delivered first attempt never contributes its timing to the message.
       timing: { firstTokenTime: null },
     })
 

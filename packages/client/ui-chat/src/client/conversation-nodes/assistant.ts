@@ -4,8 +4,9 @@ import type {
   ConversationNodeContext, ConversationNodeDefinition,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { StreamChunk } from '@deepseek-ai/dsh-llm'
+import { expandAssistantStream } from '@deepseek-ai/dsh-llm/assistant-stream'
 import type {} from '@deepseek-ai/dsh-llm-retry/types'
-import type { SessionEvent } from '@deepseek-ai/dsh-session/types'
+import type { SessionEvent, SessionSeq } from '@deepseek-ai/dsh-session/types'
 import type { AssistantChatData } from '../contract/chat-nodes.ts'
 import { CHAT_SYNTHETIC_SEQ_OFFSETS, chatNode } from './common.ts'
 import {
@@ -36,6 +37,15 @@ interface AssistantState {
   readonly firstTokenTime: number | undefined
   readonly hidden: boolean
   readonly final: ConversationMatch | undefined
+  /**
+   * Latest log-only `assistant/attempt` settlement and the partial blocks its
+   * embedded stream delivered. Kept apart from `blocks`/`firstTokenTime` so a
+   * failed attempt never contributes the step's timing.
+   */
+  readonly attempt: {
+    readonly seq: SessionSeq
+    readonly blocks: readonly (AssistantBlock | undefined)[]
+  } | undefined
   readonly usage: unknown
 }
 
@@ -50,6 +60,7 @@ function initialState(turn: number, step: number): AssistantState {
     firstTokenTime: undefined,
     hidden: false,
     final: undefined,
+    attempt: undefined,
     usage: undefined,
   }
 }
@@ -161,6 +172,22 @@ function updateChunk(
   }
 }
 
+/**
+ * Decode one log-only `assistant/attempt` settlement into the partial blocks
+ * its embedded stream delivered. A scratch fold keeps the timing facts out of
+ * the step state: a failed attempt must not donate `firstTokenTime` or a
+ * visible-block count to a later successful message.
+ */
+function decodeAttemptBlocks(
+  event: SessionEvent<'assistant/attempt'>,
+): readonly (AssistantBlock | undefined)[] {
+  let scratch = initialState(event.data.turn, event.data.step)
+  for (const member of expandAssistantStream(event.data.stream)) {
+    scratch = updateChunk(scratch, member.chunk, event.seq, member.time)
+  }
+  return scratch.blocks
+}
+
 function settleMessage(
   state: AssistantState,
   match: ConversationMatch,
@@ -173,7 +200,25 @@ function settleMessage(
     visibleBlocks: countVisibleBlocks(blocks),
     hidden: false,
     final: match,
+    // A surface message supersedes any log-only attempt in the same step.
+    attempt: undefined,
     usage: event.data.usage,
+  }
+}
+
+/**
+ * Record one log-only `assistant/attempt` settlement so a stopped answer
+ * survives history replay. The decoded blocks live beside the step's streaming
+ * state; only the final attempt (no later surface message) surfaces them.
+ */
+function settleAttempt(
+  state: AssistantState,
+  event: SessionEvent<'assistant/attempt'>,
+): AssistantState {
+  return {
+    ...state,
+    hidden: false,
+    attempt: { seq: event.seq, blocks: decodeAttemptBlocks(event) },
   }
 }
 
@@ -215,7 +260,7 @@ function finalNode(
   const location = context.start?.location ?? context.matches.at(-1)?.location
   const boundary = location === undefined ? undefined : closedBoundary(location)
   if (boundary === undefined) return undefined
-  const blocks = compactBlocks(state.blocks)
+  const blocks = compactBlocks(state.attempt?.blocks ?? state.blocks)
   if (!hasInterruptionEvidence(blocks)) return undefined
   return {
     kind: 'assistant',
@@ -225,6 +270,7 @@ function finalNode(
     step: state.step,
     blocks,
     interrupted: true,
+    ...state.attempt === undefined ? {} : { attemptSeq: state.attempt.seq },
   }
 }
 
@@ -239,6 +285,11 @@ function fallbackState(context: ConversationNodeContext<AssistantState>): Assist
     if (match.event.type === 'assistant/message') {
       state ??= initialState(match.event.data.turn, match.event.data.step)
       state = settleMessage(state, match, match.event)
+      continue
+    }
+    if (match.event.type === 'assistant/attempt') {
+      state ??= initialState(match.event.data.turn, match.event.data.step)
+      state = settleAttempt(state, match.event)
       continue
     }
     if (match.event.type === 'llm/retry' && state !== undefined) {
@@ -296,7 +347,9 @@ export const assistantDefinition: ConversationNodeDefinition<AssistantState> = {
   match: (event) => {
     if (event.type === 'step/start') return { id: `${event.data.turn}:${event.data.step}`, role: 'start' }
     if (event.type === 'assistant/live-chunk'
-      || (event.type === 'assistant/message' && event.surfaceOp === 'append')) {
+      || event.type === 'assistant/message'
+      || event.type === 'assistant/attempt') {
+      if (event.type === 'assistant/message' && event.surfaceOp !== 'append') return null
       return { id: `${event.data.turn}:${event.data.step}`, role: 'update' }
     }
     if (event.type === 'llm/retry') {
@@ -313,6 +366,7 @@ export const assistantDefinition: ConversationNodeDefinition<AssistantState> = {
       return updateChunk(context.state, match.event.data.chunk, match.event.seq, match.event.time)
     }
     if (match.event.type === 'assistant/message') return settleMessage(context.state, match, match.event)
+    if (match.event.type === 'assistant/attempt') return settleAttempt(context.state, match.event)
     if (match.event.type === 'llm/retry') {
       return resetForRetry(context.state)
     }

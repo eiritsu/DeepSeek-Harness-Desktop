@@ -4,6 +4,7 @@
 
 import type { CommandId } from '@deepseek-ai/dsh-commands/brand'
 import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
+import type { SessionSeq } from '@deepseek-ai/dsh-session/types'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm/types'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { LlmRetryEventData } from '@deepseek-ai/dsh-llm-retry/types'
@@ -67,6 +68,12 @@ export interface AssistantMessageNode {
    * assistant message.
    */
   messageId?: MessageId
+  /**
+   * Durable `seq` of the log-only `assistant/attempt` that settled a synthetic
+   * interruption fallback. Present exactly when `messageId` is absent and the
+   * interrupted prefix came from an attempt rather than a surface message.
+   */
+  attemptSeq?: SessionSeq
   /** Unix epoch ms from the source session event (or turn/end when frozen from a partial). */
   time: number
   turn: number

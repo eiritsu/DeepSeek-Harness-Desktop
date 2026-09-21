@@ -5,7 +5,10 @@
       "args": {
         "request": {
           "sessionId": "retry-interrupted-protocol",
-          "messageId": "{{message:2}}"
+          "target": {
+            "kind": "assistant-message",
+            "messageId": "{{message:2}}"
+          }
         }
       }
     },
@@ -13,6 +16,31 @@
     "response": {
       "type": "server-response",
       "rpcId": "retry-interrupted",
+      "result": {
+        "ok": true,
+        "value": {
+          "accepted": true
+        }
+      }
+    }
+  },
+  {
+    "endpoint": "/api/session/retryInterrupted",
+    "request": {
+      "args": {
+        "request": {
+          "sessionId": "retry-interrupted-attempt-protocol",
+          "target": {
+            "kind": "assistant-attempt",
+            "seq": 3
+          }
+        }
+      }
+    },
+    "status": 200,
+    "response": {
+      "type": "server-response",
+      "rpcId": "retry-interrupted-attempt",
       "result": {
         "ok": true,
         "value": {

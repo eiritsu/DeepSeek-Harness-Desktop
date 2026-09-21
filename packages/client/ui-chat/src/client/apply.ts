@@ -181,7 +181,7 @@ export function apply(ctx: Context): void {
                 // Fork or child-title failure leaves the source view unchanged.
               })
           },
-          retryInterrupted: (messageId) => { retryFor(sessionId).retry(messageId) },
+          retryInterrupted: (target) => { retryFor(sessionId).retry(target) },
         }
       },
     }, ChatView)

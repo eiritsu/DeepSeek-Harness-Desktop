@@ -31,7 +31,7 @@ Migration publication verifier 与冻结的 v2 fixture validator 要求嵌入式
 
 Web follow adapter 显式选择接收这些进程本地 frame，并为每个 start 补充当时观察到的最后一个持久序号。它把 chunk 呈现为持久 cursor 之间的 Client-only `assistant/live-chunk` update，只暂存 start 之后匹配的 settlement，并在 revision 缺口时重新打开 follow。committed end 会发布具名 settlement delta，删除该 attempt 的 transient match、加入持久 entry，并只重放受影响的 Conversation Context；abandoned end 会发布不含 entry 的同类 delta。重连 baseline 携带活跃 attempt 的持久起始 cursor 与紧凑前缀。
 
-Client event source 原样传递持久 settlement。Chat 与 Trajectory 的 Assistant node 在 attempt 活跃期间折叠 `assistant/live-chunk`，直接从 `assistant/message` 构建 settled output，并且不为展示重放 `assistant/attempt` stream。因此冷恢复的 settled presentation 不会重建逐 token timing；其他消费方需要精确证据时仍可展开持久 stream。
+Client event source 原样传递持久 settlement。Chat 与 Trajectory 的 Assistant node 在 attempt 活跃期间折叠 `assistant/live-chunk`，直接从 `assistant/message` 构建 settled output，并从仅写入日志的 `assistant/attempt` stream 重建被中断前缀，使已停止的回答在冷恢复后仍可呈现；被后续 settlement 取代的失败 attempt 不贡献任何内容。因此成功 message 的冷恢复 settled presentation 不会重建逐 token timing；其他消费方需要精确证据时仍可展开持久 stream。
 
 ### 已发布 v1 到 v2 迁移
 

@@ -490,15 +490,16 @@ export class SessionCommandController {
   }
 
   /**
-   * Re-run the latest interrupted assistant answer from its original prompt.
+   * Re-run the latest interrupted assistant settlement from its original prompt.
    *
    * Requires an idle Agent and the exact supported surface tail; the replayed
    * prompt keeps its durable text and attachment references and enters model
    * history once, as a positional replacement of the original prompt through
-   * the interrupted answer. A concurrent call while one admission is in
-   * flight accepts once, and a later call re-validates against the current
-   * surface; an unsupported tail rejects.
-   * @param request - Session identity and the interrupted assistant message.
+   * the interrupted settlement. The address names either a durable interrupted
+   * `assistant/message` or a log-only `assistant/attempt`. A concurrent call
+   * while one admission is in flight accepts once, and a later call re-validates
+   * against the current surface; an unsupported tail rejects.
+   * @param request - Session identity and the durability-addressed interrupted settlement.
    * @returns acknowledgement that the retry entered the live Agent.
    * @throws RemoteError when the Session is running or its tail is not retryable.
    */
@@ -516,7 +517,7 @@ export class SessionCommandController {
     try {
       const observed = await this.ctx.sessionQuery.observeSession(request.sessionId)
       using source = observed
-      const target = resolveInterruptedRetryTarget(source.events, request.messageId)
+      const target = resolveInterruptedRetryTarget(source.events, request.target)
       if (target === undefined) {
         throw new RemoteError(
           'session/retry-unavailable',
@@ -540,12 +541,12 @@ export class SessionCommandController {
       }
       const message: UserMessage = createUserMessage({
         content: [...target.promptContent],
-        source: { kind: 'assistant-retry', retryOf: request.messageId },
+        source: { kind: 'assistant-retry', retryOf: request.target },
       })
       agent.retryInterrupted(message, {
         startSeq: target.promptSeq,
-        endSeq: target.interruptedSeq,
-        sourceEventSeqs: [...target.shadowedSeqs],
+        endSeq: target.endSeq,
+        sourceEventSeqs: [...target.sourceSeqs],
       })
       return { accepted: true }
     } finally {

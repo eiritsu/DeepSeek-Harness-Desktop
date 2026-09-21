@@ -1,4 +1,5 @@
 /** Chat-owned Slot declarations and composed component props. */
+import type { SessionInterruptedRetryTarget } from '@deepseek-ai/dsh-api-remotes/client'
 import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import type { SessionId, SessionSeq } from '@deepseek-ai/dsh-session/types'
 import type {
@@ -56,10 +57,10 @@ export interface RetryInterruptedOwnerProps {
   /** Published retry admission state for the Session. */
   readonly state: RetryInterruptedView
   /**
-   * Admit one retry for an interrupted assistant message.
-   * @param messageId - interrupted assistant message to regenerate.
+   * Admit one retry for an interrupted assistant settlement.
+   * @param target - durability-addressed interrupted settlement to regenerate.
    */
-  run(messageId: MessageId): void
+  run(target: SessionInterruptedRetryTarget): void
 }
 
 /** Optional prose file-mention provider consumed by Chat. */
@@ -172,10 +173,10 @@ export interface ChatViewInjected {
   forkAt: (seq: number) => void
   fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined
   /**
-   * Admit one retry for an interrupted assistant message.
-   * @param messageId - interrupted assistant message to regenerate.
+   * Admit one retry for an interrupted assistant settlement.
+   * @param target - durability-addressed interrupted settlement to regenerate.
    */
-  retryInterrupted: (messageId: MessageId) => void
+  retryInterrupted: (target: SessionInterruptedRetryTarget) => void
 }
 
 /** Full Chat view props. */

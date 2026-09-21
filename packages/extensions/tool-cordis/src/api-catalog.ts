@@ -5507,6 +5507,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SessionInspection extends SessionStorageMetadata {\n    readonly events: readonly SessionEvent[];\n}',
   },
   {
+    name: 'SessionInterruptedRetryTarget',
+    declaration: 'export type SessionInterruptedRetryTarget = {\n    readonly kind: \'assistant-message\';\n    readonly messageId: MessageId;\n} | {\n    readonly kind: \'assistant-attempt\';\n    readonly seq: SessionSeq;\n};',
+  },
+  {
     name: 'SessionJob',
     declaration: 'export interface SessionJob {\n    readonly id: JobId;\n    readonly kind: string;\n    readonly label: string;\n    readonly status: \'running\' | \'stopping\' | \'completed\' | \'killed\' | \'failed\';\n    readonly detail?: string;\n    readonly startedAt: number;\n    readonly finishedAt?: number;\n}',
   },
@@ -5664,7 +5668,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SessionRetryInterruptedRequest',
-    declaration: 'export interface SessionRetryInterruptedRequest {\n    readonly sessionId: SessionId;\n    readonly messageId: MessageId;\n}',
+    declaration: 'export interface SessionRetryInterruptedRequest {\n    readonly sessionId: SessionId;\n    readonly target: SessionInterruptedRetryTarget;\n}',
   },
   {
     name: 'SessionRetryInterruptedValue',

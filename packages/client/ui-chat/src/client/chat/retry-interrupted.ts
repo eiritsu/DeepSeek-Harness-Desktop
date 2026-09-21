@@ -7,7 +7,7 @@
  */
 
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
-import type { MessageId } from '@deepseek-ai/dsh-api-remotes/client'
+import type { SessionInterruptedRetryTarget } from '@deepseek-ai/dsh-api-remotes/client'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 // Type-only: pulls the connection/reset declaration and the ctx.remote merge.
@@ -17,15 +17,31 @@ import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 export interface RetryInterruptedView {
   /** Whether an admission is on the wire. */
   readonly pending: boolean
-  /** Last failure, addressed to the message it targeted; cleared by the next attempt. */
+  /** Last failure, addressed to the target it targeted; cleared by the next attempt. */
   readonly error: {
-    readonly messageId: MessageId
+    readonly target: SessionInterruptedRetryTarget
     readonly code: string
     readonly message: string
   } | null
 }
 
 const INITIAL_VIEW: RetryInterruptedView = Object.freeze({ pending: false, error: null })
+
+/**
+ * Whether two durable retry targets address the same interrupted settlement.
+ * @param left - first address.
+ * @param right - second address.
+ * @returns whether both name the same settlement kind and identity.
+ */
+export function sameRetryTarget(
+  left: SessionInterruptedRetryTarget,
+  right: SessionInterruptedRetryTarget,
+): boolean {
+  if (left.kind === 'assistant-message') {
+    return right.kind === 'assistant-message' && left.messageId === right.messageId
+  }
+  return right.kind === 'assistant-attempt' && left.seq === right.seq
+}
 
 /** Per-Session retry admission controller behind the assistant-action entry. */
 export class RetryInterruptedController implements HostObservable<RetryInterruptedView> {
@@ -51,29 +67,29 @@ export class RetryInterruptedController implements HostObservable<RetryInterrupt
   }
 
   /**
-   * Admit one retry for an interrupted assistant message. A call while one is
-   * pending is ignored, so a double click accepts once.
-   * @param messageId - interrupted assistant message to regenerate.
+   * Admit one retry for an interrupted assistant settlement. A call while one
+   * is pending is ignored, so a double click accepts once.
+   * @param target - durability-addressed interrupted settlement to regenerate.
    */
-  retry(messageId: MessageId): void {
+  retry(target: SessionInterruptedRetryTarget): void {
     if (this.disposed || this.view.pending) return
     this.publish({ pending: true, error: null })
     const epoch = this.epoch
-    void this.ctx.remote.session.retryInterrupted({ sessionId: this.sessionId, messageId }).then(
+    void this.ctx.remote.session.retryInterrupted({ sessionId: this.sessionId, target }).then(
       (carried) => {
         if (epoch !== this.epoch || this.disposed) return
         this.publish({
           pending: false,
           error: carried.ok
             ? null
-            : { messageId, code: carried.error.code, message: carried.error.message },
+            : { target, code: carried.error.code, message: carried.error.message },
         })
       },
       (error: unknown) => {
         if (epoch !== this.epoch || this.disposed) return
         this.publish({
           pending: false,
-          error: { messageId, code: 'gateway/internal', message: error instanceof Error ? error.message : String(error) },
+          error: { target, code: 'gateway/internal', message: error instanceof Error ? error.message : String(error) },
         })
       },
     )

@@ -1,6 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {
-  ConversationMatch, ConversationNodeContext, ConversationNodeDefinition, TurnLocation,
+  AssistantBlock, ConversationMatch, ConversationNodeContext, ConversationNodeDefinition, TurnLocation,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-llm-retry/types'
 import type { StreamChunk } from '@deepseek-ai/dsh-llm'
@@ -114,9 +114,32 @@ function turnLocation(context: ConversationNodeContext<TurnTailState>): TurnLoca
   return location?.kind === 'turn' || location?.kind === 'step' ? location.turn : undefined
 }
 
-function hasText(data: AssistantChatData): data is FinalAssistantChatData {
-  return data.finalNode !== undefined
-    && data.blocks.some(block => block.kind === 'text' && block.text.trim() !== '')
+function hasClosingContent(data: AssistantChatData): data is FinalAssistantChatData {
+  if (data.finalNode === undefined) return false
+  // An interrupted prefix may hold only reasoning or an undispatched tool call;
+  // any delivered block keeps the answer closable, while a settled answer needs
+  // durable text to own the Turn footer.
+  if (data.status === 'interrupted') return hasInterruptionEvidence(data.blocks)
+  return data.blocks.some(block => block.kind === 'text' && block.text.trim() !== '')
+}
+
+/** Whether one block carries content an interrupted answer delivered. */
+function hasInterruptionEvidence(blocks: readonly AssistantBlock[]): boolean {
+  return blocks.some((block) => {
+    if (block.kind === 'text' || block.kind === 'reasoning') return block.text.trim() !== ''
+    return true
+  })
+}
+
+/** Count one Turn's durable assistant settlements, surface messages and log-only attempts. */
+function settlementCount(matches: readonly ConversationMatch[]): number {
+  let count = 0
+  for (const match of matches) {
+    const settlement = match.event.type === 'assistant/attempt'
+      || (match.event.type === 'assistant/message' && match.event.surfaceOp === 'append')
+    if (settlement) count += 1
+  }
+  return count
 }
 
 function tailData(context: ConversationNodeContext<TurnTailState>): TurnTailChatData | null {
@@ -132,7 +155,7 @@ function tailData(context: ConversationNodeContext<TurnTailState>): TurnTailChat
   const finalized = assistants
     .filter((candidate): candidate is Readonly<FinalAssistantChatData> => candidate.finalNode !== undefined)
     .sort((left, right) => left.finalNode.seq - right.finalNode.seq)
-  const closing = finalized.findLast(hasText) ?? null
+  const closing = finalized.findLast(hasClosingContent) ?? null
   let latestTranscriptSeq = finalized.at(-1)?.finalNode.seq
   for (const match of context.matches) {
     const event = match.event
@@ -153,11 +176,20 @@ function tailData(context: ConversationNodeContext<TurnTailState>): TurnTailChat
   const branchUnavailable = closing === null || latestTranscriptSeq !== closing.finalNode.seq
   // Retry replays the Turn's original prompt over its interrupted tail, so it
   // is safe only when the Turn's sole answer is the interrupted closing one and
-  // no tool call or tool result intervened.
+  // no tool call or tool result intervened. A surface message carries its own
+  // `interrupted` marker; a log-only attempt has none, so its Turn must have
+  // ended aborted or crash-repaired for the Client to offer the action.
+  const logOnlyAttempt = closing !== null && closing.finalNode.messageId === undefined
+  const endReason = end.event.data.reason.kind
+  const interruptionReason = endReason === 'aborted' || endReason === 'interrupted'
   const retryable = closing !== null
     && closing.status === 'interrupted'
     && finalized.length === 1
     && !branchUnavailable
+    // A surface message carries its own `interrupted` marker. A log-only attempt
+    // has none, so its Turn must have ended aborted or crash-repaired and must
+    // hold exactly one settlement for the address to be unambiguous.
+    && (!logOnlyAttempt || (interruptionReason && settlementCount(context.matches) === 1))
     && !context.matches.some(match =>
       match.event.type === 'tool/call' || match.event.type === 'tool/result')
   return {

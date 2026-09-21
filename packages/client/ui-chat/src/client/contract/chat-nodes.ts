@@ -93,8 +93,8 @@ export interface TurnTailChatData {
   readonly branchUnavailable: boolean
   /**
    * Whether this Turn's closing interrupted answer is retryable: the Turn ran a
-   * single assistant answer with no tool call, so its original prompt can
-   * replace the interrupted tail.
+   * single assistant settlement (a surface message or a log-only attempt) with
+   * no tool call, so its original prompt can replace the interrupted tail.
    */
   readonly retryable: boolean
   readonly ttftMs?: number

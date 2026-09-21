@@ -6,7 +6,7 @@ import type {
 import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { LlmAttemptId, MessageId } from '@deepseek-ai/dsh-llm/brand'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
-import type { SessionId, SessionSeqCursor } from '@deepseek-ai/dsh-session/types'
+import type { SessionId, SessionSeq, SessionSeqCursor } from '@deepseek-ai/dsh-session/types'
 import type { SessionProjectionMap } from '@deepseek-ai/dsh-session-projection/types'
 import type { JobId } from '@deepseek-ai/dsh-jobs/brand'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
@@ -339,11 +339,37 @@ export interface SessionPromptValue {
   readonly accepted: true
 }
 
+/**
+ * Durable address of the interrupted assistant settlement a retry replaces.
+ * A cancelled turn carries either a surface `assistant/message` (visible text
+ * or reasoning was delivered) or a log-only `assistant/attempt` (nothing the
+ * surface could finalize). Neither a fabricated message id nor a chunk position
+ * addresses the second form, so the address names the exact durable carrier.
+ */
+export type SessionInterruptedRetryTarget =
+  | {
+    readonly kind: 'assistant-message'
+    /** Durable id of the interrupted `assistant/message`. */
+    readonly messageId: MessageId
+  }
+  | {
+    readonly kind: 'assistant-attempt'
+    /** Durable `seq` of the interrupted log-only `assistant/attempt`. */
+    readonly seq: SessionSeq
+  }
+
+/**
+ * Provenance of a replayed retry prompt. Released 0.1.20 wrote the bare
+ * interrupted `MessageId`; current writers always write a
+ * {@link SessionInterruptedRetryTarget}. Readers accept both.
+ */
+export type AssistantRetryProvenance = SessionInterruptedRetryTarget | MessageId
+
 /** Retry request for the latest interrupted assistant answer. */
 export interface SessionRetryInterruptedRequest {
   readonly sessionId: SessionId
-  /** Durable id of the interrupted assistant message to regenerate. */
-  readonly messageId: MessageId
+  /** Durable address of the interrupted assistant settlement to regenerate. */
+  readonly target: SessionInterruptedRetryTarget
 }
 
 /** Receipt after one interrupted-answer retry is admitted to the live Agent. */
@@ -407,10 +433,12 @@ declare module '@deepseek-ai/dsh-llm' {
     'user-rpc': { kind: 'user'; rpcId: SessionRequestId; clientTimeZone?: string }
     /**
      * Replayed prompt of an interrupted-assistant retry. The event carries a
-     * positional surface replacement; `retryOf` names the shadowed interrupted
-     * assistant message for audit.
+     * positional surface replacement; `retryOf` names the interrupted
+     * settlement it shadows, for audit. A released 0.1.20 log stores the bare
+     * interrupted `MessageId`; current writers store a
+     * {@link SessionInterruptedRetryTarget}.
      */
-    'assistant-retry': { kind: 'assistant-retry'; retryOf: MessageId }
+    'assistant-retry': { kind: 'assistant-retry'; retryOf: AssistantRetryProvenance }
   }
 }
 

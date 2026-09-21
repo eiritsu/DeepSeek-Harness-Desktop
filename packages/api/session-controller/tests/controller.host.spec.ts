@@ -129,7 +129,7 @@ describe('SessionController facade', () => {
 
     await expect(controller.retryInterrupted({
       sessionId,
-      messageId: 'missing-message' as never,
+      target: { kind: 'assistant-message', messageId: 'missing-message' as never },
     })).rejects.toMatchObject({ code: 'session/retry-unavailable' })
 
     const abort = new AbortController()
