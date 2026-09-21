@@ -90,7 +90,9 @@ function optionsOf(directory: ModelDirectoryState, t: TranslateNS<'model'>): Sel
 
 /**
  * Resolve a picked row back to its model selection by matching against the loaded
- * groups (the same data the rows were built from — ids stay opaque).
+ * groups (the same data the rows were built from — ids stay opaque). A model
+ * switch never carries the catalog's metadata default effort; only a re-pick of
+ * the current route preserves its already-explicit effort.
  * @param state - the session's directory snapshot.
  * @param id - the picked row id.
  * @returns the row's model selection, or undefined for failure rows / stale ids.
@@ -100,9 +102,7 @@ function selectionOf(state: ModelDirectoryState, id: string): ModelSelection | u
     for (const model of group.models) {
       if (rowId(group.id, model.id) !== id) continue
       const sameRoute = state.current?.provider === group.id && state.current.model === model.id
-      const reasoningEffort = sameRoute
-        ? state.current?.reasoningEffort ?? model.reasoning?.defaultEffort
-        : model.reasoning?.defaultEffort
+      const reasoningEffort = sameRoute ? state.current?.reasoningEffort : undefined
       return {
         provider: group.id,
         model: model.id,

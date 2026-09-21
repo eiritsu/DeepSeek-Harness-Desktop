@@ -53,7 +53,7 @@ function state(overrides: Partial<ModelDirectoryState> = {}): ModelDirectoryStat
 afterEach(cleanup)
 
 describe('ModelSelect reasoning effort', () => {
-  it('renders effort names without descriptions and submits the effort as part of the session selection', async () => {
+  it('offers the fixed seven levels in order and submits the picked effort as part of the session selection', async () => {
     const directory = createSnapshotStore<ModelDirectoryState>(state())
     const select = vi.fn(async (selection: ModelSelection) => {
       directory.set(state({ current: selection }))
@@ -69,13 +69,19 @@ describe('ModelSelect reasoning effort', () => {
     />)
 
     const trigger = screen.getByRole('button', {
-      name: '选择模型，当前 DeepSeek-V4-Flash，推理等级 High',
+      name: '选择模型，当前 DeepSeek-V4-Flash，推理等级 Default',
     })
     fireEvent.click(trigger)
     fireEvent.click(screen.getByRole('menuitem', { name: /推理等级/ }))
     expect(screen.getAllByRole('menuitemradio').map(item => item.textContent))
-      .toEqual(['Off', 'High', 'Max'])
+      .toEqual(['Default', 'Minimal', 'Low', 'Medium', 'High', 'XHigh', 'Max'])
+    // The adapter's metadata defaultEffort (High) neither shows nor checks:
+    // an unset explicit effort is Default.
+    expect(screen.getByRole('menuitemradio', { name: 'Default' }).getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByRole('menuitemradio', { name: 'High' }).getAttribute('aria-checked')).toBe('false')
+    // Metadata descriptions never reach the list.
     expect(screen.queryByText('Largest budget')).toBeNull()
+    expect(screen.queryByRole('menuitemradio', { name: 'Off' })).toBeNull()
 
     fireEvent.click(screen.getByRole('menuitemradio', { name: /Max/ }))
     await waitFor(() => {
@@ -88,7 +94,41 @@ describe('ModelSelect reasoning effort', () => {
     })
   })
 
-  it('offers provider default only when the adapter does not configure a model default', () => {
+  it('switching models submits no catalog metadata default effort', async () => {
+    const directory = createSnapshotStore<ModelDirectoryState>(state({
+      groups: [{
+        id: 'deepseek-official',
+        name: 'DeepSeek',
+        models: [
+          { id: 'deepseek-v4-flash', name: 'DeepSeek-V4-Flash', reasoning },
+          { id: 'deepseek-v4-pro', name: 'DeepSeek-V4-Pro', reasoning },
+        ],
+      }],
+      current: { provider: 'deepseek-official', model: 'deepseek-v4-flash' },
+    }))
+    const select = vi.fn().mockResolvedValue(true)
+    render(<ModelSelect
+      locked={false}
+      available
+      directory={directory}
+      load={vi.fn()}
+      select={select}
+      t={t}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: /当前 DeepSeek-V4-Flash/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'DeepSeek-V4-Pro' }))
+    await waitFor(() => {
+      // The metadata defaultEffort (High) is not written into the selection.
+      expect(select).toHaveBeenCalledWith({
+        provider: 'deepseek-official',
+        model: 'deepseek-v4-pro',
+      })
+    })
+  })
+
+  it('ignores adapter-advertised levels and offers the fixed seven in order', () => {
     const directory = createSnapshotStore(state({
       groups: [{
         id: 'provider',
@@ -96,7 +136,7 @@ describe('ModelSelect reasoning effort', () => {
         models: [{
           id: 'model',
           name: 'Model',
-          reasoning: { efforts: [{ id: 'standard', name: 'Standard' }] },
+          reasoning: { efforts: [{ id: 'standard', name: 'Standard' }], defaultEffort: 'standard' },
         }],
       }],
       current: { provider: 'provider', model: 'model' },
@@ -115,7 +155,46 @@ describe('ModelSelect reasoning effort', () => {
     }))
     fireEvent.click(screen.getByRole('menuitem', { name: /推理等级/ }))
     expect(screen.getAllByRole('menuitemradio').map(item => item.textContent))
-      .toEqual(['Default', 'Standard'])
+      .toEqual(['Default', 'Minimal', 'Low', 'Medium', 'High', 'XHigh', 'Max'])
+    expect(screen.getByRole('menuitemradio', { name: 'Default' }).getAttribute('aria-checked')).toBe('true')
+    expect(screen.queryByRole('menuitemradio', { name: 'Standard' })).toBeNull()
+  })
+
+  it('offers the fixed seven levels for a model without reasoning metadata', async () => {
+    const directory = createSnapshotStore<ModelDirectoryState>(state({
+      groups: [{
+        id: 'provider',
+        name: 'Provider',
+        models: [{ id: 'plain', name: 'Plain' }],
+      }],
+      current: { provider: 'provider', model: 'plain' },
+    }))
+    const select = vi.fn().mockResolvedValue(true)
+    render(<ModelSelect
+      locked={false}
+      available
+      directory={directory}
+      load={vi.fn()}
+      select={select}
+      t={t}
+    />)
+
+    const trigger = screen.getByRole('button', {
+      name: '选择模型，当前 Plain，推理等级 Default',
+    })
+    fireEvent.click(trigger)
+    fireEvent.click(screen.getByRole('menuitem', { name: /推理等级/ }))
+    expect(screen.getAllByRole('menuitemradio').map(item => item.textContent))
+      .toEqual(['Default', 'Minimal', 'Low', 'Medium', 'High', 'XHigh', 'Max'])
+
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /Low/ }))
+    await waitFor(() => {
+      expect(select).toHaveBeenCalledWith({
+        provider: 'provider',
+        model: 'plain',
+        reasoningEffort: 'low',
+      })
+    })
   })
 
   it('shows the durable model id when the catalog has no matching display name', () => {
@@ -132,10 +211,14 @@ describe('ModelSelect reasoning effort', () => {
       t={t}
     />)
 
-    const trigger = screen.getByRole('button', { name: '选择模型，当前 deepseek-official/removed-model' })
+    const trigger = screen.getByRole('button', { name: '选择模型，当前 deepseek-official/removed-model，推理等级 Default' })
     expect(trigger.textContent).toContain('deepseek-official/removed-model')
     fireEvent.click(trigger)
-    expect(screen.queryByRole('menuitem', { name: /推理等级/ })).toBeNull()
+    // A route with no catalog row still exposes the fixed effort list.
+    fireEvent.click(screen.getByRole('menuitem', { name: /推理等级/ }))
+    expect(screen.getAllByRole('menuitemradio').map(item => item.textContent))
+      .toEqual(['Default', 'Minimal', 'Low', 'Medium', 'High', 'XHigh', 'Max'])
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
     fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
     expect(screen.queryByRole('menuitemradio', { name: 'removed-model' })).toBeNull()
     expect(screen.getByRole('menuitemradio', { name: 'DeepSeek-V4-Flash' })).toBeTruthy()
@@ -163,7 +246,7 @@ describe('ModelSelect reasoning effort', () => {
     directory.set(state())
     await waitFor(() => {
       expect(screen.getByRole('button', {
-        name: '选择模型，当前 DeepSeek-V4-Flash，推理等级 High',
+        name: '选择模型，当前 DeepSeek-V4-Flash，推理等级 Default',
       })).toBeTruthy()
     })
   })

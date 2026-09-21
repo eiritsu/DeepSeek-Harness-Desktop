@@ -809,6 +809,13 @@ workspaceDesktop(): { name: string; available: boolean; fileManager: 'finder' | 
 @Remote('prompt') prompt(request: SessionPromptRequest, signal: AbortSignal): Promise<SessionPromptValue>
 
 /**
+ * Re-run the latest interrupted assistant answer from its original prompt.
+ * @param request - Session identity and the interrupted assistant message.
+ * @returns acknowledgement that the retry entered the live Agent.
+ */
+@Remote('retryInterrupted') retryInterrupted(request: SessionRetryInterruptedRequest): Promise<SessionRetryInterruptedValue>
+
+/**
  * Read one image proven reachable from the addressed Session log.
  * @param request - Session and attachment identities used for authorization.
  * @returns the durable attachment reference and base64-encoded bytes.

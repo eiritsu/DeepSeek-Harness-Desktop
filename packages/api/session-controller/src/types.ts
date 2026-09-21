@@ -204,6 +204,7 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'session/steer-unavailable': { readonly itemId: MessageId }
     'session/title-invalid': { readonly sessionId: SessionId }
     'session/fork-unavailable': { readonly sessionId: SessionId }
+    'session/retry-unavailable': { readonly reason: string }
     'session/has-children': { readonly sessionId: SessionId; readonly childSessionIds: readonly SessionId[] }
     'session/running': { readonly sessionId: SessionId }
     'subagent/not-found': {
@@ -338,6 +339,18 @@ export interface SessionPromptValue {
   readonly accepted: true
 }
 
+/** Retry request for the latest interrupted assistant answer. */
+export interface SessionRetryInterruptedRequest {
+  readonly sessionId: SessionId
+  /** Durable id of the interrupted assistant message to regenerate. */
+  readonly messageId: MessageId
+}
+
+/** Receipt after one interrupted-answer retry is admitted to the live Agent. */
+export interface SessionRetryInterruptedValue {
+  readonly accepted: true
+}
+
 /** Durable image read request. */
 export interface SessionAttachmentRequest {
   readonly sessionId: SessionId
@@ -392,6 +405,12 @@ declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
     /** Browser prompt correlation and optional Host-validated time zone. */
     'user-rpc': { kind: 'user'; rpcId: SessionRequestId; clientTimeZone?: string }
+    /**
+     * Replayed prompt of an interrupted-assistant retry. The event carries a
+     * positional surface replacement; `retryOf` names the shadowed interrupted
+     * assistant message for audit.
+     */
+    'assistant-retry': { kind: 'assistant-retry'; retryOf: MessageId }
   }
 }
 

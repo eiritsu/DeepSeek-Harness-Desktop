@@ -252,10 +252,30 @@ describe('ui-model-selection dual entry', () => {
     const options = await b.popup().options(projection('s1'), new AbortController().signal)
     const pro = options.find((o: SelectOption) => o.label === 'DeepSeek-V4-Pro')!
     await b.popup().onSelect(pro, projection('s1'))
+    // The switch carries no catalog metadata defaultEffort (both models declare
+    // `high`), so the next request resolves the model's own default.
     expect(seatFace.directory.getSnapshot().current).toEqual({
       provider: 'deepseek-official',
       model: 'deepseek-v4-pro',
-      reasoningEffort: 'high',
+    })
+  })
+
+  it('a popup re-pick of the current route preserves its explicit effort', async () => {
+    const b = await bench()
+    b.mint('s1')
+    const seatFace = b.seat().inject!(sid('s1'))
+    await seatFace.select({
+      provider: 'deepseek-official',
+      model: 'deepseek-v4-flash',
+      reasoningEffort: 'max',
+    })
+    const options = await b.popup().options(projection('s1'), new AbortController().signal)
+    const flash = options.find((o: SelectOption) => o.label === 'DeepSeek-V4-Flash')!
+    await b.popup().onSelect(flash, projection('s1'))
+    expect(seatFace.directory.getSnapshot().current).toEqual({
+      provider: 'deepseek-official',
+      model: 'deepseek-v4-flash',
+      reasoningEffort: 'max',
     })
   })
 

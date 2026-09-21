@@ -6,8 +6,9 @@
  * the shared directory, and the effort levels. The trigger (313:14108's
  * ToggleButton) shows both: model name + effort in the caption tone.
  * Data and submission ride the SAME per-session ModelDirectory as the
- * /model popup; exact-model reasoning metadata and the selected effort come
- * from the Host rather than a client-owned vocabulary. A rejected selection
+ * /model popup. The effort list is a fixed seven-level vocabulary offered for
+ * every selected model, independent of the adapter's advertised efforts; the
+ * Host still validates the submitted effort. A rejected selection
  * announces through the shared transient Toast anchored to the composer
  * card; the in-menu strip with Retry remains the catalog-load surface.
  */
@@ -17,24 +18,36 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import clsx from 'clsx'
-import type { ModelReasoningEffort, ModelSelection } from '@deepseek-ai/dsh-api-remotes/client'
+import type { ModelSelection } from '@deepseek-ai/dsh-api-remotes/client'
 import {
   IconCheckOutline16, IconChevronDownOutline14, IconChevronRightOutline14,
   IconDataOutline16, IconWarningOutline16, Toast,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ModelSelectInjected } from './slots.ts'
+import type { ModelKey } from './locales.ts'
 import css from './ModelSelect.module.css'
 
 /** Which pane the dropdown shows: the two-row root or one drilled-in list. */
 type Pane = 'root' | 'model' | 'effort'
 
-/** One dynamic effort row; undefined means preserve the provider default. */
+/** One fixed effort row; undefined means preserve the provider default. */
 interface EffortChoice {
   key: string
   effort: string | undefined
   label: string
 }
+
+/** The fixed levels every model seat offers, in menu order; undefined preserves the provider default. */
+const EFFORT_LEVELS = [
+  { effort: undefined, labelKey: 'effort.providerDefault' },
+  { effort: 'minimal', labelKey: 'effort.minimal' },
+  { effort: 'low', labelKey: 'effort.low' },
+  { effort: 'medium', labelKey: 'effort.medium' },
+  { effort: 'high', labelKey: 'effort.high' },
+  { effort: 'xhigh', labelKey: 'effort.xhigh' },
+  { effort: 'max', labelKey: 'effort.max' },
+] as const satisfies readonly { effort: string | undefined; labelKey: ModelKey }[]
 
 /** Unplaced portal card: hidden but laid out at a fixed origin so offsetWidth/offsetHeight are real (Menu primitive's measure pass). */
 const MEASURE_STYLE: CSSProperties = { visibility: 'hidden', left: 0, top: 0 }
@@ -70,40 +83,22 @@ export function ModelSelect(
   const id = useId()
 
   const choices = useMemo(() => state.groups.flatMap(group =>
-    group.models.map(model => ({
-      group,
-      model,
-      selection: {
-        provider: group.id,
-        model: model.id,
-        ...model.reasoning?.defaultEffort === undefined
-          ? {}
-          : { reasoningEffort: model.reasoning.defaultEffort },
-      } satisfies ModelSelection,
-    }))), [state.groups])
+    group.models.map(model => ({ group, model }))), [state.groups])
   const selectedIndex = state.current === null
     ? -1
-    : choices.findIndex(c => c.selection.provider === state.current?.provider && c.selection.model === state.current.model)
+    : choices.findIndex(c => c.group.id === state.current?.provider && c.model.id === state.current.model)
   const currentChoice = choices[selectedIndex]
-  const reasoning = currentChoice?.model.reasoning
-  const effectiveEffort = state.current?.reasoningEffort ?? reasoning?.defaultEffort
-  const effortLabel = reasoning === undefined
-    ? undefined
-    : effectiveEffort === undefined
-      ? t('effort.providerDefault')
-      : reasoning.efforts.find(level => level.id === effectiveEffort)?.name ?? effectiveEffort
-  const effortChoices = useMemo<readonly EffortChoice[]>(() => reasoning === undefined
-    ? []
-    : [
-      ...reasoning.defaultEffort === undefined
-        ? [{ key: 'provider-default', effort: undefined, label: t('effort.providerDefault') }]
-        : [],
-      ...reasoning.efforts.map((effort: ModelReasoningEffort) => ({
-        key: `effort:${effort.id}`,
-        effort: effort.id,
-        label: effort.name,
-      })),
-    ], [reasoning, t])
+  // Default means no explicit effort: the adapter's metadata default never
+  // substitutes one. Selecting a model never writes that default either.
+  const effectiveEffort = state.current?.reasoningEffort
+  const effortChoices = useMemo<readonly EffortChoice[]>(() => EFFORT_LEVELS.map(level => ({
+    key: level.effort ?? 'provider-default',
+    effort: level.effort,
+    label: t(level.labelKey),
+  })), [t])
+  const effortLabel = effectiveEffort === undefined
+    ? t('effort.providerDefault')
+    : effortChoices.find(level => level.effort === effectiveEffort)?.label ?? effectiveEffort
   const busy = state.status === 'selecting'
 
   const reload = (): void => {
@@ -243,14 +238,12 @@ export function ModelSelect(
     ? t('trigger.loading')
     : currentChoice?.model.name
       ?? (state.current === null ? t('trigger.fallback') : `${state.current.provider}/${state.current.model}`)
-  const triggerLabel = effortLabel === undefined ? modelLabel : `${modelLabel} · ${effortLabel}`
+  const triggerLabel = state.current === null ? modelLabel : `${modelLabel} · ${effortLabel}`
   const triggerAria = waiting
     ? t('trigger.loading')
     : state.current === null
       ? t('trigger.selectAria')
-      : effortLabel === undefined
-        ? t('trigger.aria', { model: modelLabel })
-        : t('trigger.ariaEffort', { model: modelLabel, effort: effortLabel })
+      : t('trigger.ariaEffort', { model: modelLabel, effort: effortLabel })
   itemRefs.current = []
   let itemIndex = 0
   const itemRef = () => {
@@ -280,7 +273,7 @@ export function ModelSelect(
       >
         <IconDataOutline16 className={css.triggerIcon} size={16} />
         <span className={css.triggerLabel}>{modelLabel}</span>
-        {effortLabel !== undefined && <span className={css.triggerEffort}>{effortLabel}</span>}
+        {state.current !== null && <span className={css.triggerEffort}>{effortLabel}</span>}
         <IconChevronDownOutline14 className={clsx(css.chevron, open && css.chevronOpen)} />
       </button>
 
@@ -304,13 +297,11 @@ export function ModelSelect(
                 <span className={css.cellValue}>{modelLabel}</span>
                 <IconChevronRightOutline14 className={css.cellChevron} />
               </button>
-              {reasoning !== undefined && (
-                <button ref={itemRef()} type="button" role="menuitem" className={css.cell} onClick={() => { setPane('effort') }}>
-                  <span className={css.cellLabel}>{t('menu.effort')}</span>
-                  <span className={css.cellValue}>{effortLabel}</span>
-                  <IconChevronRightOutline14 className={css.cellChevron} />
-                </button>
-              )}
+              <button ref={itemRef()} type="button" role="menuitem" className={css.cell} onClick={() => { setPane('effort') }}>
+                <span className={css.cellLabel}>{t('menu.effort')}</span>
+                <span className={css.cellValue}>{effortLabel}</span>
+                <IconChevronRightOutline14 className={css.cellChevron} />
+              </button>
             </>
           )}
 
@@ -378,27 +369,25 @@ export function ModelSelect(
                   <button type="button" className={css.retry} onClick={reload}>{t('action.reload')}</button>
                 </div>
               )}
-              {effortChoices.length === 0
-                ? <div className={css.empty}>{t('empty.efforts')}</div>
-                : effortChoices.map(level => (
-                  <button
-                    ref={itemRef()}
-                    type="button"
-                    role="menuitemradio"
-                    aria-checked={effectiveEffort === level.effort}
-                    className={clsx(css.option, effectiveEffort === level.effort && css.selected)}
-                    key={level.key}
-                    disabled={busy}
-                    onClick={() => { chooseEffort(level.effort) }}
-                  >
-                    <span className={css.optionCopy}>
-                      <span className={css.modelName}>{level.label}</span>
-                    </span>
-                    <span className={css.check}>
-                      {effectiveEffort === level.effort ? <IconCheckOutline16 /> : null}
-                    </span>
-                  </button>
-                ))}
+              {effortChoices.map(level => (
+                <button
+                  ref={itemRef()}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={effectiveEffort === level.effort}
+                  className={clsx(css.option, effectiveEffort === level.effort && css.selected)}
+                  key={level.key}
+                  disabled={busy}
+                  onClick={() => { chooseEffort(level.effort) }}
+                >
+                  <span className={css.optionCopy}>
+                    <span className={css.modelName}>{level.label}</span>
+                  </span>
+                  <span className={css.check}>
+                    {effectiveEffort === level.effort ? <IconCheckOutline16 /> : null}
+                  </span>
+                </button>
+              ))}
             </>
           )}
         </div>,

@@ -473,8 +473,7 @@ export function apply(ctx: Context, config: Config = {}): void {
   const agents = ctx.get('agents')
   const scopedFibers = new Map<Agent, () => void | Promise<void>>()
   const refreshScope = (agent: Agent, mode?: SandboxMode): void => {
-    if (agent.ctx === undefined || scopeOf(agent.ctx) === undefined) return
-    if (agent.ctx === undefined || scopeOf(agent.ctx) === undefined) return
+    if (scopeOf(agent.ctx) === undefined) return
     const previous = scopedFibers.get(agent)
     if (previous !== undefined) {
       scopedFibers.delete(agent)
@@ -503,6 +502,6 @@ export function apply(ctx: Context, config: Config = {}): void {
   ctx.effect(() => async () => {
     const fibers = [...scopedFibers.values()]
     scopedFibers.clear()
-    await Promise.all(fibers.map(fiber => fiber()))
+    await Promise.all(fibers.map(async (fiber) => { await fiber() }))
   }, 'tool-pwsh: session schema shadows')
 }

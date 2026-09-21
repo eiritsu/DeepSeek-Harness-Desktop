@@ -150,12 +150,23 @@ function tailData(context: ConversationNodeContext<TurnTailState>): TurnTailChat
   const tokenUsage = context.start?.event.type === 'turn/start'
     ? deriveTurnTokenUsage(context.matches.map(match => match.event).filter(isSessionEvent))
     : undefined
+  const branchUnavailable = closing === null || latestTranscriptSeq !== closing.finalNode.seq
+  // Retry replays the Turn's original prompt over its interrupted tail, so it
+  // is safe only when the Turn's sole answer is the interrupted closing one and
+  // no tool call or tool result intervened.
+  const retryable = closing !== null
+    && closing.status === 'interrupted'
+    && finalized.length === 1
+    && !branchUnavailable
+    && !context.matches.some(match =>
+      match.event.type === 'tool/call' || match.event.type === 'tool/result')
   return {
     turn: end.event.data.turn,
     seq: end.event.seq,
     time: end.event.time,
     closing,
-    branchUnavailable: closing === null || latestTranscriptSeq !== closing.finalNode.seq,
+    branchUnavailable,
+    retryable,
     ...metrics?.ttftMs === undefined ? {} : { ttftMs: metrics.ttftMs },
     ...metrics?.tokensPerSecond === undefined ? {} : { tokensPerSecond: metrics.tokensPerSecond },
     ...tokenUsage === undefined ? {} : { tokenUsage },

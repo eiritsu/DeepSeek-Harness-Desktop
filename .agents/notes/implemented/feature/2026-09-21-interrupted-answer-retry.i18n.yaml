@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-21-interrupted-answer-retry.md
+2026-09-21-interrupted-answer-retry.md: 624df90bef1ceea9fdb7106498c74e5f373402c4
+2026-09-21-interrupted-answer-retry.zh.md: 19f6dae091295c3b63e6db30616aeb1cce49bd71

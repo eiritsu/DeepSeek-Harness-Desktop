@@ -14,9 +14,11 @@ import type {
   InboxTarget,
   PreStepDecision,
   RequestErrorAction,
+  SurfaceReplacement,
 } from '@deepseek-ai/dsh-agent'
 import { agentEvents, assembleContextFor } from '@deepseek-ai/dsh-agent'
 import type { GenerateOptions, LlmCallConfig, Message, PreparedLlmCall } from '@deepseek-ai/dsh-llm'
+import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import {
   LlmError,
   createAssistantMessage,
@@ -92,6 +94,11 @@ export class ReactLoopAgent implements Agent {
   private readonly systemPrompt: SystemPromptProjection
   /** Identities fully frozen by this loop; weak references do not retain replaced history. */
   private readonly frozenMessages = new WeakSet<Message>()
+  /**
+   * One-shot surface replacement for the next admitted message with this id.
+   * Set by {@link retryInterrupted} and consumed when that message enters its step.
+   */
+  private pendingSurfaceReplacement: { messageId: MessageId; replacement: SurfaceReplacement } | undefined
 
   constructor(
     private loopCtx: Context,
@@ -138,6 +145,19 @@ export class ReactLoopAgent implements Agent {
     this.send(input, 'next-turn', true)
   }
 
+  retryInterrupted(message: UserMessage, replacement: SurfaceReplacement): void {
+    if (this.pendingSurfaceReplacement !== undefined) {
+      throw new Error(`agent "${this.id}": a surface replacement is already pending`)
+    }
+    this.pendingSurfaceReplacement = { messageId: message.id, replacement }
+    try {
+      this.followup(message)
+    } catch (error: unknown) {
+      this.pendingSurfaceReplacement = undefined
+      throw error
+    }
+  }
+
   steer(input: UserMessage): void {
     this.send(input, 'next-step', true)
   }
@@ -147,6 +167,7 @@ export class ReactLoopAgent implements Agent {
   }
 
   cancel(cause: AgentCancelCause, options: CancelOptions = {}): void {
+    this.pendingSurfaceReplacement = undefined
     if (!options.keepInbox) {
       this.inbox.clear()
       if (this.phase.kind !== 'idle') this.phase.wakeRequested = false
@@ -228,6 +249,7 @@ export class ReactLoopAgent implements Agent {
     } catch (_error) {
       // Reported failures and cancellation are contained at the driver boundary.
     } finally {
+      this.pendingSurfaceReplacement = undefined
       /* v8 ignore next -- kick owns a running phase until this driver boundary */
       if (this.phase.kind === 'running') {
         const { turn, wakeRequested } = this.phase
@@ -288,6 +310,9 @@ export class ReactLoopAgent implements Agent {
         const step = phase.step + 1
         const decision = await this.preStep(target, { turn, step })
         if (decision.kind === 'reject') {
+          // A rejected proposal consumes no admitted message, so any pending
+          // surface replacement can no longer apply.
+          this.pendingSurfaceReplacement = undefined
           turnEnds = { kind: 'blocked' }
           return false
         }
@@ -372,8 +397,21 @@ export class ReactLoopAgent implements Agent {
       }
       if (firstAttempt) {
         for (const message of decision.messages) {
+          const pending = this.pendingSurfaceReplacement
+          if (pending !== undefined && pending.messageId === message.id) {
+            this.pendingSurfaceReplacement = undefined
+            const { startSeq, endSeq, sourceEventSeqs } = pending.replacement
+            this.session.append('user/message', message, {
+              surfaceOp: { op: 'replace', startSeq, endSeq },
+              sourceEventSeqs: [...sourceEventSeqs],
+            })
+            continue
+          }
           this.session.append('user/message', message, { surfaceOp: 'append' })
         }
+        // A replacement not consumed by this step's admitted batch is stale:
+        // the producer's message was rewritten away or replaced before entry.
+        this.pendingSurfaceReplacement = undefined
       }
       firstAttempt = false
       const request = this.buildRequest(config, preparedCall, assembly.tools, startsRequestSeries, signal)

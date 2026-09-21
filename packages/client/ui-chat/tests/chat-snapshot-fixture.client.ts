@@ -471,6 +471,7 @@ export function chatSnapshotFixture(input: {
       branchUnavailable: closing === null
         || preceding?.kind !== 'assistant-step'
         || (preceding.data as ReturnType<typeof assistantData>).finalNode.seq !== closing.finalNode.seq,
+      retryable: false,
       ...metrics?.ttftMs === undefined ? {} : { ttftMs: metrics.ttftMs },
       ...metrics?.tokensPerSecond === undefined ? {} : { tokensPerSecond: metrics.tokensPerSecond },
       ...tokenUsage === undefined ? {} : { tokenUsage },

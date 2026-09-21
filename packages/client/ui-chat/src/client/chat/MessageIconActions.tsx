@@ -29,6 +29,11 @@ export interface MessageIconActionsProps {
    */
   extraActions?: ReactNode
   /**
+   * Built-in retry control for an interrupted answer, seated immediately after
+   * the copy button.
+   */
+  retryAction?: ReactNode
+  /**
    * Icon-row Turn-usage trigger (the TurnUsagePanel pill), seated after the
    * branch control at the end of the icon cluster.
    */
@@ -44,7 +49,7 @@ export interface MessageIconActionsProps {
  */
 export function MessageIconActions({
   text, time, clock, onBranch, branchUnavailable = false, className,
-  extraActions, usageAction, t,
+  extraActions, retryAction, usageAction, t,
 }: MessageIconActionsProps) {
   const day = useCalendarDay()
   const reasonId = useId()
@@ -87,6 +92,7 @@ export function MessageIconActions({
           {copied ? <IconCheckOutline16 /> : <IconCopyOutline16 />}
         </button>
       </Tooltip>
+      {retryAction}
       {extraActions}
       {onBranch !== undefined && (
         <Tooltip label={branchUnavailable ? t('message.branchUnavailable') : t('message.branch')} side="bottom">

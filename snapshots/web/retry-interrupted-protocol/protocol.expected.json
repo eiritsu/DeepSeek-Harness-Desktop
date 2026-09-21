@@ -1,0 +1,24 @@
+[
+  {
+    "endpoint": "/api/session/retryInterrupted",
+    "request": {
+      "args": {
+        "request": {
+          "sessionId": "retry-interrupted-protocol",
+          "messageId": "{{message:2}}"
+        }
+      }
+    },
+    "status": 200,
+    "response": {
+      "type": "server-response",
+      "rpcId": "retry-interrupted",
+      "result": {
+        "ok": true,
+        "value": {
+          "accepted": true
+        }
+      }
+    }
+  }
+]

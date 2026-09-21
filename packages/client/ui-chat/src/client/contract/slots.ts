@@ -7,7 +7,7 @@ import type {
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {
   InjectFace, KeyedSnapshotSelectorHook, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore,
-  SlotHookFactory, SnapshotSelectorHook,
+  SlotHookFactory, SnapshotSelectorHook, HostObservable,
 } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { MarkdownFileMentions } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -15,6 +15,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { createChatStore } from '../stores.ts'
 import type { ToolCallId } from './store.ts'
 import type { ChatConversationViewNode, ChatNode, ChatNodeKind } from './chat-nodes.ts'
+import type { RetryInterruptedView } from '../chat/retry-interrupted.ts'
 import type {
   ChatNodeProcessSource, ChatNodeSource, ChatSnapshot, ChatTurnProcessPresentation,
 } from './snapshot.ts'
@@ -46,6 +47,19 @@ export interface TurnTailOwnerProps {
 /** Owner currency of finalized-assistant actions. */
 export interface AssistantActionOwnerProps {
   messageId: MessageId
+}
+
+/** Per-Session retry state and action delivered to every Chat node owner. */
+export interface RetryInterruptedOwnerProps {
+  /** Whether the addressed Session is currently running a turn. */
+  readonly sessionRunning: boolean
+  /** Published retry admission state for the Session. */
+  readonly state: RetryInterruptedView
+  /**
+   * Admit one retry for an interrupted assistant message.
+   * @param messageId - interrupted assistant message to regenerate.
+   */
+  run(messageId: MessageId): void
 }
 
 /** Optional prose file-mention provider consumed by Chat. */
@@ -93,6 +107,8 @@ export interface ChatNodeOwnerProps {
   loadImage: MessageImageLoader
   renderMessageImages: RenderMessageImages
   fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined
+  /** Latest-session interrupted-answer retry state and action. */
+  retryInterrupted: RetryInterruptedOwnerProps
   /** Turn-process state when this Node belongs to a projected Turn. */
   turnProcess?: TurnProcessOwnerProps | undefined
 }
@@ -133,6 +149,8 @@ export interface ChatViewInjected {
   hooks: {
     /** Persisted completed-Turn transcript presentation. */
     transcriptView: SnapshotStore<TranscriptViewMode>
+    /** Per-Session interrupted-answer retry state. */
+    retry: HostObservable<RetryInterruptedView>
   }
   keyedHooks: {
     /** Resolve the stable source for one Chat Node key. */
@@ -153,6 +171,11 @@ export interface ChatViewInjected {
   }
   forkAt: (seq: number) => void
   fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined
+  /**
+   * Admit one retry for an interrupted assistant message.
+   * @param messageId - interrupted assistant message to regenerate.
+   */
+  retryInterrupted: (messageId: MessageId) => void
 }
 
 /** Full Chat view props. */

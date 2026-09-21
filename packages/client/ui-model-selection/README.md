@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The Web GUI lets users switch the model and reasoning effort for an existing session through either the `/model` popup or the composer's model control. Both surfaces present the same provider-grouped choices, and the selected model determines the available effort names and default. A complete selection applies to the next request; a running step keeps the model and effort it started with. If no adapter can serve the session's route, the composer remains disabled until routing becomes available.
+The Web GUI lets users switch the model and reasoning effort for an existing session through either the `/model` popup or the composer's model control. Both surfaces present the same provider-grouped choices, and the composer's reasoning menu always offers the same seven levels: Default, Minimal, Low, Medium, High, XHigh, and Max. A complete selection applies to the next request; a running step keeps the model and effort it started with. If no adapter can serve the session's route, the composer remains disabled until routing becomes available.
 
 ## Table of Contents
 
@@ -29,7 +29,7 @@ Mount this plugin alongside `ui-conversation` and the commands package; the comp
 
 ### Model and effort
 
-Models stay grouped by provider. The composer menu shows model and effort names only. The `/model` popup shows provider names and catalog descriptions; it localizes the two built-in DeepSeek descriptions and leaves external provider descriptions verbatim. The popup applies the selected model's default effort; the composer can then choose any advertised effort. An adapter without reasoning metadata leaves the Effort row absent; there is no arbitrary effort input.
+Models stay grouped by provider. The composer menu shows model names and a fixed effort list — Default, Minimal, Low, Medium, High, XHigh, and Max, in that order — for every model, including one without reasoning metadata; the adapter's advertised levels, names, and declared default never change the list or the selection, and Default means the selection carries no explicit effort. The `/model` popup shows provider names and catalog descriptions; it localizes the two built-in DeepSeek descriptions and leaves external provider descriptions verbatim. Picking a model there submits only the route, so a switch never writes the catalog's metadata default into the selection. Selecting an effort the Host does not accept reports through the composer's failure toast.
 
 ### Unroutable sessions
 
@@ -79,7 +79,7 @@ These limits define the current model surface. They are current package constrai
 
 - **No create-time or addressed-subagent selection** — both entries require an existing ordinary session's Agent; there is no draft-phase model choice to fold into session creation, and subagent continuation deliberately exposes no independent model-selection contract.
 - **Directory names are presentation-only** — selection and persistence use provider/model/effort ids; a provider whose catalog or exact-model metadata lookup fails lists as an unselectable failure row until reload.
-- **No arbitrary effort input** — the composer offers only the exact model's adapter-advertised levels; an adapter without reasoning metadata leaves the Effort row absent.
+- **Fixed effort vocabulary** — the composer always offers the seven levels Default, Minimal, Low, Medium, High, XHigh, and Max regardless of the adapter's advertised metadata; an adapter that rejects one reports through the failure toast, and there is no arbitrary effort input.
 
 <a id="dev-note"></a>
 ### Dev Note

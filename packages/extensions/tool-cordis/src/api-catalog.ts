@@ -1662,6 +1662,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'acknowledgement that the Agent accepted the prompt.',
       },
       {
+        signature: '@Remote(\'retryInterrupted\') retryInterrupted(request: SessionRetryInterruptedRequest): Promise<SessionRetryInterruptedValue>',
+        description: 'Re-run the latest interrupted assistant answer from its original prompt.',
+        parameters: [{ name: 'request', description: 'Session identity and the interrupted assistant message.' }],
+        returns: 'acknowledgement that the retry entered the live Agent.',
+      },
+      {
         signature: '@Remote(\'attachment\') attachment(request: SessionAttachmentRequest): Promise<SessionAttachmentValue>',
         description: 'Read one image proven reachable from the addressed Session log.',
         parameters: [{ name: 'request', description: 'Session and attachment identities used for authorization.' }],
@@ -5655,6 +5661,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SessionResultRange',
     declaration: 'export interface SessionResultRange {\n    from?: number;\n    to?: number;\n}',
+  },
+  {
+    name: 'SessionRetryInterruptedRequest',
+    declaration: 'export interface SessionRetryInterruptedRequest {\n    readonly sessionId: SessionId;\n    readonly messageId: MessageId;\n}',
+  },
+  {
+    name: 'SessionRetryInterruptedValue',
+    declaration: 'export interface SessionRetryInterruptedValue {\n    readonly accepted: true;\n}',
   },
   {
     name: 'SessionSearchCursor',

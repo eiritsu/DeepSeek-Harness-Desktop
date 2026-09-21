@@ -505,6 +505,11 @@ export default class LarkManagementGateway extends TypertRemoteService {
     }
   }
 
+  /** Read the disposed flag through a method so a `connect()` await cannot narrow it to a literal. */
+  private isDisposed(): boolean {
+    return this.disposed
+  }
+
   private refreshConversation(): Promise<void> {
     const refresh = this.conversationRefreshTail.then(async () => { await this.replaceConversation() })
       .catch((error: unknown) => {
@@ -572,7 +577,7 @@ export default class LarkManagementGateway extends TypertRemoteService {
     try {
       await bridge.connect()
       // Disposal can run while the connection promise is pending.
-      if (this.disposed) {
+      if (this.isDisposed()) {
         await bridge.dispose()
         return
       }

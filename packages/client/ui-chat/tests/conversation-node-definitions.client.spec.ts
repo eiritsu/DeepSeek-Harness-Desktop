@@ -941,6 +941,77 @@ describe('built-in conversation node Definitions', () => {
     })
   })
 
+  it('marks only a single interrupted answer turn as retryable', () => {
+    const tailOf = (value: ConversationNodeAssembler): TurnTailChatData =>
+      node(snapshot(value), 'turn-tail')?.data as TurnTailChatData
+    const interrupted = assembler([
+      at(1, 'turn/start', { turn: 1 }),
+      at(2, 'user/message', textMessage('user-1', 'question'), { surfaceOp: 'append' }),
+      at(3, 'step/start', { turn: 1, step: 1 }),
+      at(4, 'assistant/message', {
+        turn: 1, step: 1, message: assistantMessage('assistant-1', 'half'), interrupted: true,
+      }, { surfaceOp: 'append' }),
+      at(5, 'step/end', { turn: 1, step: 1 }),
+      at(6, 'turn/end', { turn: 1, reason: { kind: 'completed' } }),
+    ])
+    expect(tailOf(interrupted).retryable).toBe(true)
+
+    const completed = assembler([
+      at(1, 'turn/start', { turn: 1 }),
+      at(2, 'user/message', textMessage('user-1', 'question'), { surfaceOp: 'append' }),
+      at(3, 'step/start', { turn: 1, step: 1 }),
+      at(4, 'assistant/message', { turn: 1, step: 1, message: assistantMessage('assistant-1', 'done') }, { surfaceOp: 'append' }),
+      at(5, 'step/end', { turn: 1, step: 1 }),
+      at(6, 'turn/end', { turn: 1, reason: { kind: 'completed' } }),
+    ])
+    expect(tailOf(completed).retryable).toBe(false)
+
+    const noAnswer = assembler([
+      at(1, 'turn/start', { turn: 1 }),
+      at(2, 'user/message', textMessage('user-1', 'question'), { surfaceOp: 'append' }),
+      at(3, 'turn/end', { turn: 1, reason: { kind: 'completed' } }),
+    ])
+    expect(tailOf(noAnswer).retryable).toBe(false)
+
+    const multiStep = assembler([
+      at(1, 'turn/start', { turn: 1 }),
+      at(2, 'user/message', textMessage('user-1', 'question'), { surfaceOp: 'append' }),
+      at(3, 'step/start', { turn: 1, step: 1 }),
+      at(4, 'assistant/message', { turn: 1, step: 1, message: assistantMessage('assistant-1', 'working') }, { surfaceOp: 'append' }),
+      at(5, 'step/end', { turn: 1, step: 1 }),
+      at(6, 'step/start', { turn: 1, step: 2 }),
+      at(7, 'assistant/message', {
+        turn: 1, step: 2, message: assistantMessage('assistant-2', 'half'), interrupted: true,
+      }, { surfaceOp: 'append' }),
+      at(8, 'step/end', { turn: 1, step: 2 }),
+      at(9, 'turn/end', { turn: 1, reason: { kind: 'completed' } }),
+    ])
+    expect(tailOf(multiStep).retryable).toBe(false)
+
+    const errored = assembler([
+      at(1, 'turn/start', { turn: 1 }),
+      at(2, 'user/message', textMessage('user-1', 'question'), { surfaceOp: 'append' }),
+      at(3, 'step/start', { turn: 1, step: 1 }),
+      at(4, 'assistant/message', {
+        turn: 1, step: 1, message: assistantMessage('assistant-1', 'half'), interrupted: true,
+      }, { surfaceOp: 'append' }),
+      at(5, 'step/end', { turn: 1, step: 1 }),
+      at(6, 'turn/end', { turn: 1, reason: { kind: 'error', error: { code: 'TRANSPORT', message: 'failed' } } }),
+    ])
+    expect(tailOf(errored).retryable).toBe(false)
+
+    const toolEvidence = assembler([
+      at(1, 'turn/start', { turn: 1 }),
+      at(2, 'user/message', textMessage('user-1', 'question'), { surfaceOp: 'append' }),
+      at(3, 'tool/call', { turn: 1, step: 1, callId: 'call-1', name: 'read', arguments: '{}' }),
+      at(4, 'assistant/message', {
+        turn: 1, step: 1, message: assistantMessage('assistant-1', 'half'), interrupted: true,
+      }, { surfaceOp: 'append' }),
+      at(5, 'turn/end', { turn: 1, reason: { kind: 'completed' } }),
+    ])
+    expect(tailOf(toolEvidence).retryable).toBe(false)
+  })
+
   it('uses live Assistant deltas without replaying settled embedded streams', () => {
     const runningHistory = [
       at(1, 'turn/start', { turn: 1 }),

@@ -127,6 +127,11 @@ describe('SessionController facade', () => {
     })
     expect(consumeSelection).toHaveBeenCalledTimes(1)
 
+    await expect(controller.retryInterrupted({
+      sessionId,
+      messageId: 'missing-message' as never,
+    })).rejects.toMatchObject({ code: 'session/retry-unavailable' })
+
     const abort = new AbortController()
     const iterator = controller.follow({
       address: { kind: 'session', sessionId },

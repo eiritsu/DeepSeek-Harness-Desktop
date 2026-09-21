@@ -16,6 +16,7 @@ Use this package to render browser Chat from recorded Session conversations, inc
 - [System prompt row](#system-prompt-row)
 - [Turn token usage](#turn-token-usage)
 - [Completed-turn footer](#completed-turn-footer)
+- [Interrupted-answer retry](#interrupted-answer-retry)
 - [Turn Process Folding](#turn-process-folding)
 - [Scroll ownership](#scroll-ownership)
 - [Model Experience](#model-experience)
@@ -45,6 +46,13 @@ The Session-level token pill uses the durable `tokenUsage` projection. It labels
 ## Completed-turn footer
 
 The completed-turn action footer starts 20px below the preceding prose or extension content.
+
+-----
+
+<a id="interrupted-answer-retry"></a>
+## Interrupted-answer retry
+
+When the latest Turn of an idle Session closes on a genuinely interrupted assistant answer that ran no tool call, the completed-turn footer renders a Retry icon beside copy. The action asks the Host to re-run the Turn's original prompt with the Session's current model, effort, and permission configuration: the durable prompt content (text and attachment references) enters model history once and the interrupted partial is shadowed, while the append-only transcript keeps the old attempt for audit. The button is hidden for a running Session, a non-latest Turn, a Turn that ran tool calls, and a closing answer without a durable message id; a rejected admission reports inline beside the button. One admission per Session is in flight at a time, so a double click admits once, and a connection reset drops a settlement that started on the previous generation.
 
 -----
 

@@ -125,6 +125,19 @@ interface Agent {
   followup(message: UserMessage): void
 
   /**
+   * Re-run one interrupted turn by replacing an earlier surface range with a
+   * replayed user message. The next accepted step admits `message` as that
+   * positional replacement instead of an append, so the replayed prompt enters
+   * model history exactly once while the shadowed interrupted partial does not.
+   * The turn still runs the ordinary pre-step, current request configuration,
+   * and streaming path. The caller owns retryability and idle checks. Absent on
+   * a driver that cannot replay a surface replacement; callers must check.
+   * @param message - identified prompt content replaying the shadowed turn.
+   * @param replacement - the shadowed surface range and its complete provenance.
+   */
+  retryInterrupted?(message: UserMessage, replacement: SurfaceReplacement): void
+
+  /**
    * Submit steering for the nearest step. An idle driver starts a turn;
    * a running driver consumes it at its next step boundary.
    * A rejected step leaves steering parked in the inbox until the next

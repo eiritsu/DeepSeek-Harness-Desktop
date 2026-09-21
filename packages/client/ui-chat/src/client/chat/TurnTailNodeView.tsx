@@ -1,4 +1,5 @@
 import { memo } from 'react'
+import { IconRefreshOutline16, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ChatNodeViewProps, TurnTailOwnerProps } from '../contract/slots.ts'
 import { MessageIconActions } from './MessageIconActions.tsx'
@@ -11,7 +12,7 @@ type TurnTailNodeViewProps = ChatNodeViewProps<'turn-tail'>
 
 /** Turn-local actions and feature tail over the Location index, independent of Assistant placement. */
 export const TurnTailNodeView = memo(function TurnTailNodeView({
-  node, openFile, forkAt, renderSlot, renderSlotChain, t, useChat,
+  node, openFile, forkAt, renderSlot, renderSlotChain, t, useChat, retryInterrupted,
 }: TurnTailNodeViewProps) {
   const data = node.data
   const hasLaterChatNode = useChat(snapshot =>
@@ -34,6 +35,36 @@ export const TurnTailNodeView = memo(function TurnTailNodeView({
   const assistantActions = messageId === undefined
     ? null
     : renderSlot('conversation.chat.assistant-actions', { messageId })
+  const retryState = retryInterrupted.state
+  const retryError = retryState.error
+  const retryFailed = retryError !== null && retryError.messageId === messageId
+  const retryAction = messageId !== undefined
+    && data.retryable
+    && isLatestTurn
+    && !retryInterrupted.sessionRunning
+    ? (
+      <>
+        <Tooltip label={t('message.retryInterrupted.action')} side="bottom">
+          <button
+            type="button"
+            className={css.retryAction}
+            aria-label={t('message.retryInterrupted.action')}
+            disabled={retryState.pending}
+            onClick={() => { retryInterrupted.run(messageId) }}
+          >
+            <IconRefreshOutline16 />
+          </button>
+        </Tooltip>
+        {retryFailed && (
+          <span className={css.retryFailure} role="status">
+            {retryError.code === 'session/retry-unavailable'
+              ? t('message.retryInterrupted.unavailable')
+              : t('message.retryInterrupted.failed')}
+          </span>
+        )}
+      </>
+    )
+    : null
   return (
     <div
       className={css.root}
@@ -48,6 +79,7 @@ export const TurnTailNodeView = memo(function TurnTailNodeView({
         onBranch={() => { forkAt(closing.finalNode.seq) }}
         branchUnavailable={data.branchUnavailable || hasLaterChatNode}
         className={css.actions}
+        retryAction={retryAction}
         extraActions={assistantActions}
         usageAction={(
           <>

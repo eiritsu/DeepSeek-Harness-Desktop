@@ -49,6 +49,8 @@ import type {
   SessionPromptValue,
   SessionRenameRequest,
   SessionRenameValue,
+  SessionRetryInterruptedRequest,
+  SessionRetryInterruptedValue,
   SessionSearchRequest,
   SessionSearchValue,
   SessionSelectModelRequest,
@@ -360,6 +362,16 @@ export class SessionController extends TypertRemoteService {
   prompt(request: SessionPromptRequest, signal: AbortSignal): Promise<SessionPromptValue> {
     signal.throwIfAborted()
     return this.commands.prompt(request)
+  }
+
+  /**
+   * Re-run the latest interrupted assistant answer from its original prompt.
+   * @param request - Session identity and the interrupted assistant message.
+   * @returns acknowledgement that the retry entered the live Agent.
+   */
+  @Remote('retryInterrupted')
+  retryInterrupted(request: SessionRetryInterruptedRequest): Promise<SessionRetryInterruptedValue> {
+    return this.commands.retryInterrupted(request)
   }
 
   /**

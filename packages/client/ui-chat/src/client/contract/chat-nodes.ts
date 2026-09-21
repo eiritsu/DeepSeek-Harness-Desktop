@@ -91,6 +91,12 @@ export interface TurnTailChatData {
   readonly closing: FinalAssistantChatData | null
   /** Whether non-rendered later evidence makes the closing seq non-tail. */
   readonly branchUnavailable: boolean
+  /**
+   * Whether this Turn's closing interrupted answer is retryable: the Turn ran a
+   * single assistant answer with no tool call, so its original prompt can
+   * replace the interrupted tail.
+   */
+  readonly retryable: boolean
   readonly ttftMs?: number
   readonly tokensPerSecond?: number
   /** Exact per-Turn accounting; absent when the loaded evidence is incomplete. */

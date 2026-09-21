@@ -22,6 +22,7 @@ import { canonicalClientTimeZone } from '@deepseek-ai/dsh-util-time'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { RemoteError, remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
 import type { Workspace } from '@deepseek-ai/dsh-workspace'
+import { resolveInterruptedRetryTarget } from './retry.ts'
 import {
   ApiSessionAgentController,
   ApiSessionCwdConflict,
@@ -48,6 +49,8 @@ import type {
   SessionPromptValue,
   SessionRenameRequest,
   SessionRenameValue,
+  SessionRetryInterruptedRequest,
+  SessionRetryInterruptedValue,
   SessionSelectModelRequest,
   SessionSelectModelValue,
   SessionUpdateQueueRequest,
@@ -67,6 +70,11 @@ type PromptContentCandidate =
 
 function hasPromptContent(content: readonly PromptContentCandidate[]): boolean {
   return content.some(part => part.type !== 'text' || part.text.trim().length > 0)
+}
+
+/** Whether one live Agent is currently driving a turn. */
+function isRunningAgent(agent: Agent): boolean {
+  return agent.status !== 'idle'
 }
 
 function recognizedText(part: Exclude<AdmittedPromptContentPart, { type: 'text' }>, text: string): string {
@@ -106,6 +114,9 @@ async function recognizePromptAttachments(
 
 /** Implements Session business commands delegated by the Session Controller Remote service. */
 export class SessionCommandController {
+  /** Sessions with a retry admission in flight, so a double click accepts once. */
+  private readonly retryInFlight = new Set<SessionId>()
+
   /**
    * @param ctx - Host context carrying Agent, model, attachment, title, and Workspace services.
    * @param agents - sole owner of create, resume, and Session-local model selection.
@@ -476,6 +487,70 @@ export class SessionCommandController {
       return { accepted: true }
     }
     return hasImage ? this.agents.serializeImageAdmission(agent, admit) : admit()
+  }
+
+  /**
+   * Re-run the latest interrupted assistant answer from its original prompt.
+   *
+   * Requires an idle Agent and the exact supported surface tail; the replayed
+   * prompt keeps its durable text and attachment references and enters model
+   * history once, as a positional replacement of the original prompt through
+   * the interrupted answer. A concurrent call while one admission is in
+   * flight accepts once, and a later call re-validates against the current
+   * surface; an unsupported tail rejects.
+   * @param request - Session identity and the interrupted assistant message.
+   * @returns acknowledgement that the retry entered the live Agent.
+   * @throws RemoteError when the Session is running or its tail is not retryable.
+   */
+  async retryInterrupted(request: SessionRetryInterruptedRequest): Promise<SessionRetryInterruptedValue> {
+    const agent = await this.resolveAgent(request.sessionId)
+    if (agent.status !== 'idle') {
+      throw new RemoteError(
+        'session/agent-busy',
+        'the session is running; retrying an interrupted answer needs an idle session',
+        { reason: 'running' },
+      )
+    }
+    if (this.retryInFlight.has(request.sessionId)) return { accepted: true }
+    this.retryInFlight.add(request.sessionId)
+    try {
+      const observed = await this.ctx.sessionQuery.observeSession(request.sessionId)
+      using source = observed
+      const target = resolveInterruptedRetryTarget(source.events, request.messageId)
+      if (target === undefined) {
+        throw new RemoteError(
+          'session/retry-unavailable',
+          'the addressed answer is not the latest interrupted assistant answer of an idle session',
+          { reason: 'unsupported-tail' },
+        )
+      }
+      if (this.ctx.agents.get(agent.id) !== agent || isRunningAgent(agent)) {
+        throw new RemoteError(
+          'session/agent-busy',
+          'the session started running before retry admission',
+          { reason: 'running' },
+        )
+      }
+      if (agent.retryInterrupted === undefined) {
+        throw new RemoteError(
+          'session/retry-unavailable',
+          'the live agent cannot replay a surface replacement',
+          { reason: 'unsupported-agent' },
+        )
+      }
+      const message: UserMessage = createUserMessage({
+        content: [...target.promptContent],
+        source: { kind: 'assistant-retry', retryOf: request.messageId },
+      })
+      agent.retryInterrupted(message, {
+        startSeq: target.promptSeq,
+        endSeq: target.interruptedSeq,
+        sourceEventSeqs: [...target.shadowedSeqs],
+      })
+      return { accepted: true }
+    } finally {
+      this.retryInFlight.delete(request.sessionId)
+    }
   }
 
   /**

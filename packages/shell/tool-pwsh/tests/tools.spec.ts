@@ -28,6 +28,7 @@ import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval'
 import { ShellExecutor } from '@deepseek-ai/dsh-shell'
 import type { ShellExecRequest, ShellExecSpec, ShellProcess, ShellRunResult } from '@deepseek-ai/dsh-shell'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
+import { createScope } from '@deepseek-ai/dsh-scope'
 import { turnBoundaryProjectionDefinition } from '@deepseek-ai/dsh-agent-loop'
 import SandboxPolicyService from '@deepseek-ai/dsh-sandbox-policy'
 import * as ToolPwsh from '@deepseek-ai/dsh-tool-pwsh'
@@ -241,6 +242,7 @@ function sandboxAgent(
   mode?: 'read-only' | 'workspace-write' | 'danger-full-access',
   ctx?: Context,
   onAppend?: (type: string) => void,
+  sessionName = 'sandbox-session',
 ): Agent {
   const events: Array<{
     type: string
@@ -253,7 +255,7 @@ function sandboxAgent(
   if (mode !== undefined) {
     events.push({ type: 'sandbox/mode', seq: SessionSeq(1), time: 1, data: { mode } })
   }
-  const id = SessionId('sandbox-session')
+  const id = SessionId(sessionName)
   return {
     id,
     ...ctx === undefined ? {} : { ctx: ctx.plugin(() => {}).ctx },
@@ -281,6 +283,25 @@ function sandboxAgent(
       },
     },
   } as unknown as Agent
+}
+
+/**
+ * Build a fake {@link Agent} whose `Agent.ctx` is a real per-agent scope, so
+ * the tool's `refreshScope` registers the session-scoped schema. Mirrors the
+ * bash suite's helper for the scoped-escalation-schema parity.
+ */
+async function sandboxAgentWithScope(
+  ctx: Context,
+  mode: 'read-only' | 'workspace-write' | 'danger-full-access',
+  sessionName: string,
+): Promise<Agent> {
+  const agent = sandboxAgent(mode, undefined, undefined, sessionName)
+  let scope!: ReturnType<typeof createScope>
+  await ctx.plugin(Object.assign((inner: Context) => {
+    scope = createScope(inner, agent)
+  }, { inject: ['tools'] }))
+  Object.assign(agent, { ctx: scope.ctx })
+  return agent
 }
 
 /**
@@ -632,7 +653,8 @@ describe('sandbox escalation through ctx.approval', () => {
     const { ctx } = await setupSandboxed(true)
     const prompted = vi.fn()
     ctx.on('approval/request', () => { prompted(); return Promise.resolve<ApprovalOutcome>('allowed-once') })
-    const result = await call(ctx, 'pwsh', { ...escalate, sandbox_permissions: 'workspace-write' }, sandboxAgent('workspace-write'))
+    // A narrower target is a caller-fixable argument defect: fail without prompting.
+    const result = await call(ctx, 'pwsh', { ...escalate, sandbox_permissions: 'workspace-write' }, sandboxAgent('danger-full-access'))
     expect(text(result)).toContain('not strictly wider')
     expect(prompted).not.toHaveBeenCalled()
 
@@ -642,6 +664,36 @@ describe('sandbox escalation through ctx.approval', () => {
       data: Record<string, unknown>,
     ) => unknown)('sandbox/mode', { mode: 'unknown-mode' })
     expect(text(await call(ctx, 'pwsh', escalate, malformed))).toContain('not strictly wider')
+  })
+
+  it.each(['workspace-write', 'danger-full-access'] as const)('runs a repeated %s request without approval', async (mode) => {
+    const { ctx, bash } = await setupSandboxed()
+    const result = await call(ctx, 'pwsh', { ...escalate, sandbox_permissions: mode }, sandboxAgent(mode))
+    expect(result.isError).toBe(false)
+    expect(bash.modes).toEqual([mode])
+  })
+
+  it('projects the agent-scoped schema from the session standing mode', async () => {
+    const { ctx } = await setupSandboxed()
+    const dangerAgent = await sandboxAgentWithScope(ctx, 'danger-full-access', 'danger-shadow')
+    ctx.agents.register(dangerAgent)
+    const scoped = ctx.tools.schemas(dangerAgent).find(item => item.name === 'pwsh')!
+    const props = scoped.parameters.properties as Record<string, unknown>
+    expect(props).not.toHaveProperty('sandbox_permissions')
+    expect(props).not.toHaveProperty('justification')
+    expect(scoped.description).not.toContain('sandbox_permissions')
+
+    // The global layer keeps the full advertisement for agentless callers.
+    const global = ctx.tools.schemas().find(item => item.name === 'pwsh')!
+    expect((global.parameters.properties as Record<string, { enum?: string[] }>)['sandbox_permissions']?.enum)
+      .toEqual(['workspace-write', 'danger-full-access'])
+
+    // A session at workspace-write sees only its real target.
+    const writeAgent = await sandboxAgentWithScope(ctx, 'workspace-write', 'workspace-shadow')
+    ctx.agents.register(writeAgent)
+    const writeSchema = ctx.tools.schemas(writeAgent).find(item => item.name === 'pwsh')!
+    expect((writeSchema.parameters.properties as Record<string, { enum?: string[] }>)['sandbox_permissions']?.enum)
+      .toEqual(['danger-full-access'])
   })
 
   it('fails closed when approval cannot be routed', async () => {

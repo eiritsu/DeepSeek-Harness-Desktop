@@ -56,7 +56,10 @@ async function bench() {
   const openWorkspacePath = vi.fn<ClientRemote['session']['openWorkspacePath']>(
     () => Promise.resolve({ ok: true, value: { opened: true } }),
   )
-  new TestRemote(runtime.ctx, { session: { openWorkspacePath } })
+  const retryInterrupted = vi.fn<ClientRemote['session']['retryInterrupted']>(
+    () => Promise.resolve({ ok: true, value: { accepted: true } }),
+  )
+  new TestRemote(runtime.ctx, { session: { openWorkspacePath, retryInterrupted } })
   runtime.ctx.provide('uiWorkspace', {
     openWorkspace: vi.fn(async (_workspaceId: WorkspaceId, beforeOpen: (id: SessionId) => void) => {
       beforeOpen(ROOT)
@@ -89,7 +92,7 @@ async function bench() {
     ) => ChatViewInjected)(id, instance.actions)
     return { instance, injected }
   }
-  return { runtime, layout, openWorkspacePath, sidebarRight, session, chatViewApi }
+  return { runtime, layout, openWorkspacePath, sidebarRight, session, chatViewApi, retryInterrupted }
 }
 
 describe('Chat inject API', () => {
@@ -173,6 +176,18 @@ describe('Chat inject API', () => {
     // An absolute path outside every known root still names its Session.
     await injected.openFile('/abs/a.ts')
     expect(b.sidebarRight.openResource).toHaveBeenLastCalledWith('dsh-resource://file/session/root-2//abs/a.ts')
+    await b.runtime.dispose()
+  })
+
+  it('shares one retry controller per Session and invalidates it on reconnect', async () => {
+    const b = await bench()
+    const { injected } = b.chatViewApi(ROOT)
+    expect(injected.keyedHooks.chatNode('k')).toBeDefined()
+    expect(injected.keyedHooks.chatNodeProcess('k')).toBeDefined()
+    injected.retryInterrupted('m1' as never)
+    injected.retryInterrupted('m2' as never)
+    expect(b.retryInterrupted).toHaveBeenCalledTimes(1)
+    b.runtime.ctx.emit('connection/reset')
     await b.runtime.dispose()
   })
 
