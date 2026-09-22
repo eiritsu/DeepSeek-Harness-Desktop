@@ -21,7 +21,7 @@
 
 import { z } from 'zod'
 import type { ZodType } from 'zod'
-import { SessionSeq, type SessionEvent } from '@deepseek-ai/dsh-session'
+import { SessionSeq, isReplacementSurfaceEvent, type SessionEvent } from '@deepseek-ai/dsh-session'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import type { TurnOutlineEntry, TurnOutlineState } from './types.ts'
 
@@ -79,6 +79,24 @@ const turnOutlineStateSchema: ZodType<TurnOutlineState> = z.object({
   draft: z.string().max(RESPONSE_PREVIEW_LIMIT),
 }).strict()
 
+/**
+ * Whether one prompt event labels the newest Turn's prompt preview: an
+ * ordinary user message, or an edit-and-resend's replayed prompt — the
+ * positional replacement copy of the opening prompt it re-sent. Injected
+ * plugin context, compaction checkpoints, and a released retry's appended
+ * copy (which the Chat transcript presents as context) leave the preview empty.
+ * @param event - prompt event the fold is classifying.
+ * @returns whether the event opens the prompt preview.
+ */
+function isOpeningPrompt(event: SessionEvent<'user/message'>): boolean {
+  // Message sources are merge-extensible and `assistant-retry` is declared by
+  // the Session Controller, which this package does not reference, so the
+  // comparison runs over the declared string rather than the local union.
+  const kind: string = event.data.source.kind
+  return kind === 'user'
+    || (kind === 'assistant-retry' && isReplacementSurfaceEvent(event))
+}
+
 const EMPTY_OUTLINE: TurnOutlineState = { turns: [], draft: '' }
 
 /** The `turnOutline` unit registered on `ctx.sessionProjections` (exported for the unit spec). */
@@ -106,8 +124,10 @@ export const turnOutlineProjectionDefinition = {
       case 'user/message': {
         // Only the newest turn can still be waiting for its opening human
         // prompt; later human messages in the same turn (steering) keep the
-        // first preview.
-        if (event.data.source.kind !== 'user') return state
+        // first preview. An edit-and-resend's replayed prompt is the
+        // positional replacement copy of that opening prompt, so it labels
+        // its Turn the way the prompt it replaced labels the Turn it opened.
+        if (!isOpeningPrompt(event)) return state
         const last = state.turns.at(-1)
         if (last === undefined || last.prompt !== '') return state
         const prompt = preview(event.data.content, PROMPT_PREVIEW_LIMIT)
