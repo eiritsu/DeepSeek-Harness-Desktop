@@ -29,8 +29,8 @@ export const TurnTailNodeView = memo(function TurnTailNodeView({
     ? undefined
     : Math.max(0, turn.end.time - turn.start.time)
   // A log-only attempt carries no messageId, so it addresses no durable message
-  // and contributes no per-message actions. Retry belongs to the opening user
-  // message, which owns the replayable prompt.
+  // and contributes no per-message actions. Edit-and-resend belongs to the
+  // opening user message, which owns the replayable prompt.
   const messageId = closing.finalNode.messageId
   const assistantActions = messageId === undefined
     ? null

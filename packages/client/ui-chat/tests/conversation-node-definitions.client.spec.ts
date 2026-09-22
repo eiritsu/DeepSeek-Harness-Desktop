@@ -957,7 +957,7 @@ describe('built-in conversation node Definitions', () => {
     })
   })
 
-  it('marks only a single interrupted answer turn as retryable', () => {
+  it('marks only a single interrupted answer turn as resendable', () => {
     const tailOf = (value: ConversationNodeAssembler): TurnTailChatData =>
       node(snapshot(value), 'turn-tail')?.data as TurnTailChatData
     const interrupted = assembler([
@@ -970,7 +970,7 @@ describe('built-in conversation node Definitions', () => {
       at(5, 'step/end', { turn: 1, step: 1 }),
       at(6, 'turn/end', { turn: 1, reason: { kind: 'completed' } }),
     ])
-    expect(tailOf(interrupted).retryable).toBe(true)
+    expect(tailOf(interrupted).resendable).toBe(true)
 
     // A prior provider-failed attempt stays off the surface, so it does not
     // make the interrupted surface message's address ambiguous.
@@ -990,7 +990,7 @@ describe('built-in conversation node Definitions', () => {
       at(7, 'step/end', { turn: 1, step: 1 }),
       at(8, 'turn/end', { turn: 1, reason: { kind: 'completed' } }),
     ])
-    expect(tailOf(priorAttempt).retryable).toBe(true)
+    expect(tailOf(priorAttempt).resendable).toBe(true)
 
     const completed = assembler([
       at(1, 'turn/start', { turn: 1 }),
@@ -1001,7 +1001,7 @@ describe('built-in conversation node Definitions', () => {
       at(6, 'turn/end', { turn: 1, reason: { kind: 'completed' } }),
     ])
     // A normally completed single answer is the latest safe answer to regenerate.
-    expect(tailOf(completed).retryable).toBe(true)
+    expect(tailOf(completed).resendable).toBe(true)
     expect(tailOf(completed).closing?.finalNode).toMatchObject({ messageId: 'assistant-1' })
     expect(tailOf(completed).closing?.finalNode?.interrupted).toBeUndefined()
 
@@ -1012,7 +1012,7 @@ describe('built-in conversation node Definitions', () => {
       at(4, 'assistant/message', { turn: 1, step: 1, message: assistantMessage('assistant-1', 'done') }, { surfaceOp: 'append' }),
       at(5, 'turn/end', { turn: 1, reason: { kind: 'completed' } }),
     ])
-    expect(tailOf(completedWithTools).retryable).toBe(false)
+    expect(tailOf(completedWithTools).resendable).toBe(false)
 
     const completedTwoSettlements = assembler([
       at(1, 'turn/start', { turn: 1 }),
@@ -1025,7 +1025,7 @@ describe('built-in conversation node Definitions', () => {
       at(8, 'step/end', { turn: 1, step: 2 }),
       at(9, 'turn/end', { turn: 1, reason: { kind: 'completed' } }),
     ])
-    expect(tailOf(completedTwoSettlements).retryable).toBe(false)
+    expect(tailOf(completedTwoSettlements).resendable).toBe(false)
 
     const completedErrored = assembler([
       at(1, 'turn/start', { turn: 1 }),
@@ -1035,14 +1035,14 @@ describe('built-in conversation node Definitions', () => {
       at(5, 'step/end', { turn: 1, step: 1 }),
       at(6, 'turn/end', { turn: 1, reason: { kind: 'error', error: { code: 'TRANSPORT', message: 'failed' } } }),
     ])
-    expect(tailOf(completedErrored).retryable).toBe(false)
+    expect(tailOf(completedErrored).resendable).toBe(false)
 
     const noAnswer = assembler([
       at(1, 'turn/start', { turn: 1 }),
       at(2, 'user/message', textMessage('user-1', 'question'), { surfaceOp: 'append' }),
       at(3, 'turn/end', { turn: 1, reason: { kind: 'completed' } }),
     ])
-    expect(tailOf(noAnswer).retryable).toBe(false)
+    expect(tailOf(noAnswer).resendable).toBe(false)
 
     const multiStep = assembler([
       at(1, 'turn/start', { turn: 1 }),
@@ -1057,7 +1057,7 @@ describe('built-in conversation node Definitions', () => {
       at(8, 'step/end', { turn: 1, step: 2 }),
       at(9, 'turn/end', { turn: 1, reason: { kind: 'completed' } }),
     ])
-    expect(tailOf(multiStep).retryable).toBe(false)
+    expect(tailOf(multiStep).resendable).toBe(false)
 
     const errored = assembler([
       at(1, 'turn/start', { turn: 1 }),
@@ -1069,7 +1069,7 @@ describe('built-in conversation node Definitions', () => {
       at(5, 'step/end', { turn: 1, step: 1 }),
       at(6, 'turn/end', { turn: 1, reason: { kind: 'error', error: { code: 'TRANSPORT', message: 'failed' } } }),
     ])
-    expect(tailOf(errored).retryable).toBe(false)
+    expect(tailOf(errored).resendable).toBe(false)
 
     const toolEvidence = assembler([
       at(1, 'turn/start', { turn: 1 }),
@@ -1080,10 +1080,10 @@ describe('built-in conversation node Definitions', () => {
       }, { surfaceOp: 'append' }),
       at(5, 'turn/end', { turn: 1, reason: { kind: 'completed' } }),
     ])
-    expect(tailOf(toolEvidence).retryable).toBe(false)
+    expect(tailOf(toolEvidence).resendable).toBe(false)
   })
 
-  it('marks a single interrupted log-only attempt turn as retryable', () => {
+  it('marks a single interrupted log-only attempt turn as resendable', () => {
     const tailOf = (value: ConversationNodeAssembler): TurnTailChatData =>
       node(snapshot(value), 'turn-tail')?.data as TurnTailChatData
     const attemptTurn = (stream: ReturnType<typeof attemptStream>, reason: unknown = { kind: 'aborted', reason: { kind: 'user' } }) => assembler([
@@ -1096,22 +1096,22 @@ describe('built-in conversation node Definitions', () => {
     ])
 
     const partial = tailOf(attemptTurn(attemptStream('half an answer')))
-    expect(partial.retryable).toBe(true)
+    expect(partial.resendable).toBe(true)
     expect(partial.closing?.finalNode).toMatchObject({ attemptSeq: 4, interrupted: true })
     expect(partial.closing?.finalNode?.messageId).toBeUndefined()
     expect(partial.closing?.blocks).toEqual([{ kind: 'text', text: 'half an answer' }])
 
     const reasoningOnly = tailOf(attemptTurn(attemptStream('thinking about it', 'reasoning')))
-    expect(reasoningOnly.retryable).toBe(true)
+    expect(reasoningOnly.resendable).toBe(true)
     expect(reasoningOnly.closing?.blocks).toEqual([{ kind: 'reasoning', text: 'thinking about it' }])
 
     const completed = tailOf(attemptTurn(attemptStream('half'), { kind: 'completed' }))
-    expect(completed.retryable).toBe(false)
+    expect(completed.resendable).toBe(false)
     const errored = tailOf(attemptTurn(
       attemptStream('half'),
       { kind: 'error', error: { code: 'TRANSPORT', message: 'failed' } },
     ))
-    expect(errored.retryable).toBe(false)
+    expect(errored.resendable).toBe(false)
 
     const tools = assembler([
       at(1, 'turn/start', { turn: 1 }),
@@ -1120,7 +1120,7 @@ describe('built-in conversation node Definitions', () => {
       at(4, 'assistant/attempt', { turn: 1, step: 1, stream: attemptStream('half') }),
       at(5, 'turn/end', { turn: 1, reason: { kind: 'aborted', reason: { kind: 'user' } } }),
     ])
-    expect(tailOf(tools).retryable).toBe(false)
+    expect(tailOf(tools).resendable).toBe(false)
 
     const multiple = assembler([
       at(1, 'turn/start', { turn: 1 }),
@@ -1129,10 +1129,10 @@ describe('built-in conversation node Definitions', () => {
       at(4, 'assistant/attempt', { turn: 1, step: 1, stream: attemptStream('second') }),
       at(5, 'turn/end', { turn: 1, reason: { kind: 'aborted', reason: { kind: 'user' } } }),
     ])
-    expect(tailOf(multiple).retryable).toBe(false)
+    expect(tailOf(multiple).resendable).toBe(false)
   })
 
-  it('projects a zero-output aborted attempt as a stopped answer and a retryable tail', () => {
+  it('projects a zero-output aborted attempt as a stopped answer and a resendable tail', () => {
     // A stop that settled before any stream chunk leaves no block at all, yet
     // the attempt is the answer's durable interruption and owns the footer.
     const value = assembler([
@@ -1154,9 +1154,28 @@ describe('built-in conversation node Definitions', () => {
     expect((assistant?.data as AssistantChatData).finalNode?.messageId).toBeUndefined()
 
     const tail = node(snap, 'turn-tail')?.data as TurnTailChatData
-    expect(tail.retryable).toBe(true)
+    expect(tail.resendable).toBe(true)
     expect(tail.closing?.blocks).toEqual([])
     expect(tail.closing?.finalNode).toMatchObject({ attemptSeq: 4, interrupted: true })
+  })
+
+  it('marks a stopped latest turn resumable and a finished one not', () => {
+    const tailOf = (value: ConversationNodeAssembler): TurnTailChatData =>
+      node(snapshot(value), 'turn-tail')?.data as TurnTailChatData
+    const reason = (end: unknown) => assembler([
+      at(1, 'turn/start', { turn: 1 }),
+      at(2, 'user/message', textMessage('user-1', 'question'), { surfaceOp: 'append' }),
+      at(3, 'step/start', { turn: 1, step: 1 }),
+      at(4, 'assistant/message', {
+        turn: 1, step: 1, message: assistantMessage('assistant-1', 'half'), interrupted: true,
+      }, { surfaceOp: 'append' }),
+      at(5, 'step/end', { turn: 1, step: 1 }),
+      at(6, 'turn/end', { turn: 1, reason: end as never }),
+    ])
+    expect(tailOf(reason({ kind: 'aborted', reason: { kind: 'user' } })).resumable).toBe(true)
+    expect(tailOf(reason({ kind: 'interrupted' })).resumable).toBe(true)
+    expect(tailOf(reason({ kind: 'completed' })).resumable).toBe(false)
+    expect(tailOf(reason({ kind: 'error', error: { code: 'TRANSPORT', message: 'failed' } })).resumable).toBe(false)
   })
 
   it('projects a released legacy assistant-retry prompt without reading a target', () => {

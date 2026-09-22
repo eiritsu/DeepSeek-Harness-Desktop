@@ -809,11 +809,18 @@ workspaceDesktop(): { name: string; available: boolean; fileManager: 'finder' | 
 @Remote('prompt') prompt(request: SessionPromptRequest, signal: AbortSignal): Promise<SessionPromptValue>
 
 /**
- * Re-run the latest safe assistant answer from its original prompt.
- * @param request - Session identity and the durability-addressed assistant settlement.
- * @returns acknowledgement that the retry entered the live Agent.
+ * Edit and re-send the latest Turn's prompt over its old surface.
+ * @param request - Session identity, addressed prompt, and edited text.
+ * @returns acknowledgement that the resend entered the live Agent.
  */
-@Remote('retryInterrupted') retryInterrupted(request: SessionRetryInterruptedRequest): Promise<SessionRetryInterruptedValue>
+@Remote('resend') resend(request: SessionResendRequest): Promise<SessionResendValue>
+
+/**
+ * Resume the latest stopped Turn without admitting a user message.
+ * @param request - Session identity of the stopped Turn to resume.
+ * @returns acknowledgement that the resume entered the live Agent.
+ */
+@Remote('resume') resume(request: SessionResumeRequest): Promise<SessionResumeValue>
 
 /**
  * Read one image proven reachable from the addressed Session log.

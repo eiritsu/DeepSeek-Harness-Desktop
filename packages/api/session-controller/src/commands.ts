@@ -10,6 +10,7 @@ import type {
 } from '@deepseek-ai/dsh-attachment'
 import type { FileUploadReceiptId } from '@deepseek-ai/dsh-client-file-upload/types'
 import type {} from '@deepseek-ai/dsh-client-file-upload'
+import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import {
   ReasoningEffortId, assistantStreamChunks, createUserMessage, freezeMessage, recognizedAttachmentText,
 } from '@deepseek-ai/dsh-llm'
@@ -22,7 +23,7 @@ import { canonicalClientTimeZone } from '@deepseek-ai/dsh-util-time'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { RemoteError, remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
 import type { Workspace } from '@deepseek-ai/dsh-workspace'
-import { resolveInterruptedRetryTarget } from './retry.ts'
+import { resolveResendTarget, resolveResumeTurn } from './turn-actions.ts'
 import {
   ApiSessionAgentController,
   ApiSessionCwdConflict,
@@ -35,6 +36,7 @@ import {
   inspectApiSession,
 } from './agent.ts'
 import type {
+  PromptContentPart,
   SessionAttachmentRequest,
   SessionAttachmentValue,
   SessionCancelRequest,
@@ -49,8 +51,10 @@ import type {
   SessionPromptValue,
   SessionRenameRequest,
   SessionRenameValue,
-  SessionRetryInterruptedRequest,
-  SessionRetryInterruptedValue,
+  SessionResendRequest,
+  SessionResendValue,
+  SessionResumeRequest,
+  SessionResumeValue,
   SessionSelectModelRequest,
   SessionSelectModelValue,
   SessionUpdateQueueRequest,
@@ -114,8 +118,10 @@ async function recognizePromptAttachments(
 
 /** Implements Session business commands delegated by the Session Controller Remote service. */
 export class SessionCommandController {
-  /** Sessions with a retry admission in flight, so a double click accepts once. */
-  private readonly retryInFlight = new Set<SessionId>()
+  /** Sessions with a resend admission in flight, so a double click accepts once. */
+  private readonly resendInFlight = new Set<SessionId>()
+  /** Sessions with a resume admission in flight, so a double click accepts once. */
+  private readonly resumeInFlight = new Set<SessionId>()
 
   /**
    * @param ctx - Host context carrying Agent, model, attachment, title, and Workspace services.
@@ -453,17 +459,12 @@ export class SessionCommandController {
     const hasImage = request.content.some(part => part.type === 'image')
     const admit = async (): Promise<SessionPromptValue> => {
       try {
-        let recognizeImages = false
-        if (hasImage) {
-          const current = this.agents.selectionFor(agent).current
-          const model = await this.ctx.llm.resolveModelInfo(current.provider, current.model)
-          recognizeImages = model.inputModalities !== undefined && !model.inputModalities.includes('image')
-        }
         const admission = resolvePromptFileReceipts(
           request.content,
           receiptId => this.ctx.fileUploads.resolve(agent, receiptId),
         )
         const admitted = await this.ctx.attachments.admitPromptContent(admission.content)
+        const recognizeImages = await this.recognizeImages(agent, admitted)
         const content = await recognizePromptAttachments(this.ctx, admitted, recognizeImages)
         const message: UserMessage = createUserMessage({ content, source })
         if (this.ctx.agents.get(agent.id) !== agent) {
@@ -490,69 +491,186 @@ export class SessionCommandController {
   }
 
   /**
-   * Re-run the latest safe assistant answer from its original prompt.
+   * Edit and re-send the latest Turn's prompt, replacing that Turn's whole
+   * old surface.
    *
-   * Requires an idle Agent and the exact supported surface tail; the replayed
-   * prompt keeps its durable text and attachment references and enters model
-   * history once, as a positional replacement of the original prompt through
-   * the address settlement. The address names a durable `assistant/message` —
-   * interrupted, or an ordinary answer whose Turn completed — or a log-only
-   * `assistant/attempt`. A concurrent call while one admission is in flight
-   * accepts once, and a later call re-validates against the current surface; an
-   * unsupported tail rejects.
-   * @param request - Session identity and the durability-addressed assistant settlement.
-   * @returns acknowledgement that the retry entered the live Agent.
-   * @throws RemoteError when the Session is running or its tail is not retryable.
+   * Requires an idle Agent and the exact supported message address; the
+   * replayed prompt keeps its durable content when `content` is omitted — an
+   * unchanged submit is therefore a retry — and enters model history once, as
+   * a positional replacement that shadows the addressed Turn's assistant
+   * answers, tool calls, and tool results, none of which reach the re-sent
+   * request. Edited text keeps the prompt's durable attachment references and
+   * regenerates their recognition text. Only the latest Turn's ordinary
+   * opening prompt qualifies: a steering message, a historical or open Turn,
+   * and a Turn without exactly one replayable prompt reject. A concurrent call
+   * while one admission is in flight accepts once, and a later call
+   * re-validates against the current surface.
+   * @param request - Session identity, the addressed prompt, and edited text.
+   * @returns acknowledgement that the resend entered the live Agent.
+   * @throws RemoteError when the Session is running or the message is not resendable.
    */
-  async retryInterrupted(request: SessionRetryInterruptedRequest): Promise<SessionRetryInterruptedValue> {
+  async resend(request: SessionResendRequest): Promise<SessionResendValue> {
     const agent = await this.resolveAgent(request.sessionId)
     if (agent.status !== 'idle') {
       throw new RemoteError(
         'session/agent-busy',
-        'the session is running; retrying an answer needs an idle session',
+        'the session is running; re-sending a prompt needs an idle session',
         { reason: 'running' },
       )
     }
-    if (this.retryInFlight.has(request.sessionId)) return { accepted: true }
-    this.retryInFlight.add(request.sessionId)
+    if (this.resendInFlight.has(request.sessionId)) return { accepted: true }
+    this.resendInFlight.add(request.sessionId)
     try {
       const observed = await this.ctx.sessionQuery.observeSession(request.sessionId)
       using source = observed
-      const target = resolveInterruptedRetryTarget(source.events, request.target)
+      const target = resolveResendTarget(source.events, request.messageId)
       if (target === undefined) {
         throw new RemoteError(
-          'session/retry-unavailable',
-          'the addressed answer is not the latest retryable assistant answer of an idle session',
-          { reason: 'unsupported-tail' },
+          'session/resend-unavailable',
+          'the addressed message is not the latest resendable prompt of an idle session',
+          { reason: 'unsupported-message' },
         )
       }
       if (this.ctx.agents.get(agent.id) !== agent || isRunningAgent(agent)) {
         throw new RemoteError(
           'session/agent-busy',
-          'the session started running before retry admission',
+          'the session started running before resend admission',
           { reason: 'running' },
         )
       }
-      if (agent.retryInterrupted === undefined) {
+      if (agent.resendPrompt === undefined) {
         throw new RemoteError(
-          'session/retry-unavailable',
+          'session/resend-unavailable',
           'the live agent cannot replay a surface replacement',
           { reason: 'unsupported-agent' },
         )
       }
+      const content = request.content === undefined
+        ? [...target.promptContent]
+        : await this.editedResendContent(agent, target.promptContent, request.content)
       const message: UserMessage = createUserMessage({
-        content: [...target.promptContent],
-        source: { kind: 'assistant-retry', retryOf: request.target },
+        content,
+        source: { kind: 'assistant-retry', retryOf: { kind: 'user-message', messageId: request.messageId } },
       })
-      agent.retryInterrupted(message, {
+      agent.resendPrompt(message, {
         startSeq: target.promptSeq,
         endSeq: target.endSeq,
         sourceEventSeqs: [...target.sourceSeqs],
       })
       return { accepted: true }
     } finally {
-      this.retryInFlight.delete(request.sessionId)
+      this.resendInFlight.delete(request.sessionId)
     }
+  }
+
+  /**
+   * Resume the latest stopped Turn without admitting a user message.
+   *
+   * Requires an idle Agent whose latest Turn ended `aborted` or
+   * `interrupted` after exactly one replayable prompt. The resumed request
+   * derives from the current surface, so the stopped Turn's committed tool
+   * results stay in model history and no earlier request is replayed: a resume
+   * never re-dispatches a call that Turn already executed. A concurrent call
+   * while one admission is in flight accepts once.
+   * @param request - Session identity of the stopped Turn to resume.
+   * @returns acknowledgement that the resume entered the live Agent.
+   * @throws RemoteError when the Session is running or no stopped Turn can resume.
+   */
+  async resume(request: SessionResumeRequest): Promise<SessionResumeValue> {
+    const agent = await this.resolveAgent(request.sessionId)
+    if (agent.status !== 'idle') {
+      throw new RemoteError(
+        'session/resume-unavailable',
+        'the session is running; resuming a stopped turn needs an idle session',
+        { reason: 'running' },
+      )
+    }
+    if (this.resumeInFlight.has(request.sessionId)) return { accepted: true }
+    this.resumeInFlight.add(request.sessionId)
+    try {
+      const observed = await this.ctx.sessionQuery.observeSession(request.sessionId)
+      using source = observed
+      if (resolveResumeTurn(source.events) === undefined) {
+        throw new RemoteError(
+          'session/resume-unavailable',
+          'the latest turn of this session is not a stopped turn a resume can continue',
+          { reason: 'unsupported-tail' },
+        )
+      }
+      if (this.ctx.agents.get(agent.id) !== agent || isRunningAgent(agent)) {
+        throw new RemoteError(
+          'session/agent-busy',
+          'the session started running before resume admission',
+          { reason: 'running' },
+        )
+      }
+      if (agent.resumeTurn === undefined) {
+        throw new RemoteError(
+          'session/resume-unavailable',
+          'the live agent cannot resume a stopped turn',
+          { reason: 'unsupported-agent' },
+        )
+      }
+      try {
+        agent.resumeTurn()
+      } catch (error: unknown) {
+        if (remoteErrorOf(error) !== undefined) throw error
+        throw new RemoteError(
+          'session/agent-busy',
+          `the session stopped being idle during resume admission: ${String(error)}`,
+          { reason: 'running' },
+        )
+      }
+      return { accepted: true }
+    } finally {
+      this.resumeInFlight.delete(request.sessionId)
+    }
+  }
+
+  /**
+   * Assemble an edited prompt's content: the submitted text first, then the
+   * original prompt's durable attachment references with their recognition text
+   * regenerated exactly as prompt admission generates it. The edited text must
+   * be text-only and non-blank.
+   * @param agent - addressed Session Agent, for the selected model's image route.
+   * @param promptContent - durable content of the addressed prompt.
+   * @param edited - browser-submitted replacement text.
+   * @returns the complete content of the re-sent prompt.
+   * @throws RemoteError when the edited content carries a non-text part or no text.
+   */
+  private async editedResendContent(
+    agent: Agent,
+    promptContent: readonly ContentBlock[],
+    edited: readonly PromptContentPart[],
+  ): Promise<ContentBlock[]> {
+    const text: { readonly type: 'text'; readonly text: string }[] = []
+    for (const part of edited) {
+      if (part.type !== 'text') {
+        throw new RemoteError('gateway/bad-request', 'resend content must be text only', {})
+      }
+      text.push(part)
+    }
+    if (!hasPromptContent(text)) {
+      throw new RemoteError('gateway/bad-request', 'resend content must include non-whitespace text', {})
+    }
+    const attachments = promptContent.filter(part => part.type !== 'text') as AdmittedPromptContentPart[]
+    if (attachments.length === 0) return text
+    const recognizeImages = await this.recognizeImages(agent, attachments)
+    return recognizePromptAttachments(this.ctx, [...text, ...attachments], recognizeImages)
+  }
+
+  /**
+   * Whether image parts need Files recognition because the Session's selected
+   * model declares no image input.
+   * @param agent - addressed Session Agent.
+   * @param content - admitted content already carrying the parts to inspect.
+   * @returns whether recognition must run for the image parts.
+   */
+  private async recognizeImages(agent: Agent, content: readonly AdmittedPromptContentPart[]): Promise<boolean> {
+    if (!content.some(part => part.type === 'image')) return false
+    const current = this.agents.selectionFor(agent).current
+    const model = await this.ctx.llm.resolveModelInfo(current.provider, current.model)
+    return model.inputModalities !== undefined && !model.inputModalities.includes('image')
   }
 
   /**

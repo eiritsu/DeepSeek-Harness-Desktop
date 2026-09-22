@@ -7,7 +7,7 @@ import type {
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { SessionSeq } from '@deepseek-ai/dsh-session/types'
 import { Button, IconChevronDownOutline14, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { ChatViewSlotProps, OpenFileOptions, RetryInterruptedOwnerProps } from '../contract/slots.ts'
+import type { ChatViewSlotProps, OpenFileOptions, TurnActionsOwnerProps } from '../contract/slots.ts'
 import type { ChatSnapshot } from '../contract/snapshot.ts'
 import { PendingSteeringBubble, PendingSubmissionBubble } from './MessageItem.tsx'
 import { ChatNodeSeat } from './ChatNodeSeat.tsx'
@@ -217,7 +217,7 @@ const ChatNodeList = memo(function ChatNodeList({ order, ...seatProps }: ChatNod
 export function ChatView({
   useSession, useChat, useChatNode, useChatNodeProcess, useSessions, useStore, actions, renderSlot,
   sessionId, openFile, openSkill, loadOlder, loadThrough, loadImage, openView, chatScroll, forkAt, fileMentions,
-  useTranscriptView, useRetry, retryInterrupted, useProjection, t,
+  useTranscriptView, useTurnActions, resend, resume, useProjection, t,
 }: ChatViewSlotProps) {
   const order = useChat(s => s.order)
   const nodeStore = useChat(s => s.nodes)
@@ -242,10 +242,10 @@ export function ChatView({
   const hasMore = useSession(s => s.hasMore)
   const loadingOlder = useSession(s => s.loadingOlder)
   const compactTranscript = useTranscriptView(mode => mode === 'compact')
-  const retryState = useRetry(view => view)
-  const retryOwner = useMemo<RetryInterruptedOwnerProps>(
-    () => ({ sessionRunning: running, state: retryState, run: retryInterrupted }),
-    [running, retryState, retryInterrupted],
+  const turnActionsState = useTurnActions(view => view)
+  const turnActionsOwner = useMemo<TurnActionsOwnerProps>(
+    () => ({ sessionRunning: running, state: turnActionsState, resend, resume }),
+    [running, turnActionsState, resend, resume],
   )
   const inspectCall = useCallback((callId: string) => {
     openView('trajectory', callId)
@@ -802,7 +802,7 @@ export function ChatView({
             loadImage={loadImage}
             renderMessageImages={renderMessageImages}
             fileMentions={fileMentions}
-            retryInterrupted={retryOwner}
+            turnActions={turnActionsOwner}
             renderSlot={renderSlot}
             t={t}
           />

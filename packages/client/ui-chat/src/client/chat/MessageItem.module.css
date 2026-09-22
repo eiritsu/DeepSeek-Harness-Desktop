@@ -45,6 +45,37 @@
   font-size: var(--dsh-content-font-size-secondary, 13px);
   line-height: calc(18px + var(--dsh-content-font-delta-secondary, 0px));
 }
+
+/* Inline edit-and-resend editor below the user actions row: one plain
+   textarea plus submit/cancel, aligned with the right-anchored bubble. */
+.resendEditor {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  width: min(100%, 420px);
+}
+
+.resendInput {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: var(--dsh-content-font-size, 14px);
+  line-height: calc(20px + var(--dsh-content-font-delta, 0px));
+  resize: vertical;
+}
+
+.resendActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .contextRow {
   padding: 2px 0;
 }

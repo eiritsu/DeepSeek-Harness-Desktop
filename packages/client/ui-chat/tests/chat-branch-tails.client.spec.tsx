@@ -66,7 +66,7 @@ function MessageItem({ node, t: translate, referenceLabels, skillNames }: Messag
   }
   const props = {
     node: viewNode, t: translate, renderMessageImages, openFile: vi.fn(), openSkill: vi.fn(), useChat: useDetachedChat,
-    retryInterrupted: { sessionRunning: false, state: { pending: false, error: null }, run: () => {} },
+    turnActions: { sessionRunning: false, state: { pending: false, error: null }, resend: () => {}, resume: () => {} },
   } as unknown as ChatNodeViewProps
   switch (node.kind) {
     case 'user':

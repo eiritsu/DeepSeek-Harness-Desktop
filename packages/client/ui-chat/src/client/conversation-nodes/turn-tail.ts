@@ -186,16 +186,17 @@ function tailData(context: ConversationNodeContext<TurnTailState>): TurnTailChat
     ? deriveTurnTokenUsage(context.matches.map(match => match.event).filter(isSessionEvent))
     : undefined
   const branchUnavailable = closing === null || latestTranscriptSeq !== closing.finalNode.seq
-  // Retry replays the Turn's original prompt over its closing answer, so it is
-  // safe only when that answer is the Turn's sole settlement and no tool call or
-  // result intervened. A surface message is retryable when it was interrupted or
-  // when its Turn completed normally; a log-only attempt carries no interruption
-  // marker, so its Turn must have ended aborted or crash-repaired and must hold
-  // exactly one settlement for the address to be unambiguous.
+  // Edit-and-resend replays the Turn's opening prompt over its closing answer,
+  // so it is safe only when that answer is the Turn's sole settlement and no
+  // tool call or result intervened. A surface message is resendable when it was
+  // interrupted or when its Turn completed normally; a log-only attempt carries
+  // no interruption marker, so its Turn must have ended aborted or
+  // crash-repaired and must hold exactly one settlement for the address to be
+  // unambiguous.
   const logOnlyAttempt = closing !== null && closing.finalNode.messageId === undefined
   const endReason = end.event.data.reason.kind
   const interruptionReason = endReason === 'aborted' || endReason === 'interrupted'
-  const retryable = closing !== null
+  const resendable = closing !== null
     && finalized.length === 1
     && !branchUnavailable
     && (logOnlyAttempt
@@ -209,7 +210,10 @@ function tailData(context: ConversationNodeContext<TurnTailState>): TurnTailChat
     time: end.event.time,
     closing,
     branchUnavailable,
-    retryable,
+    resendable,
+    // Resume re-spends one model request over the stopped Turn's own surface,
+    // so it is offered for exactly the Turns a stop closed.
+    resumable: interruptionReason,
     ...metrics?.ttftMs === undefined ? {} : { ttftMs: metrics.ttftMs },
     ...metrics?.tokensPerSecond === undefined ? {} : { tokensPerSecond: metrics.tokensPerSecond },
     ...tokenUsage === undefined ? {} : { tokenUsage },

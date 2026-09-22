@@ -26,7 +26,7 @@ import type { ChatSnapshot } from './contract/snapshot.ts'
 import { EMPTY_CHAT_SNAPSHOT } from './contract/snapshot.ts'
 import { ApprovalCommand } from './chat/ApprovalCommand.tsx'
 import { ChatView } from './chat/ChatView.tsx'
-import { RetryInterruptedController } from './chat/retry-interrupted.ts'
+import { TurnActionsController } from './chat/turn-actions.ts'
 import { registerChatNodeRenderers } from './chat/register-node-renderers.ts'
 import { StatsPills } from './chat/StatsPills.tsx'
 import { registerConversationNodes } from './conversation-nodes/register.ts'
@@ -80,23 +80,23 @@ export function apply(ctx: Context): void {
   const t = ctx.locale.bind(NS)
   const chatStore = createChatStore()
   const chatScrollPositions = new Map<SessionId, ChatScrollPosition>()
-  const retrySurfaces = new Map<SessionId, RetryInterruptedController>()
-  const retryFor = (sessionId: SessionId): RetryInterruptedController => {
-    let controller = retrySurfaces.get(sessionId)
+  const turnActionSurfaces = new Map<SessionId, TurnActionsController>()
+  const turnActionsFor = (sessionId: SessionId): TurnActionsController => {
+    let controller = turnActionSurfaces.get(sessionId)
     if (controller === undefined) {
-      controller = new RetryInterruptedController(ctx, sessionId)
-      retrySurfaces.set(sessionId, controller)
+      controller = new TurnActionsController(ctx, sessionId)
+      turnActionSurfaces.set(sessionId, controller)
     }
     return controller
   }
   ctx.effect(() => () => {
-    for (const controller of retrySurfaces.values()) controller.dispose()
-    retrySurfaces.clear()
-  }, 'ui-chat: per-session retry controllers')
-  // A reconnect invalidates a retry admission still settling on the previous
+    for (const controller of turnActionSurfaces.values()) controller.dispose()
+    turnActionSurfaces.clear()
+  }, 'ui-chat: per-session turn-action controllers')
+  // A reconnect invalidates an admission still settling on the previous
   // connection generation; its late settlement must not publish into the view.
   ctx.on('connection/reset', () => {
-    for (const controller of retrySurfaces.values()) controller.invalidate()
+    for (const controller of turnActionSurfaces.values()) controller.invalidate()
   })
   const transcriptView = new TranscriptViewPolicy(
     ctx.settingsScope.bind<ChatSettings>({ namespace: CHAT_SETTINGS_NAMESPACE }),
@@ -131,7 +131,7 @@ export function apply(ctx: Context): void {
         const session = binding.session
         const chat = chatSource(binding)
         return {
-          hooks: { transcriptView: transcriptView.mode, retry: retryFor(sessionId) },
+          hooks: { transcriptView: transcriptView.mode, turnActions: turnActionsFor(sessionId) },
           keyedHooks: {
             chatNode: key => chat.getSnapshot().nodes.source(key),
             chatNodeProcess: key => chat.getSnapshot().nodes.processSource(key),
@@ -181,7 +181,8 @@ export function apply(ctx: Context): void {
                 // Fork or child-title failure leaves the source view unchanged.
               })
           },
-          retryInterrupted: (target) => { retryFor(sessionId).retry(target) },
+          resend: (messageId, text) => { turnActionsFor(sessionId).resend(messageId, text) },
+          resume: () => { turnActionsFor(sessionId).resume() },
         }
       },
     }, ChatView)

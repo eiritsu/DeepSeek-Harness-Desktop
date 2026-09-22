@@ -238,7 +238,8 @@ export class FakeApiClient {
         attachment: payload => this.record('session.attachment', payload, this.onAttachment(payload)),
         updateQueue: payload => this.record('session.updateQueue', payload, this.onUpdateQueue(payload)),
         cancel: payload => this.record('session.cancel', payload, this.onCancel(payload)),
-        retryInterrupted: () => Promise.resolve(ok({ accepted: true })),
+        resend: () => Promise.resolve(ok({ accepted: true })),
+        resume: () => Promise.resolve(ok({ accepted: true })),
         openWorkspacePath: payload => this.record(
           'session.openWorkspacePath',
           payload,

@@ -568,7 +568,7 @@ export class Session implements SessionFace {
     this.notifier.markDirty()
   }
 
-  /** `api-session/removed` relay: flag the snapshot while retaining the resident instance. */
+  /** `api-session/removed` relay: flag the snapshot of the instance the manager retires next. */
   handleRemoved(): void {
     this.removed = true
     this.notifier.markDirty()

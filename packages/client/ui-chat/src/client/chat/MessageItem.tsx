@@ -2,14 +2,13 @@ import { Fragment, memo, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { PendingSubmission } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { MessageImageSource } from '@deepseek-ai/dsh-client-ui-conversation/client'
-import { fileExtension, FileTypeIcon, fileSizeText, JsonBlock, projectUserText, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, fileExtension, FileTypeIcon, fileSizeText, JsonBlock, projectUserText, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ChatNode } from '../contract/chat-nodes.ts'
 import type { ChatNodeOwnerProps, ChatNodeViewProps, ChatViewSlotProps } from '../contract/slots.ts'
 import type { ModelRetryNode, TurnErrorNode, UserMessageNode } from '../contract/snapshot.ts'
 import { CompactionItem } from './CompactionItem.tsx'
 import { ContextInjectionRow } from './ContextInjectionRow.tsx'
 import { MessageIconActions } from './MessageIconActions.tsx'
-import { retryTargetOf, sameRetryTarget } from './retry-interrupted.ts'
 import css from './MessageItem.module.css'
 
 type UserImage = Extract<UserMessageNode['content'][number], { type: 'image' }>
@@ -180,13 +179,15 @@ function TurnMaxTokensItem({ t }: {
 
 /** Right-aligned bubble shared by user and steering rows. */
 function UserStyleBubble({
-  content, renderMessageImages, actions, pending = false, echo = false, referenceLabels = [], skillNames = [],
+  content, renderMessageImages, actions, editor, pending = false, echo = false, referenceLabels = [], skillNames = [],
   previewAttachments, references, t,
 }: {
   content: readonly unknown[]
   renderMessageImages: ChatNodeOwnerProps['renderMessageImages']
   /** Optional IconActions (or similar) below the bubble; receives the joined text. */
   actions?: (text: string) => ReactNode
+  /** Optional inline editor row below the actions (edit-and-resend). */
+  editor?: ReactNode
   /** Whether this is the Host-authoritative pre-admission steering projection. */
   pending?: boolean
   /** Whether this is a local submission echo (invisible marker; the echo renders exactly like its durable replacement). */
@@ -257,6 +258,7 @@ function UserStyleBubble({
         )}
       </div>
       {actions?.(text)}
+      {editor}
     </div>
   )
 }
@@ -344,17 +346,56 @@ export function PendingSubmissionBubble({ submission, renderMessageImages, t }: 
   )
 }
 
+/** Minimal inline editor for an edit-and-resend of the opening user message. */
+function ResendEditor({ value, pending, onChange, onSubmit, onCancel, t }: {
+  value: string
+  pending: boolean
+  onChange: (value: string) => void
+  onSubmit: () => void
+  onCancel: () => void
+  t: ChatViewSlotProps['t']
+}): ReactNode {
+  return (
+    <form
+      className={css.resendEditor}
+      onSubmit={(event) => {
+        event.preventDefault()
+        onSubmit()
+      }}
+    >
+      <textarea
+        className={css.resendInput}
+        value={value}
+        rows={2}
+        aria-label={t('message.resend.editorLabel')}
+        onChange={(event) => { onChange(event.target.value) }}
+      />
+      <div className={css.resendActions}>
+        <Button variant="outline" size="sm" onClick={onCancel}>{t('cancel')}</Button>
+        <Button
+          variant="primary"
+          size="sm"
+          type="submit"
+          disabled={pending || value.trim() === ''}
+        >
+          {t('message.resend.submit')}
+        </Button>
+      </div>
+    </form>
+  )
+}
+
 /** User and admitted-steering keyed Chat renderer. */
 export const UserMessageNodeView = memo(function UserMessageNodeView({
-  node, renderMessageImages, openFile, openSkill, retryInterrupted, useChat, t,
+  node, renderMessageImages, openFile, openSkill, turnActions, useChat, t,
 }: ChatNodeViewProps<'user' | 'steering'>) {
   const data = node.data
-  // Only an ordinary turn-opening user message owns the Turn's replayable
-  // prompt; a steering message belongs to an already-running Turn. The tail is
-  // read through the Location index so retry appears only on the latest loaded
-  // Turn, and the selector returns the stable node so the subscription never
-  // republishes a fresh object.
-  const retryTail = useChat((snapshot): ChatNode<'turn-tail'> | undefined => {
+  // Only an ordinary turn-opening user message owns the latest Turn's
+  // resendable prompt; a steering message belongs to an already-running Turn.
+  // The tail is read through the Location index so the actions appear only on
+  // the latest loaded Turn, and the selector returns the stable node so the
+  // subscription never republishes a fresh object.
+  const tail = useChat((snapshot): ChatNode<'turn-tail'> | undefined => {
     const location = node.location
     if (location.kind !== 'turn' && location.kind !== 'step') return undefined
     const turn = location.turn.turn
@@ -365,17 +406,45 @@ export const UserMessageNodeView = memo(function UserMessageNodeView({
     }
     return undefined
   })
-  const retryTarget = node.kind === 'user'
-    && !retryInterrupted.sessionRunning
-    && retryTail?.data.retryable === true
-    ? retryTargetOf(retryTail.data.closing?.finalNode)
-    : undefined
-  const retryError = retryInterrupted.state.error
-  const retryFailure = retryTarget !== undefined && retryError !== null
-    && sameRetryTarget(retryError.target, retryTarget)
-    ? (retryError.code === 'session/retry-unavailable'
-      ? t('message.retryInterrupted.unavailable')
-      : t('message.retryInterrupted.failed'))
+  const messageId = data.messageId
+  const idle = !turnActions.sessionRunning
+  const canResend = idle && node.kind === 'user' && messageId !== undefined && tail?.data.resendable === true
+  const canResume = idle && node.kind === 'user' && tail?.data.resumable === true
+  const failure = turnActions.state.error
+  const admissionFailure = failure === null || (!canResend && !canResume)
+    ? undefined
+    : failure.action === 'resend'
+      ? (failure.code === 'session/resend-unavailable'
+        ? t('message.resend.unavailable')
+        : t('message.resend.failed'))
+      : (failure.code === 'session/resume-unavailable'
+        ? t('message.resume.unavailable')
+        : t('message.resume.failed'))
+  const originalText = useMemo(
+    () => (node.kind === 'user' ? contentParts(data.content).text : ''),
+    [node.kind, data.content],
+  )
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(originalText)
+  const openEditor = (): void => {
+    setDraft(originalText)
+    setEditing(true)
+  }
+  const editor = editing && canResend
+    ? (
+      <ResendEditor
+        value={draft}
+        pending={turnActions.state.pending}
+        onChange={setDraft}
+        onSubmit={() => {
+          if (messageId === undefined) return
+          turnActions.resend(messageId, draft === originalText ? undefined : draft)
+          setEditing(false)
+        }}
+        onCancel={() => { setEditing(false) }}
+        t={t}
+      />
+    )
     : undefined
   return (
     <UserStyleBubble
@@ -384,6 +453,7 @@ export const UserMessageNodeView = memo(function UserMessageNodeView({
       renderMessageImages={renderMessageImages}
       {...data.referenceLabels === undefined ? {} : { referenceLabels: data.referenceLabels }}
       {...data.skillNames === undefined ? {} : { skillNames: data.skillNames }}
+      editor={editor}
       t={t}
       actions={text => (
         <MessageIconActions
@@ -391,9 +461,10 @@ export const UserMessageNodeView = memo(function UserMessageNodeView({
           time={data.time}
           clock="start"
           className={css.actions}
-          {...retryTarget === undefined ? {} : { onRetry: () => { retryInterrupted.run(retryTarget) } }}
-          retryPending={retryInterrupted.state.pending}
-          {...retryFailure === undefined ? {} : { retryFailure }}
+          {...canResend ? { onResend: openEditor } : {}}
+          {...canResume ? { onResume: () => { turnActions.resume() } } : {}}
+          admissionPending={turnActions.state.pending}
+          {...admissionFailure === undefined ? {} : { admissionFailure }}
           t={t}
         />
       )}

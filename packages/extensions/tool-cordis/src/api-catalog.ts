@@ -1662,10 +1662,16 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'acknowledgement that the Agent accepted the prompt.',
       },
       {
-        signature: '@Remote(\'retryInterrupted\') retryInterrupted(request: SessionRetryInterruptedRequest): Promise<SessionRetryInterruptedValue>',
-        description: 'Re-run the latest safe assistant answer from its original prompt.',
-        parameters: [{ name: 'request', description: 'Session identity and the durability-addressed assistant settlement.' }],
-        returns: 'acknowledgement that the retry entered the live Agent.',
+        signature: '@Remote(\'resend\') resend(request: SessionResendRequest): Promise<SessionResendValue>',
+        description: 'Edit and re-send the latest Turn\'s prompt over its old surface.',
+        parameters: [{ name: 'request', description: 'Session identity, addressed prompt, and edited text.' }],
+        returns: 'acknowledgement that the resend entered the live Agent.',
+      },
+      {
+        signature: '@Remote(\'resume\') resume(request: SessionResumeRequest): Promise<SessionResumeValue>',
+        description: 'Resume the latest stopped Turn without admitting a user message.',
+        parameters: [{ name: 'request', description: 'Session identity of the stopped Turn to resume.' }],
+        returns: 'acknowledgement that the resume entered the live Agent.',
       },
       {
         signature: '@Remote(\'attachment\') attachment(request: SessionAttachmentRequest): Promise<SessionAttachmentValue>',
@@ -5507,10 +5513,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SessionInspection extends SessionStorageMetadata {\n    readonly events: readonly SessionEvent[];\n}',
   },
   {
-    name: 'SessionInterruptedRetryTarget',
-    declaration: 'export type SessionInterruptedRetryTarget = {\n    readonly kind: \'assistant-message\';\n    readonly messageId: MessageId;\n} | {\n    readonly kind: \'assistant-attempt\';\n    readonly seq: SessionSeq;\n};',
-  },
-  {
     name: 'SessionJob',
     declaration: 'export interface SessionJob {\n    readonly id: JobId;\n    readonly kind: string;\n    readonly label: string;\n    readonly status: \'running\' | \'stopping\' | \'completed\' | \'killed\' | \'failed\';\n    readonly detail?: string;\n    readonly startedAt: number;\n    readonly finishedAt?: number;\n}',
   },
@@ -5659,6 +5661,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type SessionRequestId = Branded<\'session-request-id\'>;',
   },
   {
+    name: 'SessionResendRequest',
+    declaration: 'export interface SessionResendRequest {\n    readonly sessionId: SessionId;\n    readonly messageId: MessageId;\n    readonly content?: readonly PromptContentPart[];\n}',
+  },
+  {
+    name: 'SessionResendValue',
+    declaration: 'export interface SessionResendValue {\n    readonly accepted: true;\n}',
+  },
+  {
     name: 'SessionResultFilter',
     declaration: 'export type SessionResultFilter = {\n    kind: \'id\';\n    values: readonly SessionId[];\n} | {\n    kind: \'cwd\';\n    values: readonly (string | null)[];\n} | ({\n    kind: \'created-at\';\n} & SessionResultRange) | {\n    kind: \'parent\';\n    values: readonly (SessionId | null)[];\n} | {\n    kind: \'availability\';\n    values: readonly SessionAvailability[];\n};',
   },
@@ -5667,12 +5677,12 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SessionResultRange {\n    from?: number;\n    to?: number;\n}',
   },
   {
-    name: 'SessionRetryInterruptedRequest',
-    declaration: 'export interface SessionRetryInterruptedRequest {\n    readonly sessionId: SessionId;\n    readonly target: SessionInterruptedRetryTarget;\n}',
+    name: 'SessionResumeRequest',
+    declaration: 'export interface SessionResumeRequest {\n    readonly sessionId: SessionId;\n}',
   },
   {
-    name: 'SessionRetryInterruptedValue',
-    declaration: 'export interface SessionRetryInterruptedValue {\n    readonly accepted: true;\n}',
+    name: 'SessionResumeValue',
+    declaration: 'export interface SessionResumeValue {\n    readonly accepted: true;\n}',
   },
   {
     name: 'SessionSearchCursor',

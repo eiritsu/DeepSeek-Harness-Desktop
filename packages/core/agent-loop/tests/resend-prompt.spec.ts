@@ -37,9 +37,9 @@ function cancelOnFirstChunk(ctx: Context, agent: Agent): void {
 }
 
 /** Admit one surface replacement through the live Agent capability. */
-function retryInterrupted(agent: Agent, message: UserMessage, replacement: SurfaceReplacement): void {
-  if (agent.retryInterrupted === undefined) throw new Error('agent has no retryInterrupted')
-  agent.retryInterrupted(message, replacement)
+function resendPrompt(agent: Agent, message: UserMessage, replacement: SurfaceReplacement): void {
+  if (agent.resendPrompt === undefined) throw new Error('agent has no resendPrompt')
+  agent.resendPrompt(message, replacement)
 }
 
 /** The last durable interrupted assistant in the log. */
@@ -50,7 +50,7 @@ function lastInterruption(agent: Agent): { readonly seq: SessionSeq; readonly id
   return { seq: event.seq, id: event.data.message.id }
 }
 
-describe('Agent.retryInterrupted', () => {
+describe('Agent.resendPrompt', () => {
   it('replaces the interrupted tail so the prompt enters history once and no partial remains', async () => {
     const adapter = new MockAdapter(['hang', textResponse('regenerated')])
     const ctx = await harness(adapter)
@@ -69,7 +69,7 @@ describe('Agent.retryInterrupted', () => {
       content: [{ type: 'text', text: 'original prompt' }],
       source: { kind: 'plugin', plugin: 'test-retry' },
     })
-    retryInterrupted(agent, replay, {
+    resendPrompt(agent, replay, {
       startSeq: prompt.seq,
       endSeq: interrupted.seq,
       sourceEventSeqs: [prompt.seq, interrupted.seq],
@@ -102,7 +102,7 @@ describe('Agent.retryInterrupted', () => {
       source: { kind: 'plugin', plugin: 'p' },
     })
     expect(() => {
-      retryInterrupted(agent, invalid, { startSeq: SessionSeq(0), endSeq: SessionSeq(0), sourceEventSeqs: [SessionSeq(0)] })
+      resendPrompt(agent, invalid, { startSeq: SessionSeq(0), endSeq: SessionSeq(0), sourceEventSeqs: [SessionSeq(0)] })
     }).toThrow(/non-JSON-serializable/)
 
     const prompt = createUserMessage({ content: [{ type: 'text', text: 'later' }], source: { kind: 'user' } })
@@ -119,7 +119,7 @@ describe('Agent.retryInterrupted', () => {
     const agent = await ctx.agentLoop.create(SessionId('retry-cancel'), { provider: 'mock', model: 'mock' })
 
     const replay = createUserMessage({ content: [{ type: 'text', text: 'x' }], source: { kind: 'plugin', plugin: 'p' } })
-    retryInterrupted(agent, replay, { startSeq: SessionSeq(0), endSeq: SessionSeq(0), sourceEventSeqs: [SessionSeq(0)] })
+    resendPrompt(agent, replay, { startSeq: SessionSeq(0), endSeq: SessionSeq(0), sourceEventSeqs: [SessionSeq(0)] })
     agent.cancel({ kind: 'user' }, { keepInbox: true })
     await agent.whenIdle()
 
@@ -139,8 +139,8 @@ describe('Agent.retryInterrupted', () => {
     const first = createUserMessage({ content: [{ type: 'text', text: 'a' }], source: { kind: 'plugin', plugin: 'p' } })
     const second = createUserMessage({ content: [{ type: 'text', text: 'b' }], source: { kind: 'plugin', plugin: 'p' } })
     const replacement: SurfaceReplacement = { startSeq: SessionSeq(0), endSeq: SessionSeq(0), sourceEventSeqs: [SessionSeq(0)] }
-    retryInterrupted(agent, first, replacement)
-    expect(() => { retryInterrupted(agent, second, replacement) }).toThrow(/already pending/)
+    resendPrompt(agent, first, replacement)
+    expect(() => { resendPrompt(agent, second, replacement) }).toThrow(/already pending/)
     agent.cancel({ kind: 'user' })
     await agent.whenIdle()
   })
@@ -153,11 +153,11 @@ describe('Agent.retryInterrupted', () => {
 
     const first = createUserMessage({ content: [{ type: 'text', text: 'a' }], source: { kind: 'plugin', plugin: 'p' } })
     const replacement: SurfaceReplacement = { startSeq: SessionSeq(0), endSeq: SessionSeq(0), sourceEventSeqs: [SessionSeq(0)] }
-    retryInterrupted(agent, first, replacement)
+    resendPrompt(agent, first, replacement)
     await agent.whenIdle()
 
     const second = createUserMessage({ content: [{ type: 'text', text: 'b' }], source: { kind: 'plugin', plugin: 'p' } })
-    expect(() => { retryInterrupted(agent, second, replacement) }).not.toThrow(/already pending/)
+    expect(() => { resendPrompt(agent, second, replacement) }).not.toThrow(/already pending/)
     agent.cancel({ kind: 'user' })
     await agent.whenIdle()
   })
@@ -178,7 +178,7 @@ describe('Agent.retryInterrupted', () => {
 
     const replay1 = createUserMessage({ content: [{ type: 'text', text: 'original prompt' }], source: { kind: 'plugin', plugin: 'test-retry' } })
     cancelOnFirstChunk(ctx, agent)
-    retryInterrupted(agent, replay1, { startSeq: prompt.seq, endSeq: first.seq, sourceEventSeqs: [prompt.seq, first.seq] })
+    resendPrompt(agent, replay1, { startSeq: prompt.seq, endSeq: first.seq, sourceEventSeqs: [prompt.seq, first.seq] })
     await agent.whenIdle()
 
     const second = lastInterruption(agent)
@@ -187,7 +187,7 @@ describe('Agent.retryInterrupted', () => {
     if (replayEvent?.type !== 'user/message') throw new Error('replay not recorded')
 
     const replay2 = createUserMessage({ content: [{ type: 'text', text: 'original prompt' }], source: { kind: 'plugin', plugin: 'test-retry' } })
-    retryInterrupted(agent, replay2, {
+    resendPrompt(agent, replay2, {
       startSeq: replayEvent.seq,
       endSeq: second.seq,
       sourceEventSeqs: [replayEvent.seq, second.seq],

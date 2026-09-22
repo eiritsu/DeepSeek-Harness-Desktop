@@ -125,17 +125,28 @@ interface Agent {
   followup(message: UserMessage): void
 
   /**
-   * Re-run one assistant answer by replacing an earlier surface range with a
+   * Re-send one Turn's prompt by replacing its earlier surface range with a
    * replayed user message. The next accepted step admits `message` as that
-   * positional replacement instead of an append, so the replayed prompt enters
-   * model history exactly once while the shadowed answer does not.
-   * The turn still runs the ordinary pre-step, current request configuration,
-   * and streaming path. The caller owns retryability and idle checks. Absent on
-   * a driver that cannot replay a surface replacement; callers must check.
-   * @param message - identified prompt content replaying the shadowed turn.
+   * positional replacement instead of an append, so the prompt — unchanged or
+   * edited — enters model history exactly once while every shadowed node of
+   * the range, including assistant answers and tool results, does not. The new
+   * Turn still runs the ordinary pre-step, current request configuration, and
+   * streaming path. The caller owns address and idle checks. Absent on a
+   * driver that cannot replay a surface replacement; callers must check.
+   * @param message - identified prompt content replaying the shadowed Turn.
    * @param replacement - the shadowed surface range and its complete provenance.
    */
-  retryInterrupted?(message: UserMessage, replacement: SurfaceReplacement): void
+  resendPrompt?(message: UserMessage, replacement: SurfaceReplacement): void
+
+  /**
+   * Spend one model request over the current surface without admitting a new
+   * user message, so a Turn stopped by cancellation resumes where it stopped.
+   * The request derives from the durable surface as it stands: committed tool
+   * results stay in history and no earlier request is replayed, so a resumed
+   * Turn never re-dispatches a call the stopped Turn already executed. Absent
+   * on a driver that cannot resume; callers must check.
+   */
+  resumeTurn?(): void
 
   /**
    * Submit steering for the nearest step. An idle driver starts a turn;

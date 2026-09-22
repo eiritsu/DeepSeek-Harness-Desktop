@@ -717,7 +717,10 @@ export class SessionManager {
   }
 
   /**
-   * Apply one Session-list addition forwarded through `ctx.remote.$on`.
+   * Apply one Session-list addition forwarded through `ctx.remote.$on`. For a
+   * re-added id the previous removal dropped its projection store, so the
+   * rows written here and the store a later get() hands its new instance are
+   * the same fresh store.
    * @param summary - current Host summary for the added Session.
    */
   handleSessionAdded(summary: SessionSummary): void {
@@ -740,7 +743,10 @@ export class SessionManager {
   }
 
   /**
-   * Apply one Session removal forwarded through `ctx.remote.$on`.
+   * Apply one Session removal forwarded through `ctx.remote.$on`. An ordinary
+   * Session leaves the instance cluster with its projection store and open
+   * stream (disposal runs in the background); a durable subagent keeps its
+   * resident instance so the catalog child stays addressable.
    * @param sessionId - removed Session identity.
    */
   handleSessionRemoved(sessionId: SessionId): void {
@@ -750,8 +756,17 @@ export class SessionManager {
       ? { kind: 'status', sessionId, running: false }
       : { kind: 'remove', sessionId })
     this.updateCatalogActivity(sessionId, false)
-    if (durableSubagent) this.sessions.get(sessionId)?.handleRunning(false)
-    else this.sessions.get(sessionId)?.handleRemoved()
+    const resident = this.sessions.get(sessionId)
+    if (durableSubagent) {
+      resident?.handleRunning(false)
+    } else {
+      resident?.handleRemoved()
+      // An ordinary removal retires the resident instance together with its
+      // projection store and open stream: the durable host log rebuilds a
+      // later get(), which adopts the store minted after this removal.
+      this.sessions.delete(sessionId)
+      if (resident !== undefined) void this.startSessionDisposal(resident)
+    }
     this.queues.delete(sessionId)
     this.jobsBySession.delete(sessionId)
     if (!durableSubagent) this.projectionStores.delete(sessionId)

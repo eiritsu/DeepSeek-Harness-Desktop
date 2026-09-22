@@ -91,7 +91,7 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
-/* A pending retry disables its control the way a native disabled button does;
+/* A pending admission disables its control the way a native disabled button does;
    copy and branch never set it, so they keep their hover chrome. */
 .action:disabled {
   cursor: default;
@@ -103,7 +103,7 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
-.retryFailure {
+.admissionFailure {
   padding-left: 4px;
   color: var(--dsw-alias-label-tertiary);
   font-size: var(--dsh-content-font-size-secondary, 13px);

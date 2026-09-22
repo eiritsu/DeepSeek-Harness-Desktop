@@ -30,7 +30,7 @@ import { createChatStore } from '../src/client/stores.ts'
 import { ChatView } from '../src/client/chat/ChatView.tsx'
 import { ChatNodeSeat } from '../src/client/chat/ChatNodeSeat.tsx'
 import { useTurnDataValue } from '../src/client/chat/use-turn-data.ts'
-import type { RetryInterruptedView } from '../src/client/chat/retry-interrupted.ts'
+import type { TurnActionsView } from '../src/client/chat/turn-actions.ts'
 import { en, zh } from '../src/client/locale.ts'
 import { AssistantNodeView } from '../src/client/chat/AssistantNodeView.tsx'
 import { CommandNodeView, ManualCompactionNodeView } from '../src/client/chat/CommandNodeView.tsx'
@@ -265,8 +265,9 @@ function makeHarness(
     read: () => savedScroll,
   }
   const forkAt = vi.fn()
-  const retryInterrupted = vi.fn()
-  const retrySource = createSnapshotStore<RetryInterruptedView>({ pending: false, error: null })
+  const resend = vi.fn()
+  const resume = vi.fn()
+  const turnActionSource = createSnapshotStore<TurnActionsView>({ pending: false, error: null })
   // Rows and the harness must observe the same chat-store instance.
   const chat = createChatStore().create()
   const transcriptView = createSnapshotStore<TranscriptViewMode>('compact')
@@ -395,7 +396,7 @@ function makeHarness(
     useStore: bindSnapshotSelector(chat),
     actions: chat.actions,
     useTranscriptView: bindSnapshotSelector(transcriptView),
-    useRetry: bindSnapshotSelector(retrySource),
+    useTurnActions: bindSnapshotSelector(turnActionSource),
     renderSlot,
     SessionProvider: SessionProviderStub,
     viewRequest: null,
@@ -410,7 +411,8 @@ function makeHarness(
     forkAt,
     // Absent-service default; mention tests override with a real resolver.
     fileMentions: () => undefined,
-    retryInterrupted,
+    resend,
+    resume,
     t,
   }
   const set = (next: HarnessUpdate): void => {
@@ -435,8 +437,8 @@ function makeHarness(
     set, setSession: session.set, setChat: chatSource.set, ChatView, props,
     openFile, openSkill, loadOlder, loadThrough, openView,
     setOutline: (value: unknown) => { outlineValue = value },
-    chatScroll, forkAt, toolOwners, retryInterrupted,
-    setRetry: (view: RetryInterruptedView) => { retrySource.set(view) },
+    chatScroll, forkAt, toolOwners, resend, resume,
+    setTurnActions: (view: TurnActionsView) => { turnActionSource.set(view) },
     setTranscriptView: (mode: TranscriptViewMode) => { transcriptView.set(mode) },
     setNodeRenderer: (renderer: React.ComponentProps<typeof ChatNodeSeat>['renderSlot']) => {
       nodeSlotOverride = renderer

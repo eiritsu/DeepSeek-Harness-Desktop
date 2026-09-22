@@ -245,7 +245,7 @@ describe('search', () => {
 })
 
 describe('Host Remote event routing', () => {
-  it('adds/removes/flips sessions and keeps removed instances resident', async () => {
+  it('adds/removes/flips sessions and flags a removed instance for retirement', async () => {
     const api = new FakeApiClient()
     const manager = new SessionManager(fakeRemote(api))
     manager.handleSessionAdded(summary(S1, { blank: true }))
@@ -263,7 +263,29 @@ describe('Host Remote event routing', () => {
     manager.handleSessionRemoved(S1)
     expect(manager.getListSnapshot().items).toHaveLength(0)
     expect(session.getSnapshot().removed).toBe(true)
-    expect(manager.get(S1)).toBe(session) // resident-instance rule survives removal
+    expect(manager.get(S1)).not.toBe(session) // retired: the next get() rebuilds
+  })
+
+  it('rebuilds a re-added id on a fresh instance and store while the old one disposes', async () => {
+    const api = new FakeApiClient()
+    const manager = new SessionManager(fakeRemote(api))
+    manager.handleSessionAdded(summary(S1, { blank: true }))
+    const old = manager.get(S1)
+    await old.open()
+    await vi.waitFor(() => { expect(api.activeFollows(S1)).toBe(1) })
+
+    manager.handleSessionRemoved(S1)
+    manager.handleSessionAdded({
+      ...summary(S1, { blank: true }),
+      projections: { asOfSeq: 1, values: { title: 'Back' } },
+    })
+
+    expect(old.getSnapshot().removed).toBe(true)
+    await vi.waitFor(() => { expect(api.activeFollows(S1)).toBe(0) }) // old stream torn down
+    const rebuilt = manager.get(S1)
+    expect(rebuilt).not.toBe(old)
+    expect(rebuilt.projections).not.toBe(old.projections)
+    expect(rebuilt.projections.get('title')).toBe('Back') // the added frame's store
   })
 })
 

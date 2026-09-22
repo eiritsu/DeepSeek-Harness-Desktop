@@ -40,19 +40,33 @@ function isCompactionCheckpoint(event: Parameters<ConversationNodeDefinition['ma
   return source.kind === 'plugin' && source.plugin === 'compact'
 }
 
+/**
+ * Whether one event is an edit-and-resend's replacement prompt. The original
+ * message stays in the transcript as the append-origin node it replaced, and
+ * this node presents the content that was actually re-sent.
+ */
+function isResendPrompt(event: Parameters<ConversationNodeDefinition['match']>[0]): boolean {
+  if (event.type !== 'user/message' || !isReplacementSurfaceEvent(event)) return false
+  return event.data.source.kind === 'assistant-retry'
+}
+
 /** User, steering, and injected-context message classification Definition. */
 export const messageDefinition: ConversationNodeDefinition<MessageNode> = {
   kind: 'input-message',
   target: 'chat',
   match: event => event.type === 'user/message'
-    && isAppendSurfaceEvent(event)
+    && (isAppendSurfaceEvent(event) || isResendPrompt(event))
     && !isCompactionCheckpoint(event)
     ? { id: String(event.data.id), role: 'start' }
     : null,
   start: (_context, match, reader) => {
     if (match.event.type !== 'user/message') throw new Error('input-message start requires user/message')
     const event = match.event
-    if (event.data.source.kind !== 'user') {
+    const sourceKind = event.data.source.kind
+    // A released 0.1.20–0.1.21 assistant-retry prompt was appended, not a
+    // replacement, so this version still presents it as injected context; only
+    // a current replacement prompt is the Turn's replayed opening message.
+    if (sourceKind !== 'user' && !isResendPrompt(event)) {
       return {
         kind: 'context',
         seq: event.seq,
@@ -76,6 +90,7 @@ export const messageDefinition: ConversationNodeDefinition<MessageNode> = {
       }
       : {
         kind: 'user',
+        messageId: event.data.id,
         seq: event.seq,
         time: event.time,
         content: event.data.content,

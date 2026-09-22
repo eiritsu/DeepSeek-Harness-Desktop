@@ -204,7 +204,8 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'session/steer-unavailable': { readonly itemId: MessageId }
     'session/title-invalid': { readonly sessionId: SessionId }
     'session/fork-unavailable': { readonly sessionId: SessionId }
-    'session/retry-unavailable': { readonly reason: string }
+    'session/resend-unavailable': { readonly reason: string }
+    'session/resume-unavailable': { readonly reason: string }
     'session/has-children': { readonly sessionId: SessionId; readonly childSessionIds: readonly SessionId[] }
     'session/running': { readonly sessionId: SessionId }
     'subagent/not-found': {
@@ -340,42 +341,47 @@ export interface SessionPromptValue {
 }
 
 /**
- * Durable address of the assistant settlement a retry replaces. The settlement
- * is the latest safe answer of an idle Session: an `interrupted` surface
- * `assistant/message` (visible text or reasoning was delivered), a completed
- * Turn's ordinary surface `assistant/message`, or a log-only
- * `assistant/attempt` (nothing the surface could finalize). Neither a
- * fabricated message id nor a chunk position addresses the last form, so the
- * address names the exact durable carrier.
+ * Provenance of a replayed resend prompt: which durable fact the replacement
+ * shadowed. Current writers name the shadowed Turn's opening user message;
+ * released 0.1.20–0.1.21 writers named the shadowed assistant settlement, as an
+ * address or — for 0.1.20 — as the bare interrupted message id. No reader
+ * depends on the value, so a released log replays unchanged.
  */
-export type SessionInterruptedRetryTarget =
-  | {
-    readonly kind: 'assistant-message'
-    /** Durable id of the addressed `assistant/message`. */
-    readonly messageId: MessageId
-  }
-  | {
-    readonly kind: 'assistant-attempt'
-    /** Durable `seq` of the aborted or crash-repaired log-only `assistant/attempt`. */
-    readonly seq: SessionSeq
-  }
+export type AssistantRetryProvenance =
+  | { readonly kind: 'user-message'; readonly messageId: MessageId }
+  | { readonly kind: 'assistant-message'; readonly messageId: MessageId }
+  | { readonly kind: 'assistant-attempt'; readonly seq: SessionSeq }
+  | MessageId
 
 /**
- * Provenance of a replayed retry prompt. Released 0.1.20 wrote the bare
- * interrupted `MessageId`; current writers always write a
- * {@link SessionInterruptedRetryTarget}. Readers accept both.
+ * Edit-and-resend request for the latest Turn's opening user message. The
+ * durable address selects the message; edited content is text-only, and its
+ * omission replays the durable prompt unchanged.
  */
-export type AssistantRetryProvenance = SessionInterruptedRetryTarget | MessageId
-
-/** Retry request for the latest safe assistant answer. */
-export interface SessionRetryInterruptedRequest {
+export interface SessionResendRequest {
   readonly sessionId: SessionId
-  /** Durable address of the assistant settlement to regenerate. */
-  readonly target: SessionInterruptedRetryTarget
+  /** Durable id of the latest Turn's ordinary opening user message. */
+  readonly messageId: MessageId
+  /**
+   * Replacement prompt text. Omission replays the durable content verbatim,
+   * which is exactly a retry; supplied text replaces the prompt's text while
+   * the durable attachment references are preserved.
+   */
+  readonly content?: readonly PromptContentPart[]
 }
 
-/** Receipt after one answer retry is admitted to the live Agent. */
-export interface SessionRetryInterruptedValue {
+/** Receipt after one resend is admitted to the live Agent. */
+export interface SessionResendValue {
+  readonly accepted: true
+}
+
+/** Resume request for the Turn a stop left closed on an idle Session. */
+export interface SessionResumeRequest {
+  readonly sessionId: SessionId
+}
+
+/** Receipt after one resume is admitted to the live Agent. */
+export interface SessionResumeValue {
   readonly accepted: true
 }
 
@@ -434,11 +440,12 @@ declare module '@deepseek-ai/dsh-llm' {
     /** Browser prompt correlation and optional Host-validated time zone. */
     'user-rpc': { kind: 'user'; rpcId: SessionRequestId; clientTimeZone?: string }
     /**
-     * Replayed prompt of an assistant-answer retry. The event carries a
-     * positional surface replacement; `retryOf` names the settlement it
-     * shadows, for audit. A released 0.1.20 log stores the bare interrupted
-     * `MessageId`; current writers store a
-     * {@link SessionInterruptedRetryTarget}.
+     * Replayed prompt of an edit-and-resend: unchanged content makes it a
+     * retry, edited text makes it a re-send. The event carries a positional
+     * surface replacement covering the shadowed Turn; `retryOf` names what that
+     * replacement shadowed, for audit, as an
+     * {@link AssistantRetryProvenance} that released writers filled with the
+     * assistant settlement instead.
      */
     'assistant-retry': { kind: 'assistant-retry'; retryOf: AssistantRetryProvenance }
   }

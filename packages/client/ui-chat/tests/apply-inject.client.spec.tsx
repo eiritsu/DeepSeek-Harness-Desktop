@@ -56,10 +56,13 @@ async function bench() {
   const openWorkspacePath = vi.fn<ClientRemote['session']['openWorkspacePath']>(
     () => Promise.resolve({ ok: true, value: { opened: true } }),
   )
-  const retryInterrupted = vi.fn<ClientRemote['session']['retryInterrupted']>(
+  const resend = vi.fn<ClientRemote['session']['resend']>(
     () => Promise.resolve({ ok: true, value: { accepted: true } }),
   )
-  new TestRemote(runtime.ctx, { session: { openWorkspacePath, retryInterrupted } })
+  const resume = vi.fn<ClientRemote['session']['resume']>(
+    () => Promise.resolve({ ok: true, value: { accepted: true } }),
+  )
+  new TestRemote(runtime.ctx, { session: { openWorkspacePath, resend, resume } })
   runtime.ctx.provide('uiWorkspace', {
     openWorkspace: vi.fn(async (_workspaceId: WorkspaceId, beforeOpen: (id: SessionId) => void) => {
       beforeOpen(ROOT)
@@ -92,7 +95,7 @@ async function bench() {
     ) => ChatViewInjected)(id, instance.actions)
     return { instance, injected }
   }
-  return { runtime, layout, openWorkspacePath, sidebarRight, session, chatViewApi, retryInterrupted }
+  return { runtime, layout, openWorkspacePath, sidebarRight, session, chatViewApi, resend, resume }
 }
 
 describe('Chat inject API', () => {
@@ -179,14 +182,16 @@ describe('Chat inject API', () => {
     await b.runtime.dispose()
   })
 
-  it('shares one retry controller per Session and invalidates it on reconnect', async () => {
+  it('shares one turn-action controller per Session and invalidates it on reconnect', async () => {
     const b = await bench()
     const { injected } = b.chatViewApi(ROOT)
     expect(injected.keyedHooks.chatNode('k')).toBeDefined()
     expect(injected.keyedHooks.chatNodeProcess('k')).toBeDefined()
-    injected.retryInterrupted({ kind: 'assistant-message', messageId: 'm1' as never })
-    injected.retryInterrupted({ kind: 'assistant-message', messageId: 'm2' as never })
-    expect(b.retryInterrupted).toHaveBeenCalledTimes(1)
+    injected.resend('m1' as never, 'edited')
+    injected.resend('m2' as never)
+    expect(b.resend).toHaveBeenCalledTimes(1)
+    injected.resume()
+    expect(b.resume).not.toHaveBeenCalled()
     b.runtime.ctx.emit('connection/reset')
     await b.runtime.dispose()
   })

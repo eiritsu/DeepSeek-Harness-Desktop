@@ -96,9 +96,14 @@ export class ReactLoopAgent implements Agent {
   private readonly frozenMessages = new WeakSet<Message>()
   /**
    * One-shot surface replacement for the next admitted message with this id.
-   * Set by {@link retryInterrupted} and consumed when that message enters its step.
+   * Set by {@link resendPrompt} and consumed when that message enters its step.
    */
   private pendingSurfaceReplacement: { messageId: MessageId; replacement: SurfaceReplacement } | undefined
+  /**
+   * Whether the next opened Turn spends a model request over the current
+   * surface without claiming an inbox message. Set by {@link resumeTurn}.
+   */
+  private pendingResume = false
 
   constructor(
     private loopCtx: Context,
@@ -145,7 +150,7 @@ export class ReactLoopAgent implements Agent {
     this.send(input, 'next-turn', true)
   }
 
-  retryInterrupted(message: UserMessage, replacement: SurfaceReplacement): void {
+  resendPrompt(message: UserMessage, replacement: SurfaceReplacement): void {
     if (this.pendingSurfaceReplacement !== undefined) {
       throw new Error(`agent "${this.id}": a surface replacement is already pending`)
     }
@@ -158,6 +163,14 @@ export class ReactLoopAgent implements Agent {
     }
   }
 
+  resumeTurn(): void {
+    if (this.phase.kind !== 'idle') {
+      throw new Error(`agent "${this.id}": resuming a stopped turn needs an idle agent`)
+    }
+    this.pendingResume = true
+    this.wakeDriver()
+  }
+
   steer(input: UserMessage): void {
     this.send(input, 'next-step', true)
   }
@@ -168,6 +181,7 @@ export class ReactLoopAgent implements Agent {
 
   cancel(cause: AgentCancelCause, options: CancelOptions = {}): void {
     this.pendingSurfaceReplacement = undefined
+    this.pendingResume = false
     if (!options.keepInbox) {
       this.inbox.clear()
       if (this.phase.kind !== 'idle') this.phase.wakeRequested = false
@@ -250,6 +264,7 @@ export class ReactLoopAgent implements Agent {
       // Reported failures and cancellation are contained at the driver boundary.
     } finally {
       this.pendingSurfaceReplacement = undefined
+      this.pendingResume = false
       /* v8 ignore next -- kick owns a running phase until this driver boundary */
       if (this.phase.kind === 'running') {
         const { turn, wakeRequested } = this.phase
@@ -296,6 +311,10 @@ export class ReactLoopAgent implements Agent {
     const { signal } = phase.abort
     signal.throwIfAborted()
     const turn = phase.turn + 1
+    // A resume spends this Turn's first step over the current surface even
+    // when pre-step claims nothing; it is consumed by exactly one Turn.
+    const resumed = this.pendingResume
+    this.pendingResume = false
     try {
       this.session.append('turn/start', { turn })
     } catch (error: unknown) {
@@ -319,7 +338,9 @@ export class ReactLoopAgent implements Agent {
         if (turnEnds && decision.messages.length === 0) break
         // A removed waking message or an enter decision rewritten to empty
         // still owns the initial turn boundary, but it spends no model call.
-        if (phase.step === 0 && decision.messages.length === 0) {
+        // A resumed Turn is the exception: it spends the call over the
+        // surface exactly as it stands.
+        if (phase.step === 0 && decision.messages.length === 0 && !resumed) {
           turnEnds = { kind: 'completed' }
           return false
         }

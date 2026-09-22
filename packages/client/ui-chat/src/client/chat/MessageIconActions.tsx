@@ -3,7 +3,8 @@
 
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import {
-  IconBranchOutline16, IconCheckOutline16, IconCopyOutline16, IconRefreshOutline16, Tooltip, writeClipboard,
+  IconBranchOutline16, IconCheckOutline16, IconCopyOutline16, IconEditOutline16, IconPlayOutline16,
+  Tooltip, writeClipboard,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ChatViewSlotProps } from '../contract/slots.ts'
 import { formatMessageClock } from './message-chrome.ts'
@@ -29,14 +30,19 @@ export interface MessageIconActionsProps {
    */
   extraActions?: ReactNode
   /**
-   * Admit a retry for this message's retryable answer. Omission hides the
+   * Admit an edit-and-resend for this message's prompt. Omission hides the
    * built-in control, seated immediately after the copy button.
    */
-  onRetry?: (() => void) | undefined
-  /** Whether a retry admission is in flight, disabling the built-in control. */
-  retryPending?: boolean | undefined
-  /** Locale-owned retry failure announced after the icon cluster. */
-  retryFailure?: string | undefined
+  onResend?: (() => void) | undefined
+  /**
+   * Admit a resume of the stopped Turn this message opened. Omission hides the
+   * built-in control, seated after the edit control.
+   */
+  onResume?: (() => void) | undefined
+  /** Whether an admission is in flight, disabling the built-in controls. */
+  admissionPending?: boolean | undefined
+  /** Locale-owned admission failure announced after the icon cluster. */
+  admissionFailure?: string | undefined
   /**
    * Icon-row Turn-usage trigger (the TurnUsagePanel pill), seated after the
    * branch control at the end of the icon cluster.
@@ -53,7 +59,7 @@ export interface MessageIconActionsProps {
  */
 export function MessageIconActions({
   text, time, clock, onBranch, branchUnavailable = false, className,
-  extraActions, onRetry, retryPending = false, retryFailure, usageAction, t,
+  extraActions, onResend, onResume, admissionPending = false, admissionFailure, usageAction, t,
 }: MessageIconActionsProps) {
   const day = useCalendarDay()
   const reasonId = useId()
@@ -96,16 +102,29 @@ export function MessageIconActions({
           {copied ? <IconCheckOutline16 /> : <IconCopyOutline16 />}
         </button>
       </Tooltip>
-      {onRetry !== undefined && (
-        <Tooltip label={t('message.retryInterrupted.action')} side="bottom">
+      {onResend !== undefined && (
+        <Tooltip label={t('message.resend.action')} side="bottom">
           <button
             type="button"
             className={css.action}
-            aria-label={t('message.retryInterrupted.action')}
-            disabled={retryPending}
-            onClick={onRetry}
+            aria-label={t('message.resend.action')}
+            disabled={admissionPending}
+            onClick={onResend}
           >
-            <IconRefreshOutline16 />
+            <IconEditOutline16 />
+          </button>
+        </Tooltip>
+      )}
+      {onResume !== undefined && (
+        <Tooltip label={t('message.resume.action')} side="bottom">
+          <button
+            type="button"
+            className={css.action}
+            aria-label={t('message.resume.action')}
+            disabled={admissionPending}
+            onClick={onResume}
+          >
+            <IconPlayOutline16 />
           </button>
         </Tooltip>
       )}
@@ -131,7 +150,7 @@ export function MessageIconActions({
       )}
       {usageAction}
       {clock === 'end' ? clockEl : null}
-      {retryFailure !== undefined && <span className={css.retryFailure} role="status">{retryFailure}</span>}
+      {admissionFailure !== undefined && <span className={css.admissionFailure} role="status">{admissionFailure}</span>}
     </div>
   )
 }

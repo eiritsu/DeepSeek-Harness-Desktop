@@ -1,5 +1,4 @@
 /** Chat-owned Slot declarations and composed component props. */
-import type { SessionInterruptedRetryTarget } from '@deepseek-ai/dsh-api-remotes/client'
 import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import type { SessionId, SessionSeq } from '@deepseek-ai/dsh-session/types'
 import type {
@@ -16,7 +15,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { createChatStore } from '../stores.ts'
 import type { ToolCallId } from './store.ts'
 import type { ChatConversationViewNode, ChatNode, ChatNodeKind } from './chat-nodes.ts'
-import type { RetryInterruptedView } from '../chat/retry-interrupted.ts'
+import type { TurnActionsView } from '../chat/turn-actions.ts'
 import type {
   ChatNodeProcessSource, ChatNodeSource, ChatSnapshot, ChatTurnProcessPresentation,
 } from './snapshot.ts'
@@ -50,17 +49,20 @@ export interface AssistantActionOwnerProps {
   messageId: MessageId
 }
 
-/** Per-Session retry state and action delivered to every Chat node owner. */
-export interface RetryInterruptedOwnerProps {
+/** Per-Session edit-and-resend and stop-resume state and actions delivered to every Chat node owner. */
+export interface TurnActionsOwnerProps {
   /** Whether the addressed Session is currently running a turn. */
   readonly sessionRunning: boolean
-  /** Published retry admission state for the Session. */
-  readonly state: RetryInterruptedView
+  /** Published admission state for the Session. */
+  readonly state: TurnActionsView
   /**
-   * Admit one retry for a retryable assistant settlement.
-   * @param target - durability-addressed assistant settlement to regenerate.
+   * Admit one edit-and-resend of the latest Turn's opening user message.
+   * @param messageId - durable id of the addressed user message.
+   * @param text - replacement prompt text; omission replays the durable content.
    */
-  run(target: SessionInterruptedRetryTarget): void
+  resend(messageId: MessageId, text?: string): void
+  /** Admit one resume of the latest stopped Turn. */
+  resume(): void
 }
 
 /** Optional prose file-mention provider consumed by Chat. */
@@ -108,8 +110,8 @@ export interface ChatNodeOwnerProps {
   loadImage: MessageImageLoader
   renderMessageImages: RenderMessageImages
   fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined
-  /** Latest-answer retry state and action for the Session. */
-  retryInterrupted: RetryInterruptedOwnerProps
+  /** Latest-Turn edit-and-resend and stop-resume state and actions for the Session. */
+  turnActions: TurnActionsOwnerProps
   /** Turn-process state when this Node belongs to a projected Turn. */
   turnProcess?: TurnProcessOwnerProps | undefined
 }
@@ -150,8 +152,8 @@ export interface ChatViewInjected {
   hooks: {
     /** Persisted completed-Turn transcript presentation. */
     transcriptView: SnapshotStore<TranscriptViewMode>
-    /** Per-Session interrupted-answer retry state. */
-    retry: HostObservable<RetryInterruptedView>
+    /** Per-Session edit-and-resend and stop-resume admission state. */
+    turnActions: HostObservable<TurnActionsView>
   }
   keyedHooks: {
     /** Resolve the stable source for one Chat Node key. */
@@ -173,10 +175,13 @@ export interface ChatViewInjected {
   forkAt: (seq: number) => void
   fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined
   /**
-   * Admit one retry for an interrupted assistant settlement.
-   * @param target - durability-addressed interrupted settlement to regenerate.
+   * Admit one edit-and-resend of the latest Turn's opening user message.
+   * @param messageId - durable id of the addressed user message.
+   * @param text - replacement prompt text; omission replays the durable content.
    */
-  retryInterrupted: (target: SessionInterruptedRetryTarget) => void
+  resend: (messageId: MessageId, text?: string) => void
+  /** Admit one resume of the latest stopped Turn. */
+  resume: () => void
 }
 
 /** Full Chat view props. */
