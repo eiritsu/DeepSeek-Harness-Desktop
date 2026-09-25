@@ -10,6 +10,7 @@ ISOLATED=false
 OUTPUT_ROOT=""
 APP_ROOT=""
 ICON_SOURCE="$SHELL_ROOT/Resources/AppIcon.svg"
+RELEASE_SOURCE_BRANCH="release/0.1.21"
 ICON_WORK=$(mktemp -d)
 SNAPSHOT_WORK=""
 require_clean_checkout() {
@@ -136,7 +137,7 @@ HARNESS_COMMIT=""
 PLUGIN_COMMIT=""
 if [ "$DISTRIBUTION" = true ]; then
   require_clean_checkout "$SOURCE_ROOT" "Harness"
-  require_published_head "$SOURCE_ROOT" desktop-publish main "Harness"
+  require_published_head "$SOURCE_ROOT" desktop-publish "$RELEASE_SOURCE_BRANCH" "Harness"
   HARNESS_COMMIT=$(git -C "$SOURCE_ROOT" rev-parse HEAD)
   PLUGIN_COMMIT="$HARNESS_COMMIT"
 fi
@@ -158,7 +159,7 @@ if [ "$DISTRIBUTION" = true ]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ai.deepseek.harness.desktop.lite" "$APP_ROOT/Contents/Info.plist"
   /usr/libexec/PlistBuddy -c "Delete :DSHSourceRoot" "$APP_ROOT/Contents/Info.plist"
   /usr/libexec/PlistBuddy -c "Set :DSHSourceRepository https://github.com/eiritsu/DeepSeek-Harness-Desktop.git" "$APP_ROOT/Contents/Info.plist"
-  /usr/libexec/PlistBuddy -c "Set :DSHSourceBranch main" "$APP_ROOT/Contents/Info.plist"
+  /usr/libexec/PlistBuddy -c "Set :DSHSourceBranch $RELEASE_SOURCE_BRANCH" "$APP_ROOT/Contents/Info.plist"
   SNAPSHOT_WORK=$(mktemp -d)
   SNAPSHOT_ROOT="$SNAPSHOT_WORK/source"
   mkdir -p "$SNAPSHOT_ROOT"

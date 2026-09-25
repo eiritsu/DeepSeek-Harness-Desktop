@@ -9,6 +9,7 @@ DMG_PATH="$OUTPUT_ROOT/DeepSeek-Harness-Lite-macOS.dmg"
 STAGE=$(mktemp -d)
 ARCHIVE_LIST=$(mktemp)
 AUDIT_ROOT=$(mktemp -d)
+RELEASE_SOURCE_BRANCH="release/0.1.21"
 trap 'rm -rf "$STAGE" "$ARCHIVE_LIST" "$AUDIT_ROOT"' EXIT
 
 "$SCRIPT_DIR/build-app.sh" --distribution
@@ -30,7 +31,7 @@ if [ ! -f "$APP_ROOT/Contents/Resources/SourceBootstrap.tar.gz" ]; then
   echo "package-dmg: bundled source snapshot is missing" >&2
   exit 1
 fi
-if [ "$(/usr/libexec/PlistBuddy -c 'Print :DSHSourceBranch' "$APP_ROOT/Contents/Info.plist")" != "main" ]; then
+if [ "$(/usr/libexec/PlistBuddy -c 'Print :DSHSourceBranch' "$APP_ROOT/Contents/Info.plist")" != "$RELEASE_SOURCE_BRANCH" ]; then
   echo "package-dmg: distribution app does not point at the release source branch" >&2
   exit 1
 fi

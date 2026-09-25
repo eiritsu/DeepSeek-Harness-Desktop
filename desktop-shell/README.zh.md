@@ -54,4 +54,4 @@ open "desktop-shell/dist-isolated/DeepSeek Harness Lite Isolated.app"
 desktop-shell/scripts/package-dmg.sh
 ```
 
-发行包会嵌入当前仓库源码和已构建 runtime 产物，移除开发者路径与仅供仓库使用的内容，生成 `AppIcon.icns` 并应用 ad-hoc 签名。Notarization 与 Developer ID 签名仍属于发行阶段工作。
+发行包要求源码位于已发布到 `desktop-publish/release/0.1.21` 的干净 commit；安装后的应用也会从该分支获取更新。发行包会嵌入当前仓库源码和已构建 runtime 产物，移除开发者路径与仅供仓库使用的内容，生成 `AppIcon.icns` 并应用 ad-hoc 签名。Notarization 与 Developer ID 签名仍属于发行阶段工作。

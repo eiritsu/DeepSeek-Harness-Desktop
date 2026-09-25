@@ -54,4 +54,4 @@ Create the distribution DMG only from a clean, published release commit:
 desktop-shell/scripts/package-dmg.sh
 ```
 
-The distribution embeds the current repository source and built runtime artifacts, removes developer paths and repository-only material, generates `AppIcon.icns`, and applies an ad-hoc signature. Notarization and Developer ID signing remain release work.
+The distribution requires a clean commit published on `desktop-publish/release/0.1.21`; the installed app fetches updates from that branch. It embeds the current repository source and built runtime artifacts, removes developer paths and repository-only material, generates `AppIcon.icns`, and applies an ad-hoc signature. Notarization and Developer ID signing remain release work.
