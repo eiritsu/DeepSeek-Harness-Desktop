@@ -56,18 +56,30 @@ import type {
   StreamChunk,
 } from '@deepseek-ai/dsh-llm'
 import type { AttachmentStore, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
+// Type-only: the Context merge behind `ctx.get('modelCatalog')`, plus the fact
+// vocabulary this adapter reads one generation of.
+import type {} from '@deepseek-ai/dsh-model-catalog'
+import type { ModelFacts, ModelFactsView } from '@deepseek-ai/dsh-model-catalog'
 import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import type { ResolvedPiAiProviderProfile } from './config.ts'
 import { toPiContext } from './context.ts'
+import type { DeclaredModelFacts, PiAiModality } from './catalog.ts'
 import { createModels, getSupportedThinkingLevels } from './models.ts'
 import { toStreamChunks } from './stream.ts'
 
-/** One resolution's frozen view: the profiles and the collection built from them. */
+/** One resolution's frozen view: the profiles, the collection built from them, and the catalog generation. */
 interface PiAiSnapshot {
   /** The resolved profiles this collection was built from, used as its identity. */
   profiles: ReadonlyMap<string, ResolvedPiAiProviderProfile>
   /** Providers for exactly those profiles; never mutated once published. */
   models: Models
+  /**
+   * The shared catalog generation this collection was built under, or
+   * undefined when no catalog is mounted. Part of the snapshot's identity, so
+   * a refresh rebuilds the collection rather than leaving an operation to
+   * describe a model from one generation and encode it from the next.
+   */
+  facts: ModelFactsView | undefined
 }
 
 /** Constructor options for {@link PiAiAdapter}: the two resolution hooks the plugin owns. */
@@ -101,6 +113,14 @@ export interface PiAiAdapterOptions {
    * conversion because its stored replay state is unusable by this build.
    */
   onReplayDegrade?: (detail: { provider: string; model: string; reason: string }) => void
+  /**
+   * The shared catalog generation in force, or undefined when no catalog is
+   * mounted. Called once per operation and compared by identity: a refresh
+   * returns a new view, which rebuilds the collection so that one operation
+   * describes a model and encodes it from the same facts. Absent, every model
+   * keeps exactly the facts pi-ai's installed catalog carries.
+   */
+  modelFacts?: () => ModelFactsView | undefined
 }
 
 /** The two auth injectables a pi-ai collection is built with. */
@@ -132,6 +152,72 @@ function profileOptions(
 }
 
 /**
+ * The request modalities this exact route can carry, in descriptor order.
+ *
+ * The shared record describes the model and overrides a local declaration for
+ * every field it carries; a field it leaves unset falls back to what this
+ * profile declared, then to the installed catalog. The transport has the last
+ * word either way — a modality the request path refuses must not appear in what
+ * a selector shows, or the model would be described as taking images that every
+ * request to it rejects. A record that shares no modality at all with the
+ * transport says nothing usable about this route, so the transport's own list
+ * stands.
+ * @param model - the resolved model descriptor.
+ * @param facts - the shared facts for this route and model, when a catalog is mounted.
+ * @param declared - the facts this profile declared for the model, when any.
+ * @returns the modalities to describe the model with.
+ */
+function effectiveModalities(
+  model: Model<Api>,
+  facts: ModelFacts | undefined,
+  declared: DeclaredModelFacts | undefined,
+): readonly PiAiModality[] {
+  if (facts?.inputModalities !== undefined) {
+    const shared = new Set(facts.inputModalities)
+    const narrowed = model.input.filter(modality => shared.has(modality))
+    return narrowed.length > 0 ? narrowed : [...model.input]
+  }
+  if (declared?.inputModalities !== undefined) return [...declared.inputModalities]
+  return [...model.input]
+}
+
+/**
+ * The reasoning levels this exact route can put on the wire.
+ *
+ * The shared record outranks a local declaration: what the channel serving this
+ * model declares it accepts replaces a vocabulary the profile wrote, and a
+ * record that says the model does not reason denies every level. A field the
+ * record leaves unset falls back to the profile's own declaration, then to what
+ * the transport encodes. The transport always has the last word, so the answer
+ * is an intersection with pi-ai's encodable set: a level neither side takes is
+ * never offered and never sent, and a channel's declared list can only narrow
+ * what the protocol already allows.
+ * @param model - the resolved model descriptor.
+ * @param facts - the shared facts for this route and model, when a catalog is mounted.
+ * @param declared - the facts this profile declared for the model, when any.
+ * @returns the encodable levels in pi-ai's escalation order.
+ */
+function encodableLevels(
+  model: Model<Api>,
+  facts: ModelFacts | undefined,
+  declared: DeclaredModelFacts | undefined,
+): ModelThinkingLevel[] {
+  const levels = getSupportedThinkingLevels(model)
+  // A record that says the model does not reason denies every level, whatever
+  // the transport could encode for it — the same denial the description shows.
+  if (facts?.reasoning === false) return []
+  if (facts?.reasoningEfforts !== undefined) {
+    const accepted = new Set(facts.reasoningEfforts)
+    return levels.filter(level => accepted.has(level))
+  }
+  if (declared?.reasoningEfforts !== undefined) {
+    const own = new Set(declared.reasoningEfforts)
+    return levels.filter(level => own.has(level))
+  }
+  return levels
+}
+
+/**
  * The profile default this exact model can actually take, for DESCRIBING it.
  * A configured level the model does not support yields none rather than
  * throwing: `resolveModel` builds the model catalog, and a catalog that fails
@@ -141,27 +227,33 @@ function profileOptions(
  * belongs: describing what a model can do must not fail because a deployment
  * asked it for something it cannot.
  * @param model - the resolved model descriptor.
+ * @param levels - the levels this route can encode.
  * @param effort - the profile's configured level, if any.
- * @returns the level when this model supports it, otherwise undefined.
+ * @returns the level when this model encodes it, otherwise undefined.
  */
 function describableReasoningLevel(
-  model: Model<Api>,
+  levels: readonly ModelThinkingLevel[],
   effort: ReasoningEffortIdType | ModelThinkingLevel | undefined,
 ): ModelThinkingLevel | undefined {
   if (effort === undefined) return undefined
-  return getSupportedThinkingLevels(model).some(level => level === effort)
-    ? effort as ModelThinkingLevel
-    : undefined
+  return levels.includes(effort as ModelThinkingLevel) ? effort as ModelThinkingLevel : undefined
 }
 
-/** Validate an explicit Harness/profile effort without invoking pi-ai's clamp. */
+/**
+ * Validate an explicit Harness/profile effort without invoking pi-ai's clamp.
+ * @param model - the resolved model descriptor, for the refusal message.
+ * @param levels - the levels this route can encode.
+ * @param effort - the requested level, if any.
+ * @returns the level to send, or undefined when the caller named none.
+ * @throws when the caller named a level this route cannot encode.
+ */
 function resolveReasoningLevel(
   model: Model<Api>,
+  levels: readonly ModelThinkingLevel[],
   effort: ReasoningEffortIdType | ModelThinkingLevel | undefined,
 ): ModelThinkingLevel | undefined {
   if (effort === undefined) return undefined
-  const supported = getSupportedThinkingLevels(model)
-  if (supported.some(level => level === effort)) return effort as ModelThinkingLevel
+  if (levels.includes(effort as ModelThinkingLevel)) return effort as ModelThinkingLevel
   throw new LlmError(
     `pi-ai provider "${model.provider}" model "${model.id}" does not support reasoning effort "${effort}"`,
     'UNSUPPORTED_REASONING_EFFORT',
@@ -181,15 +273,29 @@ function resolveReasoningLevel(
  * capability is unavailable, which leaves the surface offering only the
  * provider's default.
  * @param model - the resolved model descriptor.
+ * @param facts - the shared facts for this route and model, when a catalog is mounted.
+ * @param declared - the facts this profile declared for the model, when any.
+ * @param levels - the levels this route can encode.
  * @param defaultLevel - the profile's configured effort, already validated.
  * @returns the `reasoning` field, or an empty object when none can be offered.
  */
 function reasoningInfo(
   model: Model<Api>,
+  facts: ModelFacts | undefined,
+  declared: DeclaredModelFacts | undefined,
+  levels: readonly ModelThinkingLevel[],
   defaultLevel: ModelThinkingLevel | undefined,
 ): Pick<LlmResolvedModelInfo, 'reasoning'> | Record<string, never> {
-  if (!model.reasoning) return {}
-  const levels = getSupportedThinkingLevels(model)
+  // The shared record outranks the installed catalog and a profile's own
+  // declaration: a model the record says does not reason offers no level at
+  // all, whatever the transport could encode or the profile declared, while a
+  // record that leaves the capability open falls back to the declaration and
+  // then to what pi-ai knows.
+  if (!(facts?.reasoning ?? declared?.reasoning ?? model.reasoning)) return {}
+  // The shared record and the transport can name disjoint sets. The runtime
+  // rejects an empty effort list, and no offered level would be encodable, so
+  // the model reports no reasoning control at all.
+  if (levels.length === 0) return {}
   return {
     reasoning: {
       efforts: levels.map(level => ({
@@ -224,20 +330,37 @@ export class PiAiAdapter extends LlmAdapter {
   }
 
   /**
-   * The snapshot for the current profiles. Resolution memoizes its result, so
-   * an unchanged configuration is recognized by identity; a changed one gets a
+   * The snapshot for the current profiles and catalog generation. Resolution
+   * memoizes its result, so an unchanged configuration and an unchanged
+   * generation are recognized by identity; either one changing gets a
    * brand-new collection, leaving any snapshot an operation already captured
    * untouched for as long as that operation holds it.
    */
   private current(): PiAiSnapshot {
     const profiles = this.config.profiles()
-    if (this.snapshot?.profiles === profiles) return this.snapshot
+    const facts = this.config.modelFacts?.()
+    if (this.snapshot?.profiles === profiles && this.snapshot.facts === facts) return this.snapshot
     const models: MutableModels = createModels(this.config.auth)
     for (const profile of profiles.values()) {
       if (profile.piProvider !== undefined) models.setProvider(profile.piProvider)
     }
-    this.snapshot = { profiles, models }
+    this.snapshot = { profiles, models, facts }
     return this.snapshot
+  }
+
+  /**
+   * The shared facts for one exact route and model, or undefined when no
+   * catalog is mounted or the catalog has no unambiguous record. The route id
+   * is the owner a mapping is matched against: it is the upstream provider for
+   * an installed-catalog route, and a deployment naming its own gateway routes
+   * says so with a configured mapping.
+   * @param snapshot - the frozen view this operation captured.
+   * @param provider - the route id.
+   * @param model - the route-local model id.
+   * @returns the facts, or undefined.
+   */
+  private factsOf(snapshot: PiAiSnapshot, provider: string, model: string): ModelFacts | undefined {
+    return snapshot.facts?.facts({ model, ownedBy: provider })
   }
 
   /** The profile for one route within one snapshot, or the not-owned failure. */
@@ -276,12 +399,18 @@ export class PiAiAdapter extends LlmAdapter {
   override listModels(provider: string): Promise<readonly LlmModelInfo[]> {
     return Promise.resolve().then(() => {
       const snapshot = this.current()
-      this.profileOf(snapshot, provider)
+      const profile = this.profileOf(snapshot, provider)
+      // Listed from the same facts `resolveModel` describes, so a picker never
+      // offers a modality the exact-model lookup would then refuse.
       return snapshot.models.getModels(provider).map(model => ({
         provider,
         id: model.id,
         name: model.name,
-        inputModalities: [...model.input],
+        inputModalities: effectiveModalities(
+          model,
+          this.factsOf(snapshot, provider, model.id),
+          profile.declaredFacts.get(model.id),
+        ),
       }))
     })
   }
@@ -300,7 +429,10 @@ export class PiAiAdapter extends LlmAdapter {
   private modelInfo(snapshot: PiAiSnapshot, provider: string, model: string): LlmResolvedModelInfo {
     const profile = this.profileOf(snapshot, provider)
     const resolvedModel = this.modelOf(snapshot, provider, model)
-    const defaultLevel = describableReasoningLevel(resolvedModel, profile.reasoning)
+    const facts = this.factsOf(snapshot, provider, model)
+    const declared = profile.declaredFacts.get(model)
+    const levels = encodableLevels(resolvedModel, facts, declared)
+    const defaultLevel = describableReasoningLevel(levels, profile.reasoning)
     // Only a cap the deployment configured is a request default; the
     // catalog's `maxTokens` sizes the model and stops there.
     const configuredMaxTokens = profile.configuredMaxTokens.get(model)
@@ -308,10 +440,10 @@ export class PiAiAdapter extends LlmAdapter {
       provider,
       id: model,
       name: resolvedModel.name,
-      inputModalities: [...resolvedModel.input],
-      context: { contextWindow: resolvedModel.contextWindow },
+      inputModalities: effectiveModalities(resolvedModel, facts, declared),
+      context: { contextWindow: facts?.contextWindow ?? declared?.contextWindow ?? resolvedModel.contextWindow },
       ...configuredMaxTokens === undefined ? {} : { defaultMaxTokens: configuredMaxTokens },
-      ...reasoningInfo(resolvedModel, defaultLevel),
+      ...reasoningInfo(resolvedModel, facts, declared, levels, defaultLevel),
     }
   }
 
@@ -341,10 +473,25 @@ export class PiAiAdapter extends LlmAdapter {
     // the one it started with and the next call picks up the new one.
     const profile = this.profileOf(snapshot, options.provider)
     const model = this.modelOf(snapshot, options.provider, options.model)
+    const facts = this.factsOf(snapshot, options.provider, options.model)
+    const declared = profile.declaredFacts.get(options.model)
     const reasoning = resolveReasoningLevel(
       model,
+      encodableLevels(model, facts, declared),
       options.reasoningEffort ?? profile.reasoning,
     )
+    // The catalog's output ceiling is a capability, not a request default: it
+    // never becomes one here. It does bound what a default may claim, and
+    // refusing says which model would have rejected the request instead of
+    // leaving the provider to answer with an opaque error.
+    const ceiling = facts?.maxOutputTokens
+    if (ceiling !== undefined && options.maxTokens !== undefined && options.maxTokens > ceiling) {
+      throw new LlmError(
+        `pi-ai provider "${model.provider}" model "${model.id}" produces at most ${ceiling} output`
+        + ` tokens, and the request asks for ${options.maxTokens}`,
+        'UNSUPPORTED_OPTION',
+      )
+    }
     const apiKey = await this.config.resolveApiKey(options.provider, profile)
 
     const consumer = new AbortController()

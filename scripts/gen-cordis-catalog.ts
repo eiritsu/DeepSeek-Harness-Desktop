@@ -95,6 +95,7 @@ export const SERVICE_PAGE: Record<string, string> = {
   webServer: 'web-server.md',
   invariants: 'invariants.md',
   llm: 'llm-streaming.md',
+  modelCatalog: 'llm-streaming.md',
   lsp: 'lsp.md',
   messageFeedback: 'feedback.md',
   sessionFeedback: 'feedback.md',

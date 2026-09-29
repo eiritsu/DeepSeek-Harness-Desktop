@@ -110,7 +110,7 @@ Both fields state a claim about your endpoint rather than checking it. A model t
 
 ### Reasoning effort
 
-The model picker offers an **Effort** menu for a model that declares reasoning levels. A built-in provider's models inherit their levels from the installed catalog. A model you enter by hand declares none, so the Effort entry does not appear in the menu and the endpoint's own default decides whether the model thinks. Declare the levels with `reasoningEfforts` in `$DSH_HOME/profiles/<profile>/cordis.patch.yml`:
+The model picker offers the same **Effort** menu for every model: **Default**, **Minimal**, **Low**, **Medium**, **High**, **Extra high**, and **Max**. A built-in provider's models inherit from the installed catalog which of those levels they can send; a model you enter by hand declares none, and a level its route cannot send fails the turn with `UNSUPPORTED_REASONING_EFFORT` rather than being dropped to a neighboring one. The shared models.dev catalog determines these levels for every model it describes, and its record outranks anything a route declares here; the declaration is the fallback for a model the catalog does not describe. Declare the levels the route accepts, with `reasoningEfforts` in `$DSH_HOME/profiles/<profile>/cordis.patch.yml`:
 
 ```yaml
 - id: llm-pi-ai
@@ -129,7 +129,7 @@ The model picker offers an **Effort** menu for a model that declares reasoning l
               max: max
 ```
 
-Each key is a level the menu offers, and its value is the spelling sent on the wire as `reasoning_effort`, so `max: xhigh` renames a level for a gateway with its own vocabulary. Only `off` may stay empty, because for most endpoints not thinking is the parameter's absence. The route's `reasoning` is the level used while a session has picked none; choosing an effort in the picker saves it, with the model, as the default for new sessions.
+Each key is a level this route can send, and its value is the spelling sent on the wire as `reasoning_effort`, so `max: xhigh` renames a level for a gateway with its own vocabulary. Only `off` may stay empty, because for most endpoints not thinking is the parameter's absence. The route's `reasoning` is the level used while a session sits on **Default**; choosing a level in the picker saves it, with the model, as the default for new sessions.
 
 An `off` left empty sends nothing, which only stops a model that thinks on request; an `off` given a value sends that value as `reasoning_effort` instead. A model that thinks unless told not to — DeepSeek V4 behind an OpenAI-compatible gateway, for example — needs `compat.thinkingFormat: deepseek`, which makes `off` send `thinking: {type: disabled}` and every other level send `thinking: {type: enabled}` beside the effort:
 
@@ -144,7 +144,7 @@ An `off` left empty sends nothing, which only stops a model that thinks on reque
               max: max
 ```
 
-A built-in provider's model whose gateway does not reason loses its levels with `reasoningEfforts: false` under `modelOverrides`; selecting an effort for it is then refused as `UNSUPPORTED_REASONING_EFFORT`. DeepSeek's own route needs none of this: its models already offer `off`, `low`, `high`, and `max`, and `llm-deepseek.reasoningEffort` sets the default the picker starts from:
+For a model the shared catalog does not describe, a built-in provider's model whose gateway does not reason loses its levels with `reasoningEfforts: false` under `modelOverrides`; a level chosen for it is then refused by the request as `UNSUPPORTED_REASONING_EFFORT`. A catalog record for the model outranks this local denial. DeepSeek's own route needs none of this: its models already encode several of the offered levels, and `llm-deepseek.reasoningEffort` sets the default the picker starts from:
 
 ```yaml
 - id: llm-deepseek
@@ -197,7 +197,7 @@ Every switch, its accepted values, and the protocols that take it are listed und
 - **Fetching available models reports neither a `data` array nor a `models` object** — The endpoint's listing is in a format discovery does not read. Enter the models by hand.
 - **The gateway refuses every request although the key and URL are right** — Its request shape differs from OpenAI's. Start with `compat.supportsDeveloperRole: false` and `compat.maxTokensField: max_tokens` on the route.
 - **Only reasoning models fail** — pi-ai sends their system prompt as the `developer` role, which the gateway rejects. Set `compat.supportsDeveloperRole: false`.
-- **The Effort menu does not appear for a model you entered by hand** — It declares no levels. Add `reasoningEfforts` to the model in `cordis.patch.yml`.
+- **A turn fails with `UNSUPPORTED_REASONING_EFFORT`** — The chosen level is one this route cannot send, which a model you entered by hand always is until it declares its levels. Add `reasoningEfforts` to the model in `cordis.patch.yml`, naming the level the gateway accepts.
 - **`off` does not stop a DeepSeek model from thinking** — An empty `off` sends no reasoning field at all, and an endpoint that thinks by default keeps thinking. Set `compat.thinkingFormat: deepseek` on the model or the route.
 - **A compat switch is refused as having no value** — A key written with nothing after the colon. Give it a value, or remove the key to keep the installed catalog's.
 - **An image is refused before sending** — The model declares no image modality. Give a custom provider's model `input: [text, image]`; on DeepSeek's own route, select an image-capable entry from the configured catalog (`deepseek-flash` by default) and confirm that your gateway serves that model with image input.

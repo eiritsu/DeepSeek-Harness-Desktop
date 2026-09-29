@@ -271,6 +271,7 @@
     { "path": "./packages/client/file-upload/tsconfig.host.json" },
     { "path": "./packages/llm/llm" },
     { "path": "./packages/llm/deepseek-llm-api-extensions" },
+    { "path": "./packages/llm/model-catalog" },
     { "path": "./packages/llm/token-meter" },
     { "path": "./packages/core/session" },
     { "path": "./packages/core/scope" },

@@ -1517,6 +1517,20 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'modelCatalog',
+    summary: 'The shared model catalog service: one published generation of canonical per-model facts, read on an interval and recovered from durable storage.',
+    description: 'The shared model catalog service: one published generation of canonical per-model facts, read on an interval and recovered from durable storage.\n\nReads are synchronous from the published view; only refresh awaits. The view is replaced whole on every accepted document, so a consumer that captured one keeps reading the generation it captured.',
+    methods: [
+      {
+        signature: 'async refresh(signal?: AbortSignal): Promise<void>',
+        description: 'Re-read the catalog when the published snapshot has gone stale.\n\nA failed request is reported and swallowed: the last-good view stays published, so an unreachable catalog costs freshness and nothing else. Concurrent callers share one request.',
+        parameters: [{ name: 'signal', description: 'optional cancellation for this caller.' }],
+        returns: 'resolution once the snapshot is fresh, or once the attempt failed.',
+        throws: ['the caller\'s own abort, and nothing else.'],
+      },
+    ],
+  },
+  {
     key: 'officeToPdf',
     summary: 'A provider lifetime owns all converters, queued calls, and temporary files.',
     description: 'A provider lifetime owns all converters, queued calls, and temporary files.',
@@ -5828,10 +5842,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ModelReasoning',
     declaration: 'export interface ModelReasoning {\n    readonly efforts: readonly ModelReasoningEffort[];\n    readonly defaultEffort?: string;\n}',
-  },
-  {
-    name: 'ModelReasoningEffort',
-    declaration: 'export interface ModelReasoningEffort {\n    readonly id: string;\n    readonly name: string;\n    readonly description?: string;\n}',
   },
   {
     name: 'NativeFileApplication',

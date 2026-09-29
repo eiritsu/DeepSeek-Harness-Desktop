@@ -22,7 +22,13 @@ export const zh = {
   'menu.aria': '模型与推理等级',
   'menu.model': '模型',
   'menu.effort': '推理等级',
-  'effort.providerDefault': 'Default',
+  'effort.default': 'Default',
+  'effort.minimal': 'minimal',
+  'effort.low': 'low',
+  'effort.medium': 'medium',
+  'effort.high': 'high',
+  'effort.xhigh': 'xhigh',
+  'effort.max': 'max',
   'status.loading': '正在刷新模型列表…',
   'error.action': '模型操作失败：{message}',
   'error.sessionInUse': '当前会话已被占用，可能是其他正在运行的 DSH 导致的（如其他 dsh web、桌面端），请退出其他正在运行的 DSH 后重试。',
@@ -32,7 +38,6 @@ export const zh = {
   'search.clear': '清除搜索',
   'search.empty': '没有匹配的模型。',
   'empty.models': '没有可用的模型。',
-  'empty.efforts': '当前模型未提供推理等级。',
 } satisfies Record<string, string>
 
 /** The model namespace key union. */
@@ -52,7 +57,13 @@ export const en = {
   'menu.aria': 'Model and reasoning effort',
   'menu.model': 'Model',
   'menu.effort': 'Effort',
-  'effort.providerDefault': 'Default',
+  'effort.default': 'Default',
+  'effort.minimal': 'Minimal',
+  'effort.low': 'Low',
+  'effort.medium': 'Medium',
+  'effort.high': 'High',
+  'effort.xhigh': 'Extra high',
+  'effort.max': 'Max',
   'status.loading': 'Refreshing model list…',
   'error.action': 'Model operation failed: {message}',
   'error.sessionInUse': 'This session is already in use, possibly by another running DSH instance (such as dsh web or the desktop app). Quit other running DSH instances and try again.',
@@ -62,5 +73,4 @@ export const en = {
   'search.clear': 'Clear search',
   'search.empty': 'No matching models.',
   'empty.models': 'No models available.',
-  'empty.efforts': 'This model provides no reasoning effort levels.',
 } satisfies Record<ModelKey, string>

@@ -84,6 +84,8 @@ GUI model selection requires the exact provider/model pair in the available cata
 
 A successful `selectModel` response acknowledges the Session-local selection without waiting for the default profile setting to save. Default saves run in the background in submission order; a failure logs a warning and leaves the Session selection intact. New Sessions read the last successfully saved default.
 
+A selection stores the reasoning level a person chose from the fixed ladder — `Default`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` — without asking whether the chosen route can send it, because the choice is the intent and the request is what has to encode it. `Default` stores no level at all, leaving the model's own default to be materialized when a request goes out. A level the route cannot encode is refused by that request as `UNSUPPORTED_REASONING_EFFORT` and recorded as the turn's error; the selection is kept, so the person can change it without re-picking the model.
+
 -----
 
 <a id="configuration"></a>

@@ -33,8 +33,11 @@ const GROUPS = [{
       description: 'Fast, efficient, and economical; suited to focused, routine, or parallel tasks.',
       reasoning: {
         efforts: [
-          { id: 'off', name: 'Off' },
+          { id: 'minimal', name: 'Minimal' },
+          { id: 'low', name: 'Low' },
+          { id: 'medium', name: 'Medium' },
           { id: 'high', name: 'High' },
+          { id: 'xhigh', name: 'Extra high' },
           { id: 'max', name: 'Max' },
         ],
         defaultEffort: 'high',
@@ -46,8 +49,11 @@ const GROUPS = [{
       description: 'Stronger agentic coding, knowledge, and difficult reasoning; suited to complex or quality-critical tasks at higher cost.',
       reasoning: {
         efforts: [
-          { id: 'off', name: 'Off' },
+          { id: 'minimal', name: 'Minimal' },
+          { id: 'low', name: 'Low' },
+          { id: 'medium', name: 'Medium' },
           { id: 'high', name: 'High' },
+          { id: 'xhigh', name: 'Extra high' },
           { id: 'max', name: 'Max' },
         ],
         defaultEffort: 'high',
@@ -291,11 +297,15 @@ describe('ui-model-selection dual entry', () => {
     const options = await b.popup().options(projection('s1'), new AbortController().signal)
     const pro = options.find((o: SelectOption) => o.label === 'DeepSeek-V4-Pro')!
     await b.popup().onSelect(pro, projection('s1'))
+    // A popup row names a model, not a level: the submission stores no effort,
+    // so the route's own default is what the request carries and the Default
+    // row stays the one checked. The level the entry shows is that default.
     expect(seatFace.directory.getSnapshot().current).toEqual({
       provider: 'deepseek-official',
       model: 'deepseek-v4-pro',
-      reasoningEffort: 'high',
     })
+    expect(seatFace.directory.getSnapshot().retainedEffort).toBe('high')
+    expect(b.hostCurrent()).toEqual({ provider: 'deepseek-official', model: 'deepseek-v4-pro' })
   })
 
   it.each(['en', 'zh'] as const)('localizes account provider headings in the %s model popup', async (locale) => {
@@ -454,13 +464,13 @@ describe('ui-model-selection dual entry', () => {
         next: { provider: 'deepseek-official', model: 'deepseek-v4-flash', reasoningEffort: 'high' } })
       b.setRoutable(false)
       b.remote.emit('settings/document-updated', ['llm-deepseek', 1])
-      expect(existing.store.getSnapshot().retainedEffort).toBe('High')
+      expect(existing.store.getSnapshot().retainedEffort).toBe('high')
       await vi.waitFor(() => {
-        expect(existing.store.getSnapshot()).toMatchObject({ current: { provider: 'deepseek-official', model: 'deepseek-v4-flash', reasoningEffort: 'high' }, routable: false, retainedEffort: 'High' })
+        expect(existing.store.getSnapshot()).toMatchObject({ current: { provider: 'deepseek-official', model: 'deepseek-v4-flash', reasoningEffort: 'high' }, routable: false, retainedEffort: 'high' })
       })
       b.mint('new')
       const fresh = b.ctx.modelDirectories.directoryFor(sid('new'))
-      expect(fresh.store.getSnapshot()).toMatchObject({ current: { provider: 'deepseek-official', model: 'deepseek-v4-flash', reasoningEffort: 'max' }, routable: false, retainedEffort: 'Max' })
+      expect(fresh.store.getSnapshot()).toMatchObject({ current: { provider: 'deepseek-official', model: 'deepseek-v4-flash', reasoningEffort: 'max' }, routable: false, retainedEffort: 'max' })
     } finally {
       await b.ctx.fiber.dispose()
     }

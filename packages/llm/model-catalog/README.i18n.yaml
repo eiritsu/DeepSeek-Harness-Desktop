@@ -1,0 +1,58 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/llm/model-catalog/README.md
+/:
+  en: 2f39dba55f6ba212
+  zh: 5e8659c271442226
+/deepseek-ai-dsh-model-catalog:
+  en: 95dec10e55eb1cfa
+  zh: 84329985e368ab2c
+/deepseek-ai-dsh-model-catalog/summary:
+  en: e6ff40bb23c997fc
+  zh: 9fedaf7a7ffb9e5a
+/deepseek-ai-dsh-model-catalog/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: f0f7f88fe2f53b05
+/deepseek-ai-dsh-model-catalog/use-this-package:
+  en: b5c15ade2ce0a531
+  zh: 6d945d27d47abb04
+/deepseek-ai-dsh-model-catalog/use-this-package/when-to-choose-it:
+  en: 5b4929a9d93202e1
+  zh: fa4c760c5f5c7817
+/deepseek-ai-dsh-model-catalog/use-this-package/configure-the-document-and-the-mappings:
+  en: 601fff3140371ae5
+  zh: 7cb9cef097257513
+/deepseek-ai-dsh-model-catalog/use-this-package/address-a-model:
+  en: ed1d064bef18eaa7
+  zh: afdaf283b0fdc412
+/deepseek-ai-dsh-model-catalog/understand-the-implementation:
+  en: ee4615a04fa6503d
+  zh: af1e9da36e5bdf4c
+/deepseek-ai-dsh-model-catalog/understand-the-implementation/source-map:
+  en: 698c08e8c088b76a
+  zh: 58e058f0ad8b7e1e
+/deepseek-ai-dsh-model-catalog/understand-the-implementation/generations:
+  en: 1cfe781f95782ee4
+  zh: 0ad9a69b21a34197
+/deepseek-ai-dsh-model-catalog/understand-the-implementation/what-is-bounded:
+  en: ed3144cf298a1e55
+  zh: 9eab3713210e7377
+/deepseek-ai-dsh-model-catalog/understand-the-implementation/the-durable-snapshot:
+  en: 0d735f7dcb708e1c
+  zh: e916e9b2df936307
+/deepseek-ai-dsh-model-catalog/further-exploration:
+  en: c7277970b1dc76fb
+  zh: 43406e832dd6f933
+/deepseek-ai-dsh-model-catalog/model-experience:
+  en: 6995b9f5db836985
+  zh: af4c8b5003a5c1de
+/deepseek-ai-dsh-model-catalog/model-experience/kv-cache-effect:
+  en: 76d3f6cc014f6e19
+  zh: 55735e8427a6998f
+/deepseek-ai-dsh-model-catalog/known-limitations-and-deferred-work:
+  en: e9f3d02395bed6fd
+  zh: 1a967982ee61a14b
+/deepseek-ai-dsh-model-catalog/known-limitations-and-deferred-work/dev-note:
+  en: 6bf1e5272a20520c
+  zh: deb075e46e68f569

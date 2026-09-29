@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { ReasoningEffortId, type LlmRuntime } from '@deepseek-ai/dsh-llm'
+import { LlmError, ReasoningEffortId, type LlmRuntime } from '@deepseek-ai/dsh-llm'
 import { AcpModelControl } from '../src/model-control.ts'
 
 /** Minimal LLM catalog/runtime double for pure standard-option tests. */
@@ -43,7 +43,7 @@ describe('ACP model configuration control', () => {
     expect(control.selection.current).toEqual({ provider: 'mock', model: 'mock' })
   })
 
-  it('synthesizes an unlisted current route and exposes reasoning descriptions', async () => {
+  it('synthesizes an unlisted current route and offers the fixed reasoning ladder', async () => {
     const control = new AcpModelControl(llmRuntime({ listProviders: () => [] }), {
       provider: 'private',
       model: 'unlisted',
@@ -58,10 +58,21 @@ describe('ACP model configuration control', () => {
       currentValue: '["private","unlisted"]',
       options: [{ group: 'private', name: 'private', options: [{ name: 'unlisted' }] }],
     })
+    // Every model offers the same seven rows, whatever this route encodes.
+    // The current value is the stored intent, so a route that materializes its
+    // own default does not report one the person never picked.
     expect(reasoning).toMatchObject({
       type: 'select',
-      currentValue: 'high',
-      options: [{ name: 'Low', description: 'Less thought.' }, { name: 'High' }],
+      currentValue: '',
+      options: [
+        { value: '', name: 'Default' },
+        { value: 'minimal', name: 'Minimal' },
+        { value: 'low', name: 'Low' },
+        { value: 'medium', name: 'Medium' },
+        { value: 'high', name: 'High' },
+        { value: 'xhigh', name: 'Extra high' },
+        { value: 'max', name: 'Max' },
+      ],
     })
 
     control.pinTurn(3, { provider: 'turn', model: 'pinned' })
@@ -85,7 +96,7 @@ describe('ACP model configuration control', () => {
     })
   })
 
-  it('rejects an unadvertised reasoning effort and accepts a later valid change', async () => {
+  it('rejects a level outside the canonical vocabulary and accepts a later valid change', async () => {
     const control = new AcpModelControl(llmRuntime(), { provider: 'mock', model: 'mock' })
 
     await expect(control.set('reasoning_effort', 'extreme')).rejects.toThrow(/unknown reasoning effort/)
@@ -94,7 +105,47 @@ describe('ACP model configuration control', () => {
     expect(options.find(option => option.id === 'reasoning_effort')).toMatchObject({ currentValue: 'low' })
   })
 
-  it('exposes and restores a provider-owned reasoning default', async () => {
+  it('stores a canonical level the route cannot encode and refuses it at request time', async () => {
+    // The route encodes low/high only, so both runtime entries refuse `max` the
+    // way `LlmRuntime` does. `max` is still a real harness level, and a person
+    // may pick it for a route that cannot send it: the selection keeps it, and
+    // the request that carries the intent answers UNSUPPORTED_REASONING_EFFORT
+    // rather than dropping the level or failing the choice.
+    const runtime = llmRuntime({
+      resolveCallConfig: (selection: { provider?: string; model?: string; reasoningEffort?: string }) =>
+        selection.reasoningEffort === 'max'
+          ? Promise.reject(new LlmError('mock cannot send max', 'UNSUPPORTED_REASONING_EFFORT'))
+          : Promise.resolve({
+            provider: selection.provider ?? 'mock',
+            model: selection.model ?? 'mock',
+            ...selection.reasoningEffort === undefined
+              ? { reasoningEffort: ReasoningEffortId('high') }
+              : { reasoningEffort: ReasoningEffortId(selection.reasoningEffort) },
+          }),
+      // The request that carries `max` is where the route's refusal appears;
+      // the control never asks the runtime to prepare another level here.
+      prepareCall: () => Promise.reject(
+        new LlmError('mock cannot send max', 'UNSUPPORTED_REASONING_EFFORT'),
+      ),
+    })
+    const control = new AcpModelControl(runtime, {
+      provider: 'mock', model: 'mock',
+    })
+
+    const options = await control.set('reasoning_effort', 'max')
+
+    // Selection stores the intent as expressed; the option state reports it, and
+    // the next request carries exactly what the person chose.
+    expect(options.find(option => option.id === 'reasoning_effort')).toMatchObject({ currentValue: 'max' })
+    expect(control.selection.current).toEqual({
+      provider: 'mock', model: 'mock', reasoningEffort: 'max',
+    })
+    await expect(runtime.prepareCall(control.selection.current!)).rejects.toMatchObject({
+      code: 'UNSUPPORTED_REASONING_EFFORT',
+    })
+  })
+
+  it('keeps the Default row and reports the stored intent beside a materialized default', async () => {
     const runtime = llmRuntime({
       resolveCallConfig: (selection: { provider?: string; model?: string; reasoningEffort?: string }) => Promise.resolve({
         provider: selection.provider ?? 'mock',
@@ -120,7 +171,15 @@ describe('ACP model configuration control', () => {
     const initial = await control.options()
     expect(initial.find(option => option.id === 'reasoning_effort')).toMatchObject({
       currentValue: '',
-      options: [{ value: '', name: 'Provider default' }, { value: 'low' }, { value: 'high' }],
+      options: [
+        { value: '', name: 'Default' },
+        { value: 'minimal', name: 'Minimal' },
+        { value: 'low', name: 'Low' },
+        { value: 'medium', name: 'Medium' },
+        { value: 'high', name: 'High' },
+        { value: 'xhigh', name: 'Extra high' },
+        { value: 'max', name: 'Max' },
+      ],
     })
     await control.set('reasoning_effort', 'low')
     const restored = await control.set('reasoning_effort', '')

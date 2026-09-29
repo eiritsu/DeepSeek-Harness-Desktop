@@ -557,7 +557,14 @@ interface LlmReasoningEffortInfo {
 ```ts type-equiv
 /** Selectable reasoning efforts for one exact provider/model route. */
 interface LlmModelReasoningInfo {
-  /** Supported efforts in adapter-preferred display order. */
+  /**
+   * Efforts this exact route can encode on the wire, in adapter-preferred order.
+   *
+   * This is the route's capability, not the selector's rows: a surface offers
+   * every level {@link MODEL_REASONING_EFFORTS} names and refuses the rest at
+   * request time with `UNSUPPORTED_REASONING_EFFORT`. Absence means the route
+   * encodes no effort at all, so any explicit one is refused.
+   */
   efforts: readonly LlmReasoningEffortInfo[]
   /**
    * Adapter-configured default materialized into requests when callers omit
@@ -1083,6 +1090,30 @@ stream(options: GenerateOptions): AsyncIterable<StreamChunk>
 Types: [FileAttachmentRef](attachment.zh.md)
 
 Source: [`packages/llm/llm/src/index.ts`](../../packages/llm/llm/src/index.ts)
+
+<a id="ctxmodelcatalog--sharedmodelcatalog"></a>
+
+### `ctx.modelCatalog` — `SharedModelCatalog`
+
+The shared model catalog service: one published generation of canonical per-model facts, read on an interval and recovered from durable storage.
+
+Reads are synchronous from the published view; only refresh awaits. The view is replaced whole on every accepted document, so a consumer that captured one keeps reading the generation it captured.
+
+```ts cordis-catalog
+/**
+ * Re-read the catalog when the published snapshot has gone stale.
+ *
+ * A failed request is reported and swallowed: the last-good view stays
+ * published, so an unreachable catalog costs freshness and nothing else.
+ * Concurrent callers share one request.
+ * @param signal - optional cancellation for this caller.
+ * @returns resolution once the snapshot is fresh, or once the attempt failed.
+ * @throws the caller's own abort, and nothing else.
+ */
+async refresh(signal?: AbortSignal): Promise<void>
+```
+
+Source: [`packages/llm/model-catalog/src/service.ts`](../../packages/llm/model-catalog/src/service.ts)
 
 <a id="llm-events"></a>
 

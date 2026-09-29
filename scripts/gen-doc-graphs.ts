@@ -206,6 +206,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Adapters register provider implementations; the loop and compaction call the provider-neutral stream service.',
   },
   {
+    key: 'modelCatalog',
+    pkg: 'model-catalog',
+    title: 'Shared canonical model facts',
+    mode: 'core',
+    consumers: ['llm-pi-ai'],
+    note: 'Publishes one generation of models.dev facts per canonical model; an adapter pins one generation while it describes a model and encodes a request against it.',
+  },
+  {
     key: 'deepseekLlmApiExtensions',
     pkg: 'deepseek-llm-api-extensions',
     title: 'Official DeepSeek request extensions',

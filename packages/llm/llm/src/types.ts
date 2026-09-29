@@ -378,7 +378,14 @@ export interface LlmReasoningEffortInfo {
 
 /** Selectable reasoning efforts for one exact provider/model route. */
 export interface LlmModelReasoningInfo {
-  /** Supported efforts in adapter-preferred display order. */
+  /**
+   * Efforts this exact route can encode on the wire, in adapter-preferred order.
+   *
+   * This is the route's capability, not the selector's rows: a surface offers
+   * every level {@link MODEL_REASONING_EFFORTS} names and refuses the rest at
+   * request time with `UNSUPPORTED_REASONING_EFFORT`. Absence means the route
+   * encodes no effort at all, so any explicit one is refused.
+   */
   efforts: readonly LlmReasoningEffortInfo[]
   /**
    * Adapter-configured default materialized into requests when callers omit

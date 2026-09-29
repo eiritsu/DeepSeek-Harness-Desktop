@@ -110,7 +110,7 @@ DeepSeek 将省略的 `inputModalities` 视为纯文本，并拒绝空列表。�
 
 ### 推理等级
 
-对于声明了推理等级的模型，模型选择器会提供**推理等级**菜单。内置提供商的模型从已安装目录继承其等级。手动录入的模型不声明任何等级，因此模型菜单里不会出现推理等级项，由端点自身的默认值决定模型是否思考。请在 `$DSH_HOME/profiles/<profile>/cordis.patch.yml` 中用 `reasoningEfforts` 声明等级：
+模型选择器为每个模型提供同一份**推理等级**菜单：**Default**、**Minimal**、**Low**、**Medium**、**High**、**Extra high**、**Max**。内置提供商的模型从已安装目录继承这些等级中它能发送的那些；手动录入的模型不声明任何等级，为它选一个该路由无法发送的等级会让这一轮以 `UNSUPPORTED_REASONING_EFFORT` 失败，而不会悄悄降级到相邻等级。对目录描述到的每个模型，共享的 models.dev 目录决定这些等级，其记录优先于路由在此声明的任何内容；声明只是目录未描述该模型时的回退值。请在 `$DSH_HOME/profiles/<profile>/cordis.patch.yml` 中用 `reasoningEfforts` 声明路由接受的等级：
 
 ```yaml
 - id: llm-pi-ai
@@ -129,7 +129,7 @@ DeepSeek 将省略的 `inputModalities` 视为纯文本，并拒绝空列表。�
               max: max
 ```
 
-每个键都是菜单提供的一个等级，其值是在协议上以 `reasoning_effort` 发送的写法，因此 `max: xhigh` 可以为自有一套词汇的网关重命名某个等级。只有 `off` 可以留空，因为对多数端点来说，不思考就是不传该参数。路由的 `reasoning` 是会话尚未选择等级时采用的等级；在选择器中选定某个等级后，它会与模型一起保存为新会话的默认值。
+每个键都是该路由能发送的一个等级，其值是在协议上以 `reasoning_effort` 发送的写法，因此 `max: xhigh` 可以为自有一套词汇的网关重命名某个等级。只有 `off` 可以留空，因为对多数端点来说，不思考就是不传该参数。路由的 `reasoning` 是会话停留在 **Default** 时采用的等级；在选择器中选定某个等级后，它会与模型一起保存为新会话的默认值。
 
 留空的 `off` 什么都不发送，这只能让「按请求才思考」的模型停下来；给 `off` 一个值，则会把该值作为 `reasoning_effort` 发送。对于「不明确关闭就会思考」的模型——例如 OpenAI 兼容网关后面的 DeepSeek V4——需要 `compat.thinkingFormat: deepseek`：它让 `off` 发送 `thinking: {type: disabled}`，其他每个等级则在 effort 之外再发送 `thinking: {type: enabled}`：
 
@@ -144,7 +144,7 @@ DeepSeek 将省略的 `inputModalities` 视为纯文本，并拒绝空列表。�
               max: max
 ```
 
-网关并不提供推理能力的内置提供商模型，可在 `modelOverrides` 下用 `reasoningEfforts: false` 去掉其等级；之后再为它选择等级会被拒绝并报 `UNSUPPORTED_REASONING_EFFORT`。DeepSeek 自身的路由不需要以上任何配置：其模型已经提供 `off`、`low`、`high` 和 `max`，`llm-deepseek.reasoningEffort` 设置选择器的起始默认值：
+对于共享目录未描述的模型，网关并不提供推理能力的内置提供商模型，可在 `modelOverrides` 下用 `reasoningEfforts: false` 去掉其等级；为它选择的等级随后会由该请求拒绝并报 `UNSUPPORTED_REASONING_EFFORT`。若目录中已有该模型的记录，则会优先于这一本地否定。DeepSeek 自身的路由不需要以上任何配置：其模型已经能编码所提供等级中的若干个，`llm-deepseek.reasoningEffort` 设置选择器的起始默认值：
 
 ```yaml
 - id: llm-deepseek
@@ -197,7 +197,7 @@ DeepSeek 将省略的 `inputModalities` 视为纯文本，并拒绝空列表。�
 - **获取可用模型提示既没有 `data` 数组也没有 `models` 对象**：端点返回的列表格式不在探测的读取范围内。请手动输入模型。
 - **密钥与地址都正确，网关却拒绝每一个请求**：它的请求形状与 OpenAI 不同。先在路由上设 `compat.supportsDeveloperRole: false` 与 `compat.maxTokensField: max_tokens`。
 - **只有推理模型失败**：pi-ai 把它们的系统提示词以 `developer` 角色发出，而网关拒绝该角色。设 `compat.supportsDeveloperRole: false`。
-- **手动录入的模型没有推理等级菜单**：该模型没有声明任何等级。在 `cordis.patch.yml` 中给该模型加上 `reasoningEfforts`。
+- **某一轮以 `UNSUPPORTED_REASONING_EFFORT` 失败**：所选等级是该路由无法发送的等级，手动录入的模型在声明等级之前总是如此。请在 `cordis.patch.yml` 中给该模型加上 `reasoningEfforts`，写明网关接受的那个等级。
 - **`off` 无法让 DeepSeek 模型停止思考**：留空的 `off` 不发送任何推理字段，默认思考的端点就继续思考。请在模型或路由上设置 `compat.thinkingFormat: deepseek`。
 - **某个 compat 开关因没有值而被拒绝**：冒号后什么都没写。给它一个值，或删掉该键以沿用已安装 catalog 的值。
 - **图片在发送前被拒绝**：该模型未声明图片模态。请给自定义提供商的模型加上 `input: [text, image]`；在 DeepSeek 自身的路由上，请从配置的目录中选择支持图片的条目（默认为 `deepseek-flash`），并确认网关提供该模型且支持图片输入。
