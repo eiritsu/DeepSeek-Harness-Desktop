@@ -116,9 +116,24 @@ interface Agent {
   /**
    * Queue an ordinary follow-up turn and wake the driver. The item becomes the
    * sole ordinary message of its own turn.
+   *
+   * Without `replacement` the admitted message appends to the model-visible
+   * surface. With one it takes the place of the named range: the log keeps both
+   * records, `Session.deriveMessages()` returns the message where the range
+   * stood, and the queued message and its range are recorded by one
+   * `agent/inbox/spliced` event, so a restart before the driver claims it still
+   * admits the message as that replacement.
+   *
+   * The range is validated when the driver admits the message, not here: a
+   * range that is no longer on the surface — because a later turn appended, or
+   * another replacement shadowed it — fails that admission instead of rewriting
+   * the wrong nodes. Callers that must reject before queueing re-validate the
+   * range themselves; {@link runMaintenance} provides the idle-phase claim that
+   * makes such a check atomic.
    * @param message - identified prompt content and the source that supplied it.
+   * @param replacement - surface range this message takes the place of, when it shadows earlier nodes.
    */
-  followup(message: UserMessage): void
+  followup(message: UserMessage, replacement?: import('./types.ts').SurfaceReplacement): void
 
   /**
    * Submit steering for the nearest step. An idle driver starts a turn;
@@ -256,6 +271,7 @@ interface Inbox {
    * @param start - splice position.
    * @param deleteCount - maximum number of messages to remove.
    * @param inserted - messages to insert at the resolved position.
+   * @param replacements - surface ranges of inserted resends, keyed by inserted message identity.
    * @returns messages removed by the splice.
    */
   splice(
@@ -263,6 +279,7 @@ interface Inbox {
     start: number,
     deleteCount: number,
     inserted: UserMessage[],
+    replacements?: SurfaceReplacements,
   ): UserMessage[]
 }
 ```

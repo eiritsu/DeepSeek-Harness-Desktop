@@ -1100,6 +1100,46 @@ Types: [CreateSessionOptions](persistence.zh.md) · [PrepareSessionOptions](pers
 
 Source: [`packages/core/session/src/index.ts`](../../packages/core/session/src/index.ts)
 
+<a id="ctxturnresend--sessionturneditresend"></a>
+
+### `ctx.turnResend` — `SessionTurnEditResend`
+
+Host edit-and-resend admission over the `turnResend` Remote namespace.
+
+```ts cordis-catalog
+/**
+ * Report whether the agent's latest turn may be edited, and seed an edit.
+ *
+ * The answer reads current state and promises nothing about a later
+ * submission: {@link submit} selects the target again under the agent's idle
+ * claim.
+ * @param agent - agent whose latest turn is offered.
+ * @returns the editable prompt text and its turn, or why it is not editable.
+ */
+@Remote check(agent: Agent): ResendEligibility
+
+/**
+ * Replace the latest completed turn's prompt with the edited text and let the
+ * driver send it as a new turn.
+ *
+ * Submission is idempotent in the caller's `operationId`: an identity the
+ * journal already holds returns that record, so a repeated submission never
+ * produces a second model request. A caller that wants a fresh attempt after
+ * a recorded refusal submits a new identity.
+ * @param agent - agent whose latest turn is replaced.
+ * @param request - the caller's operation identity and edited text.
+ * @param signal - aborts the request before the durable commit.
+ * @returns the recorded attempt, or the refusal that left no trace.
+ * @throws when the durable commit fails. The log then records the attempt as
+ *   failed, so the caller is never retried under the same identity.
+ */
+@Remote async submit(agent: Agent, request: ResendRequest, signal: AbortSignal): Promise<ResendSubmission>
+```
+
+Types: [Agent](core.zh.md)
+
+Source: [`packages/bundle/session-turn-edit-resend/src/index.ts`](../../packages/bundle/session-turn-edit-resend/src/index.ts)
+
 <a id="api-session-events"></a>
 
 ### `api-session/*` events

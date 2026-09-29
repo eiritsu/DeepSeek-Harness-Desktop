@@ -5,6 +5,7 @@ import type {
   ISessions, SessionBinding, SessionEventSource, SessionEventWindow,
 } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session/types'
+import { isReplacementSurfaceEvent } from '@deepseek-ai/dsh-session/surface'
 import { WeakMapWithValues } from '@deepseek-ai/dsh-util-values'
 import {
   createSnapshotStore, type ObservableSnapshot, type SnapshotStore,
@@ -21,6 +22,7 @@ import { inspectRequestPrompt } from '../contract/request-inspection.ts'
 import { inspectSystemPrompt, type SystemPromptState } from '../contract/system-prompt.ts'
 import { ConversationNodeAssembler } from './assembler.ts'
 import { ConversationEventRegistry } from './event-registry.ts'
+import { ConversationPresentationState } from './presentation.ts'
 import { HistoricalImageCache } from './historical-images.ts'
 import { ConversationViewRegistry } from './view-registry.ts'
 import { ConversationGroupRegistry } from './group-registry.ts'
@@ -58,6 +60,7 @@ class BoundConversation implements ConversationBinding {
   private revision = -1
   private frame: number | undefined
   private disposeFeed: () => void = () => {}
+  private readonly presentation = new ConversationPresentationState()
 
   constructor(
     feed: SessionEventSource,
@@ -105,7 +108,11 @@ class BoundConversation implements ConversationBinding {
 
   private replace(window: SessionEventWindow): void {
     this.revision = window.revision
-    this.publish(this.assembler.replaceWindow(window.entries, window.hasMore))
+    this.presentation.replace(window.entries)
+    this.publish(this.assembler.replaceWindow(
+      window.entries.filter(entry => this.presentation.visible(entry)),
+      window.hasMore,
+    ))
   }
 
   private accept(window: SessionEventWindow): void {
@@ -117,11 +124,24 @@ class BoundConversation implements ConversationBinding {
     this.revision = window.revision
     switch (window.change.kind) {
       case 'prepend':
-        this.publish(this.assembler.prepend(window.change.entries, window.hasMore))
+        this.presentation.apply(window.change.entries)
+        this.publish(this.assembler.prepend(
+          window.change.entries.filter(entry => this.presentation.visible(entry)),
+          window.hasMore,
+        ))
         return
       case 'append': {
+        // A surface replacement changes which already-loaded events are
+        // visible, so the loaded window is rebuilt rather than appended to.
+        if (window.change.entries.some(entry =>
+          entry.type === 'event' && isReplacementSurfaceEvent(entry.event))) {
+          this.replace(window)
+          return
+        }
+        this.presentation.apply(window.change.entries)
         let publication: ConversationPublication = 'none'
         for (const event of window.change.entries) {
+          if (!this.presentation.visible(event)) continue
           const next = this.assembler.append(event)
           if (next === 'immediate' || publication === 'none') publication = next
         }

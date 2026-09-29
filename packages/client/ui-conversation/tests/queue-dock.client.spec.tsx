@@ -10,7 +10,7 @@ import { useSyncExternalStore } from 'react'
 import type {
   SessionListState, SessionSnapshot, UseProjection,
 } from '@deepseek-ai/dsh-api-session-controller/client'
-import type { InboxState } from '@deepseek-ai/dsh-agent/types'
+import type { InboxClientState } from '@deepseek-ai/dsh-agent/types'
 import type { UserMessage } from '@deepseek-ai/dsh-llm/types'
 import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -47,7 +47,7 @@ function row(id: string, text: string | null, preview = text ?? '[image]'): User
 }
 
 interface TestSnapshot extends SessionSnapshot {
-  readonly testInbox: InboxState
+  readonly testInbox: InboxClientState
 }
 
 function snapshotWith(queue: UserMessage[], nextStep: UserMessage[] = []): TestSnapshot {
@@ -74,7 +74,7 @@ function liveSession(initial: TestSnapshot) {
     )
   const useProjection = ((
     key: string,
-    selector: (value: InboxState | undefined) => unknown = value => value,
+    selector: (value: InboxClientState | undefined) => unknown = value => value,
   ) => useSyncExternalStore(
     (listener) => {
       listeners.add(listener)

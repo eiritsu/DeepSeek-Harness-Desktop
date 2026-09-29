@@ -9,6 +9,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent, AgentOptions, Inbox, InboxTarget } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
+import type { ClaimedInput } from '@deepseek-ai/dsh-agent-loop'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
 import SessionStore from '@deepseek-ai/dsh-session'
 import type { SessionHeader, SessionId, UserMessage } from '@deepseek-ai/dsh-session'
@@ -21,7 +22,7 @@ import type { Config as ToolRuntimeConfig } from '@deepseek-ai/dsh-tools'
 export { createInboxStub, unsupportedInbox } from './inbox.ts'
 
 interface DriverInbox extends Inbox {
-  claim(target: InboxTarget, turn: number): UserMessage[]
+  claim(target: InboxTarget, turn: number): ClaimedInput
 }
 
 /** Test driver for production Agents created by a mounted AgentLoop. */
@@ -42,6 +43,14 @@ export interface AgentLoopTestHarness {
    * @returns next-step messages followed by one next-turn message when requested.
    */
   claim(agent: Agent, target: InboxTarget, turn: number): UserMessage[]
+  /**
+   * Admit pending input and read the surface ranges its resends carry.
+   * @param agent - Agent returned by this harness's `create` method.
+   * @param target - boundary whose pending input is admitted.
+   * @param turn - turn that owns the admitted messages.
+   * @returns the claimed batch with its resend surface ranges.
+   */
+  claimInput(agent: Agent, target: InboxTarget, turn: number): ClaimedInput
 }
 
 /** Configuration forwarded to the prerequisite service plugins. */
@@ -88,6 +97,7 @@ export async function mountAgentLoopTestHarness(ctx: Context): Promise<AgentLoop
   await ctx.plugin(AgentLoop, { agents: [] })
   return {
     create: async (id, options = {}, meta = {}) => ctx.agentLoop.create(id, options, meta),
-    claim: (agent, target, turn) => (agent.inbox as DriverInbox).claim(target, turn),
+    claim: (agent, target, turn) => (agent.inbox as DriverInbox).claim(target, turn).messages,
+    claimInput: (agent, target, turn) => (agent.inbox as DriverInbox).claim(target, turn),
   }
 }

@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-09-29-turn-edit-resend.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-29-turn-edit-resend.md
+/agent-note-edit-and-resend-a-completed-turn:
+  en: 02debe0d8279c3d6
+  zh: 74da40834aa68e8f
+/agent-note-edit-and-resend-a-completed-turn/problem:
+  en: 381684ed0228f256
+  zh: b768686f0b30425f
+/agent-note-edit-and-resend-a-completed-turn/decision:
+  en: d38d0e0d2fdfd77b
+  zh: 5adc7e640e3d4c09
+/agent-note-edit-and-resend-a-completed-turn/alternatives-considered:
+  en: ba4e9b882828bab3
+  zh: 557c868287eda5ba
+/agent-note-edit-and-resend-a-completed-turn/consequences:
+  en: 83ce6050d91532eb
+  zh: 985f08bdab8e5a5b

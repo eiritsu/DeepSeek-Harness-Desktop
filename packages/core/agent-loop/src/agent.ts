@@ -14,6 +14,8 @@ import type {
   InboxTarget,
   PreStepDecision,
   RequestErrorAction,
+  SurfaceReplacement,
+  SurfaceReplacements,
 } from '@deepseek-ai/dsh-agent'
 import { agentEvents, assembleContextFor } from '@deepseek-ai/dsh-agent'
 import type { GenerateOptions, LlmCallConfig, Message, PreparedLlmCall } from '@deepseek-ai/dsh-llm'
@@ -58,6 +60,8 @@ type PreparedStep =
     messages: UserMessage[]
     startsRequestSeries?: true
     assembly: PromptAssembly
+    /** Surface ranges the claimed resends carry, keyed by claimed message identity. */
+    replacements: SurfaceReplacements
   }
 
 /** Remove adapter-derived values before plugins propose the next request config. */
@@ -160,8 +164,16 @@ export class ReactLoopAgent implements Agent {
     if (wakeup) this.wakeDriver(wakingAfterAbort)
   }
 
-  followup(input: UserMessage): void {
-    this.send(input, 'next-turn', true)
+  followup(input: UserMessage, replacement?: SurfaceReplacement): void {
+    if (replacement === undefined) {
+      this.send(input, 'next-turn', true)
+      return
+    }
+    // A shadowing message always opens its own turn, exactly as a follow-up
+    // does, and is never reclassified into an aborted activity: it must replace
+    // the range it names, not append after it.
+    this.inbox.splice('next-turn', Infinity, 0, [input], { [input.id]: replacement })
+    this.wakeDriver(false)
   }
 
   steer(input: UserMessage): void {
@@ -268,7 +280,8 @@ export class ReactLoopAgent implements Agent {
     /* v8 ignore next -- private callers establish the running phase before proposing a step */
     if (this.phase.kind !== 'running') throw new Error(`agent "${this.id}": pre-step outside running phase`)
     const signal = this.phase.abort.signal
-    const claimed = this.inbox.claim(target, position.turn)
+    const claim = this.inbox.claim(target, position.turn)
+    const claimed = claim.messages
     const assembly = await this.loopCtx.systemPrompt.assemble(assembleContextFor(this, signal))
     signal.throwIfAborted()
     const sections = renderContextSections(assembly)
@@ -282,7 +295,7 @@ export class ReactLoopAgent implements Agent {
     )
     signal.throwIfAborted()
     if (decision.kind === 'reject') return decision
-    return { ...decision, assembly }
+    return { ...decision, assembly, replacements: claim.replacements }
   }
 
   /** Whether the assembled tool schemas differ from the logged request header's. */
@@ -418,7 +431,13 @@ export class ReactLoopAgent implements Agent {
       }
       if (firstAttempt) {
         for (const message of decision.messages) {
-          this.session.append('user/message', message, { surfaceOp: 'append' })
+          const replacement = decision.replacements[message.id]
+          this.session.append('user/message', message, replacement === undefined
+            ? { surfaceOp: 'append' }
+            : {
+              surfaceOp: { op: 'replace', startSeq: replacement.startSeq, endSeq: replacement.endSeq },
+              sourceEventSeqs: [...replacement.sourceEventSeqs],
+            })
         }
       }
       firstAttempt = false

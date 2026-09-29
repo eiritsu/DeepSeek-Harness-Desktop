@@ -1,0 +1,58 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/bundle/session-turn-edit-resend/README.md
+/:
+  en: 6db73b6c2dc92a8d
+  zh: cf10091bda2a29f0
+/deepseek-ai-dsh-session-turn-edit-resend:
+  en: bd29c254d6de5d76
+  zh: 8bc0da87fc4a23a6
+/deepseek-ai-dsh-session-turn-edit-resend/summary:
+  en: 069f0716cb007528
+  zh: 619989da3aa4fcd7
+/deepseek-ai-dsh-session-turn-edit-resend/table-of-contents:
+  en: 122f0d41696980b1
+  zh: ce6bc6fe7045d4c2
+/deepseek-ai-dsh-session-turn-edit-resend/use-this-package:
+  en: 6dd1c25e9c4cc75c
+  zh: 0d8addcdfb7bef2a
+/deepseek-ai-dsh-session-turn-edit-resend/use-this-package/when-a-turn-is-editable:
+  en: 0cae0ee170ae1f5b
+  zh: 51f6b40356a6e193
+/deepseek-ai-dsh-session-turn-edit-resend/use-this-package/submitting-an-edit:
+  en: 99b8ca64c8f86e5f
+  zh: 3a1482eed320e89c
+/deepseek-ai-dsh-session-turn-edit-resend/understand-the-implementation:
+  en: ee4615a04fa6503d
+  zh: ee2c5fb2204a43cf
+/deepseek-ai-dsh-session-turn-edit-resend/understand-the-implementation/selection:
+  en: 89382756863caed6
+  zh: fe4abf60c257b16d
+/deepseek-ai-dsh-session-turn-edit-resend/understand-the-implementation/durable-operation-journal:
+  en: e2d7f140acf855a4
+  zh: b7e20da7ae239fa6
+/deepseek-ai-dsh-session-turn-edit-resend/understand-the-implementation/atomic-admission-and-the-flush-barrier:
+  en: 85705a2406d373da
+  zh: 3a1895ea916d2d2d
+/deepseek-ai-dsh-session-turn-edit-resend/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-session-turn-edit-resend/model-experience/turn-edit-and-resend:
+  en: d86591c9b93f1719
+  zh: 9bb226311c71ac82
+/deepseek-ai-dsh-session-turn-edit-resend/model-experience/turn-edit-and-resend/what-the-model-sees:
+  en: f1ccc6e7aeb6de82
+  zh: 4af8830b9380c145
+/deepseek-ai-dsh-session-turn-edit-resend/model-experience/turn-edit-and-resend/token-effect:
+  en: cda6c6f86e0c6ebf
+  zh: f7c6766803f0a710
+/deepseek-ai-dsh-session-turn-edit-resend/model-experience/turn-edit-and-resend/kv-cache-effect:
+  en: 9fb67a6e14ecd022
+  zh: 04b016e96f15f191
+/deepseek-ai-dsh-session-turn-edit-resend/known-limitations-and-deferred-work:
+  en: beeb57975df7f9a1
+  zh: cd341d2d688b8559
+/deepseek-ai-dsh-session-turn-edit-resend/known-limitations-and-deferred-work/dev-note:
+  en: b5bb231b1299cb2c
+  zh: 6e2b6c3c56c9a6de

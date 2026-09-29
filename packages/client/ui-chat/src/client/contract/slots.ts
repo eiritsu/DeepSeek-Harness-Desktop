@@ -57,6 +57,16 @@ export interface AssistantActionOwnerProps {
   messageId: MessageId
 }
 
+/**
+ * Owner currency of one settled user or steering message's action strip. The
+ * message's own seq addresses the durable prompt; `turn` is its resolved Turn
+ * when the loaded window places it in one.
+ */
+export interface UserActionOwnerProps {
+  seq: number
+  turn: number | undefined
+}
+
 /** Stable quota failure codes retained in the Session log; both raise the frame-wide notice. */
 export type QuotaNoticeCode = 'QUOTA' | 'ACCOUNT_QUOTA'
 
@@ -319,6 +329,13 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * that entry. With no entries, the standard action row remains unchanged.
      */
     'conversation.chat.assistant-actions': { kind: 'list'; scope: 'session'; owner: AssistantActionOwnerProps }
+    /**
+     * Ordered actions for one settled user or steering message. Each entry
+     * receives the message seq and its resolved Turn; a fresh `id` adds an
+     * action. The declaring renderer places them inside the message's standard
+     * IconActions row, between copy and branch.
+     */
+    'conversation.chat.user-actions': { kind: 'list'; scope: 'session'; owner: UserActionOwnerProps }
     /**
      * Frame-wide quota notice chain. The Chat-owned host in `shell.overlay`
      * offers the one live notice; the first entry whose selector claims its
