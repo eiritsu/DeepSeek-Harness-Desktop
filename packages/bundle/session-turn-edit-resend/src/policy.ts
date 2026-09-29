@@ -8,17 +8,7 @@
 
 import type { SurfaceReplacement } from '@deepseek-ai/dsh-agent'
 import type { Session, SessionEvent, SessionSeq, UserMessage } from '@deepseek-ai/dsh-session'
-
-/** Why the most recent completed user turn cannot be edited and resent. */
-export type ResendRefusal =
-  /** The session has no turn that ended in completion. */
-  | 'no-completed-turn'
-  /** A turn opened after the last completed one, so the target is not the latest turn. */
-  | 'not-latest-turn'
-  /** The target turn recorded no direct human prompt to replace. */
-  | 'no-human-prompt'
-  /** The target prompt carries no text, so there is nothing in the composer to edit. */
-  | 'no-editable-text'
+import type { ResendRefusal } from './types.ts'
 
 /** The one turn a resend may shadow. */
 export interface ResendTarget {

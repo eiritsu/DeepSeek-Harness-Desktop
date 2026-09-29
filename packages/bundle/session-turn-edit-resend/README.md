@@ -80,4 +80,4 @@ The unchanged prefix before the replaced range can reuse its cache. The replacem
 <a id="dev-note"></a>
 ### Dev Note
 
-The [Host tests](tests/host.host.spec.ts) cover eligibility, tool-turn refusal, atomic admission, the flush barrier, operation identity, restart replay, attachment preservation, and the replaced range.
+The [Host tests](tests/host.host.spec.ts) cover eligibility, tool-turn refusal, atomic admission, the flush barrier, operation identity, restart replay, attachment preservation, and the replaced range. `src/types.ts` is the browser-facing contract outlet: it imports leaf modules only and merges no cordis `Context`, so the Client program reads this vocabulary without loading the Host `SessionStore` merge; [contract-face.spec.ts](tests/contract-face.spec.ts) holds that separation.

@@ -18,6 +18,8 @@ A turn that ran tools stays editable. Its tool names ride `check.toolCalls`; the
 
 The `@deepseek-ai/dsh-client-ui-turn-edit-resend` browser package adds an edit entry to a settled user message and an inline card above the composer. It calls `ctx.remote.turnResend`, renders the tool disclosure, submits the edited text, and maps each recorded outcome honestly: `admitted` clears the card, `uncertain` states that the result is unknown and offers no repeat, and `refused`/`failed`/`pending` state what the log proves. The `web` profile stacks the Bundle, whose patch mounts the Host service and the browser row. `ui-conversation` hides the seqs a replacement shadowed, so the visible transcript shows the replacement generation.
 
+The Bundle's `src/types.ts` is the browser-facing contract outlet: it imports leaf modules only (`@deepseek-ai/dsh-session/types`, never the bare Session entry) and merges no cordis `Context`. The bare Session entry declares `Context.sessions: SessionStore`, and the Client program declares the same key as the API `ISessions`; under `skipLibCheck` the compiler silently keeps the declaration it loads first, so a Host import reachable from the contract flips `ctx.sessions` to the Host store for every client package. The contract keeps Host service declarations out of the client program.
+
 ## Alternatives considered
 
 **Refuse tool turns.** Rejected: the product wants the correction path even when tools ran, and a disclosure the user can decline is more useful than a dead affordance.

@@ -80,4 +80,4 @@ Agent 必须处于空闲且没有待处理输入，并且其最近一条回合�
 <a id="dev-note"></a>
 ### 开发备注
 
-[Host 测试](tests/host.host.spec.ts) 覆盖资格判定、工具回合拒绝、原子准入、flush 屏障、操作标识、重启重放、附件保留与被替换范围。
+[Host 测试](tests/host.host.spec.ts) 覆盖资格判定、工具回合拒绝、原子准入、flush 屏障、操作标识、重启重放、附件保留与被替换范围。`src/types.ts` 是面向浏览器的契约出口：它只导入叶子模块，不合并任何 cordis `Context`，因此 Client 程序读取该词汇时不会加载 Host 的 `SessionStore` 合并；[contract-face.spec.ts](tests/contract-face.spec.ts) 守护这一分离。

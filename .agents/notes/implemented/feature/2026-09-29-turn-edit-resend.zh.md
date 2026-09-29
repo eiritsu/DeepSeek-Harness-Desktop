@@ -18,6 +18,8 @@ Status: implemented
 
 `@deepseek-ai/dsh-client-ui-turn-edit-resend` 浏览器包在已定稿用户消息上添加编辑入口，并在 composer 上方添加内联卡片。它调用 `ctx.remote.turnResend`，渲染工具披露，提交编辑后的文本，并如实映射每种记录结果：`admitted` 清除卡片，`uncertain` 说明结果未知且不提供重复，`refused`/`failed`/`pending` 说明日志证明了什么。`web` profile 叠加该 Bundle，其 patch 挂载 Host 服务与浏览器行。`ui-conversation` 隐藏被替换遮蔽的 seq，因此可见对话显示替换后的一代。
 
+该 Bundle 的 `src/types.ts` 是面向浏览器的契约出口：它只导入叶子模块（`@deepseek-ai/dsh-session/types`，绝不导入裸 Session 入口），并且不合并任何 cordis `Context`。裸 Session 入口声明 `Context.sessions: SessionStore`，而 Client 程序将同一键声明为 API `ISessions`；在 `skipLibCheck` 下，编译器静默保留其最先加载的声明，因此从契约可达的任一 Host 导入都会让每个 client 包的 `ctx.sessions` 翻转为 Host 存储。该契约将 Host 服务声明挡在 client 程序之外。
+
 ## Alternatives considered
 
 **拒绝工具回合。** 已否决：产品希望即使运行过工具也保留纠正路径，一个用户可以拒绝的披露比一个失效的入口更有用。

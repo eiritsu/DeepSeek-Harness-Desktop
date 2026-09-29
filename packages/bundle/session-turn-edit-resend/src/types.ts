@@ -2,13 +2,19 @@
  * Durable edit-and-resend vocabulary: the operation log events, the record the
  * client reads, and the types crossing the Remote boundary.
  *
+ * This module is the browser-facing contract outlet: it imports leaf modules
+ * only and merges no cordis `Context`, so a client program can name this
+ * vocabulary without loading the Host plugin's service declarations — the
+ * `@deepseek-ai/dsh-compaction/types` pattern. Importing the bare
+ * `@deepseek-ai/dsh-session` entry here would load `SessionStore`'s `Context`
+ * merge into the client program and collide with the API `ISessions` face.
+ *
  * @module @deepseek-ai/dsh-session-turn-edit-resend/types
  */
 
 import type { Branded } from '@deepseek-ai/dsh-brand'
-import type { MessageId } from '@deepseek-ai/dsh-llm'
-import type { SessionSeq } from '@deepseek-ai/dsh-session'
-import type { ResendRefusal } from './policy.ts'
+import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
+import type { SessionSeq } from '@deepseek-ai/dsh-session/types'
 
 /**
  * Identity of one edit-and-resend attempt, minted by the caller.
@@ -17,6 +23,17 @@ import type { ResendRefusal } from './policy.ts'
  * and is answered from the journal instead of reaching the model again.
  */
 export type ResendOperationId = Branded<'ResendOperationId'>
+
+/** Why the most recent completed user turn cannot be edited and resent. */
+export type ResendRefusal =
+  /** The session has no turn that ended in completion. */
+  | 'no-completed-turn'
+  /** A turn opened after the last completed one, so the target is not the latest turn. */
+  | 'not-latest-turn'
+  /** The target turn recorded no direct human prompt to replace. */
+  | 'no-human-prompt'
+  /** The target prompt carries no text, so there is nothing in the composer to edit. */
+  | 'no-editable-text'
 
 /** Why the agent's latest turn cannot be edited right now. */
 export type ResendBlocker =
