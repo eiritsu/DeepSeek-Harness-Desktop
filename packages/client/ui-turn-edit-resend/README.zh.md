@@ -17,7 +17,7 @@ kind: "package-reference"
 - [理解实现](#understand-the-implementation)
 - [模型体验](#model-experience)
 - [已知限制与后续工作](#known-limitations-and-deferred-work)
-- [开发说明](#dev-note)
+- [开发备注](#dev-note)
 
 <a id="use-this-package"></a>
 ## 使用本包
@@ -66,6 +66,6 @@ kind: "package-reference"
 - **不做乐观的对话编辑。** 编辑器在 `admitted` 时关闭；替换消息在其 `user/message` 事件到达时才进入对话，而不是更早。
 
 <a id="dev-note"></a>
-### 开发说明
+### 开发备注
 
 [编辑器测试](tests/turn-resend-body.client.spec.tsx)覆盖工具披露、提交、提示与失败时的草稿保留；[入口测试](tests/turn-resend-action.client.spec.tsx)覆盖回合门控与点击的各类结果。

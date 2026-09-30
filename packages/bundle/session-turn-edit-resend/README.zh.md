@@ -41,7 +41,7 @@ Agent 必须处于空闲且没有待处理输入，并且其最近一条回合�
 
 ### 选择
 
-[`src/policy.ts`](src/policy.ts) 只读取日志。目标是最近一条可替换回合，其表面区间排除预留的系统头部，因此替换绝不会遮蔽系统提示词。被替换范围从直接人类提示词开始，并携带该回合其后的每个节点。
+[`src/policy.ts`](src/policy.ts) 将 `resendTurn` host-only projection 与当前 `session.surface.nodes` 结合使用。projection 保留最近的回合边界、首个直接人类提示词及工具名；表面节点提供替换范围，该范围从此提示词开始并排除预留的系统头部。`resendJournal` projection 折叠操作记录与替换准入证明，registry 会为恢复的 session 重建这两个单元。
 
 ### 持久操作日志
 

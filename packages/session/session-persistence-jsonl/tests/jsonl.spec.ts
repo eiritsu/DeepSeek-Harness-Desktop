@@ -106,12 +106,12 @@ vi.mock('node:fs/promises', async (importOriginal) => {
       }
       return actual.readdir(...args)
     }) as typeof actual.readdir,
-    unlink: (async (...args: Parameters<typeof actual.unlink>) => {
+    unlink: async (...args: Parameters<typeof actual.unlink>) => {
       if (String(args[0]) === unlinkFailure.path && unlinkFailure.error !== undefined) {
         throw unlinkFailure.error
       }
       return actual.unlink(...args)
-    }) as typeof actual.unlink,
+    },
   }
 })
 

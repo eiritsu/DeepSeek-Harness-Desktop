@@ -276,7 +276,15 @@ describe('delete Session action', () => {
   function deleteDialog(deleteSession: SessionDeleteDialogInjected['deleteSession'], translate = t) {
     const request = createSnapshotStore<SessionDeleteRequest | null>(null)
     const settleSessionDelete = vi.fn(() => { request.set(null) })
-    render(<SessionDeleteConfirmDialog {...overlay} t={translate} useDeleteRequest={bindSnapshotSelector(request)} settleSessionDelete={settleSessionDelete} deleteSession={deleteSession} />)
+    render(
+      <SessionDeleteConfirmDialog
+        {...overlay}
+        t={translate}
+        useDeleteRequest={bindSnapshotSelector(request)}
+        settleSessionDelete={settleSessionDelete}
+        deleteSession={deleteSession}
+      />,
+    )
     const ask = (): void => { act(() => { request.set({ sessionId: sid('one'), displayTitle: ROW.displayTitle }) }) }
     return { ask, settleSessionDelete }
   }

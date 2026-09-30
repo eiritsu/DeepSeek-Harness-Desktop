@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This Bundle's Host service decides whether an Agent's latest replaceable turn may be edited, and replaces that turn's model-visible surface range with the edited prompt. Every attempt is recorded in the Session log under a caller-owned `operationId`, so a repeated submission is answered from the log instead of calling the model again. The original events stay in the append-only log. The Web profile stacks this Bundle: the browser half adds the edit entry and replaces that message with an in-place editor. A turn that ran tools stays editable, and the entry discloses the tools whose side effects a resend may repeat.
+This Bundle lets the Host edit an Agent's latest replaceable turn by replacing its model-visible surface with an edited prompt. It records each attempt under a caller-owned `operationId`, so retries use the Session log without calling the model again; original events remain append-only. The Web profile adds an edit entry and in-place message editor. Tool-using turns remain editable, with the entry disclosing tools whose side effects a resend may repeat.
 
 ## Table of Contents
 
@@ -41,7 +41,7 @@ A turn that ran tools stays editable, and its tool names ride `check`. The repla
 
 ### Selection
 
-[`src/policy.ts`](src/policy.ts) reads the log alone. The target is the latest replaceable turn, and its surface span excludes the reserved system head, so a replacement can never shadow the system prompt. The replaced range starts at the direct human prompt and carries every later node of the turn.
+[`src/policy.ts`](src/policy.ts) combines the `resendTurn` host-only projection with the current `session.surface.nodes`. The projection retains the latest turn boundaries, first direct human prompt, and tool names; the surface supplies the replacement range, which starts at that prompt and excludes the reserved system head. The `resendJournal` projection folds operation records and replacement admission proofs, and the registry rebuilds both units for restored sessions.
 
 ### Durable operation journal
 

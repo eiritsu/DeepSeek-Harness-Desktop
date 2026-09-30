@@ -1,10 +1,9 @@
 /**
  * Edit the most recent replaceable user turn and send it again.
  *
- * The service owns the whole attempt: it decides whether a turn may be replaced,
- * claims the agent's idle phase to re-validate that decision against the log it
- * was read from, records the attempt durably, and holds the flush that stands
- * between the durable record and the model request the driver is about to make.
+ * The service reads turn and journal projections, claims the agent's idle phase
+ * to select again against the current surface, records the attempt durably, and
+ * holds the flush before the model request.
  *
  * A turn that ran tools stays editable. Its tool calls and results are shadowed
  * in the model-visible surface by the replacement while the append-only log
@@ -28,6 +27,7 @@ import type {
   ResendRequest,
   ResendSubmission,
 } from './types.ts'
+import { resendJournalProjectionDefinition, resendTurnProjectionDefinition } from './projection.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -51,7 +51,7 @@ function identityOf(request: ResendRequest, target: ResendTarget): ResendOperati
 
 /** Host edit-and-resend admission over the `turnResend` Remote namespace. */
 export class SessionTurnEditResend extends TypertRemoteService {
-  static inject = ['sessions']
+  static inject = ['sessions', 'sessionProjections']
 
   /**
    * Register the `turnResend` Remote namespace on the Host context.
@@ -59,14 +59,15 @@ export class SessionTurnEditResend extends TypertRemoteService {
    */
   constructor(ctx: Context) {
     super(ctx, 'turnResend')
+    ctx.sessionProjections.register(resendTurnProjectionDefinition)
+    ctx.sessionProjections.register(resendJournalProjectionDefinition)
   }
 
   /**
    * Report whether the agent's latest turn may be edited, and seed an edit.
    *
-   * The answer reads current state and promises nothing about a later
-   * submission: {@link submit} selects the target again under the agent's idle
-   * claim.
+   * The answer uses incrementally folded turn facts and the current surface;
+   * {@link submit} selects the target again under the agent's idle claim.
    * @param agent - agent whose latest turn is offered.
    * @returns the editable prompt text and its turn, or why it is not editable.
    */
@@ -74,7 +75,7 @@ export class SessionTurnEditResend extends TypertRemoteService {
   check(agent: Agent): ResendEligibility {
     const blocker = this.blocker(agent)
     if (blocker !== undefined) return { eligible: false, refusal: blocker }
-    const selection = selectResendTarget(agent.session)
+    const selection = selectResendTarget(agent.session, this.turnState(agent.session))
     if (!selection.eligible) return { eligible: false, refusal: selection.refusal }
     return {
       eligible: true,
@@ -104,7 +105,7 @@ export class SessionTurnEditResend extends TypertRemoteService {
   @Remote
   async submit(agent: Agent, request: ResendRequest, signal: AbortSignal): Promise<ResendSubmission> {
     const { session } = agent
-    const existing = findResendOperation(readResendJournal(session), request.operationId)
+    const existing = findResendOperation(readResendJournal(this.journalState(session)), request.operationId)
     if (existing !== undefined) return { recorded: true, operation: existing }
 
     // This gate makes the common refusal a direct answer rather than an
@@ -117,7 +118,7 @@ export class SessionTurnEditResend extends TypertRemoteService {
         // From the selection to the commits there is no await. `runMaintenance`
         // holds the agent's idle phase across them, so no turn can open and no
         // other submission can enter between deciding and committing.
-        const selection = selectResendTarget(session)
+        const selection = selectResendTarget(session, this.turnState(session))
         if (!selection.eligible) return { recorded: false, refusal: selection.refusal }
         const { turn, replacement, prompt } = selection.target
 
@@ -186,7 +187,7 @@ export class SessionTurnEditResend extends TypertRemoteService {
     request: ResendRequest,
     refusal: ResendBlocker,
   ): ResendSubmission {
-    const selection = selectResendTarget(agent.session)
+    const selection = selectResendTarget(agent.session, this.turnState(agent.session))
     if (!selection.eligible) return { recorded: false, refusal }
     const { session } = agent
     const { turn, replacement } = selection.target
@@ -212,6 +213,28 @@ export class SessionTurnEditResend extends TypertRemoteService {
     if (agent.status === 'running') return 'agent-busy'
     if (agent.inbox.nextTurn.length > 0 || agent.inbox.nextStep.length > 0) return 'inbox-pending'
     return undefined
+  }
+
+  /**
+   * Read the current turn fold registered by this service.
+   * @param session - session whose current state is read.
+   * @returns the current turn facts.
+   */
+  private turnState(session: Agent['session']): import('./types.ts').ResendTurnState {
+    const state = this.ctx.sessionProjections.stateOf(session, 'resendTurn')
+    if (state === undefined) throw new Error('resendTurn projection is not registered')
+    return state
+  }
+
+  /**
+   * Read the current operation fold registered by this service.
+   * @param session - session whose current journal is read.
+   * @returns the current operation facts.
+   */
+  private journalState(session: Agent['session']): import('./types.ts').ResendJournalState {
+    const state = this.ctx.sessionProjections.stateOf(session, 'resendJournal')
+    if (state === undefined) throw new Error('resendJournal projection is not registered')
+    return state
   }
 }
 

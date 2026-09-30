@@ -73,7 +73,7 @@ describe('UserMessageNodeView body chain', () => {
       owner({ key, seq, turn, claimed })
       // The shipped chain keeps the fallback mounted and hides it while an
       // entry is elected; the elected marker stands in for an occupant.
-      return createElement('div', null, opts?.fallback as ReactNode, claimed
+      return createElement('div', null, opts?.fallback, claimed
         ? createElement('div', { 'data-testid': 'claimed' })
         : null)
     }

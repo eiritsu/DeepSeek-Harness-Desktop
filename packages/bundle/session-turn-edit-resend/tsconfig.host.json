@@ -9,6 +9,7 @@
     "src/index.ts",
     "src/journal.ts",
     "src/policy.ts",
+    "src/projection.ts",
     "src/types.ts"
   ],
   "references": [
@@ -19,7 +20,13 @@
       "path": "../../core/agent"
     },
     {
+      "path": "../../attachment/attachment"
+    },
+    {
       "path": "../../core/session"
+    },
+    {
+      "path": "../../session/session-projection"
     },
     {
       "path": "../../llm/llm"

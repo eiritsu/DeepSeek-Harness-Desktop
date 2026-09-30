@@ -80,10 +80,10 @@ describe('Session delete Agent owner', () => {
     const agent = await owner.createOwned({ sessionId: id, agentOptions: { provider: 'mock', model: 'mock' } })
     let release!: () => void
     let started!: () => void
-    const entered = new Promise<void>(resolve => { started = resolve })
-    const maintenance = agent.runMaintenance(async signal => {
+    const entered = new Promise<void>((resolve) => { started = resolve })
+    const maintenance = agent.runMaintenance(async (signal) => {
       started()
-      await new Promise<void>(resolve => { release = resolve })
+      await new Promise<void>((resolve) => { release = resolve })
       expect(signal.aborted).toBe(false)
     })
     await entered
@@ -102,11 +102,11 @@ describe('Session delete Agent owner', () => {
     await owner.createOwned({ sessionId: id, agentOptions: { provider: 'mock', model: 'mock' } })
     let finishContent!: (value: readonly { type: 'text'; text: string }[]) => void
     let entered!: () => void
-    const contentEntered = new Promise<void>(resolve => { entered = resolve })
+    const contentEntered = new Promise<void>((resolve) => { entered = resolve })
     ctx.provide('attachments', {
       admitPromptContent: () => {
         entered()
-        return new Promise(resolve => { finishContent = resolve })
+        return new Promise((resolve) => { finishContent = resolve })
       },
     } as never)
     ctx.provide('fileUploads', {

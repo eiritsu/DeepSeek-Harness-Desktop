@@ -221,7 +221,7 @@ export function apply(ctx: Context): void {
     },
   })
   const copySessionIdInjected = (): CopySessionIdInjected => ({
-    reportCopyResult: copied => { notify({ kind: copied ? 'sessionIdCopied' : 'sessionIdCopyFailed' }) },
+    reportCopyResult: (copied) => { notify({ kind: copied ? 'sessionIdCopied' : 'sessionIdCopyFailed' }) },
   })
   const deleteInjected = (): DeleteSessionInjected => ({
     requestSessionDelete: (sessionId, displayTitle) => { deleteRequest.set({ sessionId, displayTitle }) },

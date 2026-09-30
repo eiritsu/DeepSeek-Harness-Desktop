@@ -63,13 +63,14 @@ async function harness(options: { systemDocuments?: boolean } = {}) {
   ctx.storage.mount('domain', storageDomain)
   ctx.provide('storageDomain', storageDomain)
   const deletedSessions = new Set<string>()
-  ctx.provide('sessionPersistence', {
+  const sessionPersistence = {
     list: () => Promise.resolve([]),
     delete: vi.fn(async (id: SessionId) => {
       if (deletedSessions.has(id)) throw new SessionPersistenceNotFoundError(id)
       deletedSessions.add(id)
     }),
-  } as never)
+  }
+  ctx.provide('sessionPersistence', sessionPersistence as never)
   await ctx.plugin(WorkspaceRegistry)
   const dispose = (): void => {}
   ctx.provide('typert', {
@@ -77,7 +78,7 @@ async function harness(options: { systemDocuments?: boolean } = {}) {
     contexts: { configureHost: () => dispose },
   } as never)
   const controller = new WorkspaceController(ctx, options.systemDocuments === true ? {} : { documentsDirectory: root })
-  return { controller, ctx, root, storageDomain }
+  return { controller, ctx, root, storageDomain, sessionPersistence }
 }
 
 function stageDir(root: string, name: string): string {
@@ -310,7 +311,7 @@ describe('WorkspaceController commands', () => {
   })
 
   it('deletes one session only after its activity check and removes durable references', async () => {
-    const { controller, ctx, root } = await harness()
+    const { controller, ctx, root, sessionPersistence } = await harness()
     const created = await controller.create({ path: stageDir(root, 'delete-session') })
     const session = ctx.sessions.create(SessionId('delete-me'), { meta: { cwd: created.workspace.path } })
     const child = ctx.sessions.create(SessionId('keep-child'), {
@@ -346,7 +347,7 @@ describe('WorkspaceController commands', () => {
     expect(ctx.workspaceRegistry.archivedSessionIds).toEqual([])
     expect(ctx.workspaceRegistry.pinnedSessionIds).toEqual([])
     expect(ctx.sessions.get(child.id)?.header.parentSession).toBe(session.id)
-    expect(ctx.sessionPersistence.delete).toHaveBeenCalledWith(session.id)
+    expect(sessionPersistence.delete).toHaveBeenCalledWith(session.id)
     feedAbort.abort()
     await expect(feedIterator.next()).resolves.toEqual({ done: true, value: undefined })
   })
@@ -375,13 +376,13 @@ describe('WorkspaceController commands', () => {
   })
 
   it('maps a cross-process persistence writer refusal without deleting references', async () => {
-    const { controller, ctx, root } = await harness()
+    const { controller, ctx, root, sessionPersistence } = await harness()
     const created = await controller.create({ path: stageDir(root, 'delete-busy') })
     const session = ctx.sessions.create(SessionId('delete-busy-session'), { meta: { cwd: created.workspace.path } })
     const workspace = ctx.workspaceRegistry.get(created.workspace.workspaceId)
     if (workspace === undefined) throw new Error('fixture Workspace disappeared')
     await workspace.attachSession(session.id)
-    vi.mocked(ctx.sessionPersistence.delete).mockRejectedValueOnce(new SessionAlreadyOwnedError(session.id))
+    sessionPersistence.delete.mockRejectedValueOnce(new SessionAlreadyOwnedError(session.id))
 
     await expect(controller.deleteSession({ sessionId: session.id })).rejects.toMatchObject({
       code: 'workspace/session-delete-blocked',

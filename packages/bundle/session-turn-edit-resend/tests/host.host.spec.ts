@@ -12,7 +12,7 @@ import AgentRegistry from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { createUserMessage, LlmRuntime } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock, Message } from '@deepseek-ai/dsh-llm'
-import SessionStore, { Session, SessionId } from '@deepseek-ai/dsh-session'
+import SessionStore, { Session, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
@@ -69,8 +69,22 @@ function conversation(agent: Agent): string[] {
 }
 
 /** Turn every recorded operation of the session into a comparable entry. */
-function journalOf(agent: Agent): readonly unknown[] {
-  return readResendJournal(agent.session)
+function journalOf(ctx: Context, agent: Agent): readonly unknown[] {
+  const state = ctx.sessionProjections.stateOf(agent.session, 'resendJournal')
+  if (state === undefined) throw new Error('resendJournal projection is not registered')
+  return readResendJournal(state)
+}
+
+function turnStateOf(ctx: Context, agent: Agent) {
+  const state = ctx.sessionProjections.stateOf(agent.session, 'resendTurn')
+  if (state === undefined) throw new Error('resendTurn projection is not registered')
+  return state
+}
+
+function journalFor(ctx: Context, session: Session) {
+  const state = ctx.sessionProjections.stateOf(session, 'resendJournal')
+  if (state === undefined) throw new Error('resendJournal projection is not registered')
+  return readResendJournal(state)
 }
 
 describe('edit and resend eligibility', () => {
@@ -212,7 +226,7 @@ describe('edit and resend eligibility', () => {
     const submission = await ctx.turnResend.submit(agent, operation('op-empty', 'edited'), NEVER_ABORTED)
 
     expect(submission).toEqual({ recorded: false, refusal: 'no-replaceable-turn' })
-    expect(journalOf(agent)).toEqual([])
+    expect(journalOf(ctx, agent)).toEqual([])
     expect(adapter.requests).toEqual([])
   })
 
@@ -240,7 +254,7 @@ describe('edit and resend eligibility', () => {
     prompt(agent, 'second question')
     await secondStarted
 
-    expect(selectResendTarget(agent.session)).toEqual({ eligible: false, refusal: 'not-latest-turn' })
+    expect(selectResendTarget(agent.session, turnStateOf(ctx, agent))).toEqual({ eligible: false, refusal: 'not-latest-turn' })
     agent.cancel({ kind: 'user' })
     await settle(agent)
   })
@@ -261,8 +275,8 @@ describe('admission', () => {
     expect(agent.session.snapshotEvents().slice(0, beforeResend.length)).toEqual(beforeResend)
     expect(conversation(agent)).toEqual(['edited question', 'second answer'])
     expect(adapter.requests).toHaveLength(2)
-    expect(journalOf(agent)).toEqual([{
-      ...submission.recorded === true ? submission.operation : {},
+    expect(journalOf(ctx, agent)).toEqual([{
+      ...submission.recorded ? submission.operation : {},
       outcome: 'admitted',
     }])
   })
@@ -378,7 +392,7 @@ describe('operation identity', () => {
     expect(repeated).toEqual(first)
     expect(adapter.requests).toHaveLength(2)
     expect(conversation(agent)).toEqual(['edited question', 'second answer'])
-    expect(journalOf(agent)).toHaveLength(1)
+    expect(journalOf(ctx, agent)).toHaveLength(1)
   })
 
   it('leaves an interrupted operation uncertain and never repeats it', async () => {
@@ -411,7 +425,7 @@ describe('operation identity', () => {
       recorded: true,
       operation: { operationId: 'op-crash', outcome: 'uncertain' },
     })
-    expect(journalOf(agent)).toHaveLength(1)
+    expect(journalOf(ctx, agent)).toHaveLength(1)
     expect(conversation(agent)).toEqual(['first question', 'first answer'])
     expect(adapter.requests).toHaveLength(1)
   })
@@ -424,7 +438,7 @@ describe('operation identity', () => {
 
     // A session restored from storage replays only its own events; the fold
     // must not require any resend event to be present.
-    expect(journalOf(agent)).toEqual([])
+    expect(journalOf(ctx, agent)).toEqual([])
     expect(agent.session.snapshotEvents().slice(0, before.length)).toEqual(before)
     expect(ctx.turnResend.check(agent)).toMatchObject({ eligible: true })
   })
@@ -460,7 +474,7 @@ describe('edited content preservation', () => {
 
 describe('target selection', () => {
   it('replaces from the human prompt and never shadows the reserved system head', async () => {
-    const { agent } = await harness([textResponse('first answer')])
+    const { ctx, agent } = await harness([textResponse('first answer')])
     prompt(agent, 'first question')
     await settle(agent)
 
@@ -469,7 +483,7 @@ describe('target selection', () => {
     const promptSeq = events.find(event => event.type === 'user/message')!.seq
     const answerSeq = events.find(event => event.type === 'assistant/message')!.seq
 
-    const selection = selectResendTarget(agent.session)
+    const selection = selectResendTarget(agent.session, turnStateOf(ctx, agent))
     expect(selection.eligible).toBe(true)
     if (!selection.eligible) throw new Error('unreachable')
     expect(selection.target.replacement).toEqual({
@@ -492,9 +506,39 @@ describe('target selection', () => {
     prompt(agent, 'long question')
     await turnStarted
 
-    expect(selectResendTarget(agent.session)).toEqual({ eligible: false, refusal: 'no-replaceable-turn' })
+    expect(selectResendTarget(agent.session, turnStateOf(ctx, agent))).toEqual({ eligible: false, refusal: 'no-replaceable-turn' })
     agent.cancel({ kind: 'user' })
     await settle(agent)
+  })
+
+  it('rejects a checkpoint whose projected prompt contains malformed attachment data', async () => {
+    const { ctx, agent } = await harness([textResponse('first answer')])
+    prompt(agent, 'first question')
+    await settle(agent)
+    const state = turnStateOf(ctx, agent)
+    const checkpoint = ctx.sessionProjections.checkpoint(agent.session)
+    const row = checkpoint.resendTurn
+    if (row === undefined || state.prompt === null) throw new Error('resendTurn projection is missing')
+    checkpoint.resendTurn = {
+      ...row,
+      val: {
+        ...state,
+        prompt: {
+          ...state.prompt,
+          message: {
+            ...state.prompt.message,
+            content: [{ type: 'image', attachment: { attachmentId: 'img', mediaType: 'image/png', bytes: 'invalid' } }],
+          },
+        },
+      },
+    }
+    expect(() => ctx.sessionProjections.restore(
+      checkpoint,
+      agent.session.snapshotEvents(),
+      SessionLogOffset(0),
+      agent.session.header,
+      agent.session.inheritedEventCount,
+    )).toThrow()
   })
 })
 
@@ -510,23 +554,29 @@ describe('journal across restart', () => {
     // predecessor's memory; `admitted` is proved by the surface replacement, so
     // the identity is never sent to the model twice.
     const restored = Session.create(SessionId('resend-host-restart'), agent.session.snapshotEvents())
-    expect(readResendJournal(restored)).toMatchObject([
+    const restoredTurnState = ctx.sessionProjections.stateOf(restored, 'resendTurn')
+    if (restoredTurnState === undefined) throw new Error('resendTurn projection is not registered')
+    expect(selectResendTarget(restored, restoredTurnState)).toMatchObject({
+      eligible: true,
+      target: { prompt: { content: [{ type: 'text', text: 'edited question' }] } },
+    })
+    expect(journalFor(ctx, restored)).toMatchObject([
       { operationId: 'op-restart', outcome: 'admitted' },
     ])
-    expect(findResendOperation(readResendJournal(restored), 'op-restart' as ResendOperationId)?.outcome)
+    expect(findResendOperation(journalFor(ctx, restored), 'op-restart' as ResendOperationId)?.outcome)
       .toBe('admitted')
     expect(adapter.requests).toHaveLength(2)
   })
 
   it('reads a request that never admitted as uncertain after a replay', async () => {
-    const { agent } = await harness([textResponse('first answer')])
+    const { ctx, agent } = await harness([textResponse('first answer')])
     prompt(agent, 'first question')
     await settle(agent)
 
     // Simulate a process that stopped after the request was durable but before
     // the model reached the admission: only the two operation events exist, so
     // the resumed Host must report the honest uncertainty instead of retrying.
-    const selection = selectResendTarget(agent.session)
+    const selection = selectResendTarget(agent.session, turnStateOf(ctx, agent))
     if (!selection.eligible) throw new Error('unreachable')
     const { turn, replacement } = selection.target
     agent.session.append('turn-resend/requested', {
@@ -541,7 +591,7 @@ describe('journal across restart', () => {
     })
 
     const restored = Session.create(SessionId('resend-host-uncertain'), agent.session.snapshotEvents())
-    expect(readResendJournal(restored)).toMatchObject([
+    expect(journalFor(ctx, restored)).toMatchObject([
       { operationId: 'op-uncertain', outcome: 'uncertain' },
     ])
   })
@@ -580,11 +630,11 @@ describe('durable commit order', () => {
       && event.data.inserted.some(message => message.id === startedEvent.data.messageId))).toBe(false)
 
     // Each prefix reports exactly what the log proves.
-    expect(readResendJournal(Session.create(SessionId('order-requested'), prefixes[0]!.events)))
+    expect(journalFor(ctx, Session.create(SessionId('order-requested'), prefixes[0]!.events)))
       .toMatchObject([{ operationId: 'op-order', outcome: 'pending' }])
-    expect(readResendJournal(Session.create(SessionId('order-started'), started.events)))
+    expect(journalFor(ctx, Session.create(SessionId('order-started'), started.events)))
       .toMatchObject([{ operationId: 'op-order', outcome: 'uncertain' }])
-    expect(readResendJournal(Session.create(SessionId('order-admitted'), prefixes[2]!.events)))
+    expect(journalFor(ctx, Session.create(SessionId('order-admitted'), prefixes[2]!.events)))
       .toMatchObject([{ operationId: 'op-order', outcome: 'admitted' }])
     expect(adapter.requests).toHaveLength(2)
   })

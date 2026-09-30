@@ -15,6 +15,7 @@
 import type { Branded } from '@deepseek-ai/dsh-brand'
 import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import type { SessionSeq } from '@deepseek-ai/dsh-session/types'
+import type { UserMessage } from '@deepseek-ai/dsh-llm/message'
 
 /**
  * Identity of one edit-and-resend attempt, minted by the caller.
@@ -114,6 +115,44 @@ export interface ResendRequest {
   readonly text: string
 }
 
+/** Current replaceable-turn facts folded from committed Session events. */
+export interface ResendTurnState {
+  /** Most recent `turn/start`, including an open turn. */
+  readonly latestStart: { readonly seq: SessionSeq; readonly turn: number } | null
+  /** Most recent `turn/end` and whether this feature may replace it. */
+  readonly latestEnd: { readonly seq: SessionSeq; readonly turn: number; readonly replaceable: boolean } | null
+  /** First direct human prompt in the most recently started turn. */
+  readonly prompt: { readonly seq: SessionSeq; readonly message: UserMessage } | null
+  /** Distinct tool names, in first-call order, for the most recently started turn. */
+  readonly toolCalls: readonly string[]
+}
+
+/** One persisted fold row for an edit-and-resend operation. */
+export interface ResendJournalDraft {
+  /** Caller-owned operation identity. */
+  readonly operationId: string
+  /** Target turn number. */
+  readonly turn: number
+  /** First replaced surface node sequence. */
+  readonly startSeq: SessionSeq
+  /** Last replaced surface node sequence. */
+  readonly endSeq: SessionSeq
+  /** Identity of the resent user message after the request starts. */
+  readonly messageId?: MessageId | undefined
+  /** Latest outcome established by the folded events. */
+  readonly outcome: 'pending' | 'uncertain' | 'admitted' | 'refused' | 'failed'
+  /** Refusal recorded by `turn-resend/settled`. */
+  readonly refusal?: ResendBlocker | undefined
+  /** Failure detail recorded by `turn-resend/settled`. */
+  readonly reason?: string | undefined
+}
+
+/** Host-only journal projection state. */
+export interface ResendJournalState {
+  /** Operation records in first-request order. */
+  readonly drafts: readonly ResendJournalDraft[]
+}
+
 declare module '@deepseek-ai/dsh-session/types' {
   interface SessionEventMap {
     /**
@@ -155,5 +194,14 @@ declare module '@deepseek-ai/dsh-session/types' {
     'turn-resend/settled':
       | { operationId: string; outcome: 'refused'; refusal: ResendBlocker }
       | { operationId: string; outcome: 'failed'; reason: string }
+  }
+}
+
+declare module '@deepseek-ai/dsh-session-projection/types' {
+  interface SessionProjectionStateMap {
+    /** Current turn facts needed to select an edit-and-resend target. */
+    resendTurn: ResendTurnState
+    /** Idempotency journal and admission proofs for edit-and-resend operations. */
+    resendJournal: ResendJournalState
   }
 }

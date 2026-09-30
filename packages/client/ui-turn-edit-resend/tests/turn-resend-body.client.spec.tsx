@@ -19,7 +19,7 @@ function bench(open = true) {
   const t = ((key: string, params?: Record<string, string>) =>
     params === undefined ? key : `${key}:${Object.values(params).join(',')}`) as never
   const useStore = ((selector: (state: ReturnType<typeof instance.getSnapshot>) => unknown) =>
-    useSyncExternalStore(instance.subscribe, () => selector(instance.getSnapshot()))) as never
+    useSyncExternalStore(fn => instance.subscribe(fn), () => selector(instance.getSnapshot()))) as never
   const props = {
     matched: { seq: 5 }, sessionId: 's1', release, submit, t, useStore, actions: instance.actions,
   }
@@ -58,7 +58,7 @@ describe('TurnResendBody', () => {
     expect(screen.getByText('card.uncertain')).toBeTruthy()
     expect(screen.queryByText('card.save')).toBeNull()
     expect(screen.getByText('card.cancel')).toBeTruthy()
-    expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('original')
+    expect(screen.getByRole<HTMLTextAreaElement>('textbox').value).toBe('original')
   })
 
   it('reports a refusal with its reason and keeps the attempt editable', async () => {
