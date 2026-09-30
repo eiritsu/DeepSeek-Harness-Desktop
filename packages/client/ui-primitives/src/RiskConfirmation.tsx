@@ -17,6 +17,8 @@ export interface RiskConfirmationProps {
   confirmLabel: string
   acknowledged: boolean
   disabled?: boolean
+  /** Refuse the cancel path while an irreversible action is already running. */
+  cancelDisabled?: boolean
   onAcknowledgedChange: (acknowledged: boolean) => void
   onCancel: () => void
   onConfirm: () => void
@@ -36,21 +38,26 @@ export function RiskConfirmation({
   confirmLabel,
   acknowledged,
   disabled = false,
+  cancelDisabled = false,
   onAcknowledgedChange,
   onCancel,
   onConfirm,
 }: RiskConfirmationProps) {
+  const dismiss = () => {
+    if (cancelDisabled) return
+    onCancel()
+  }
   return (
     <Modal
       open={open}
-      onClose={onCancel}
+      onClose={dismiss}
       title={title}
       closeLabel={closeLabel}
       className={css.confirmation ?? ''}
       contentClassName={css.confirmationContent ?? ''}
       footer={(
         <>
-          <Button variant="outline" className={css.modalAction} onClick={onCancel}>
+          <Button variant="outline" className={css.modalAction} disabled={cancelDisabled} onClick={dismiss}>
             {cancelLabel}
           </Button>
           <Button

@@ -194,6 +194,12 @@ class FakeWorkspaces implements IWorkspaces {
   declare readonly delete: IWorkspaces['delete']
   declare readonly insertBefore: IWorkspaces['insertBefore']
   declare readonly insertSessionBefore: IWorkspaces['insertSessionBefore']
+  readonly deleteSession = vi.fn<IWorkspaces['deleteSession']>(async (sessionId) => {
+    this.list.update(state => ({
+      ...state,
+      items: state.items.map(item => ({ ...item, sessionIds: item.sessionIds.filter(id => id !== sessionId) })),
+    }))
+  })
   readonly pinCalls: SessionId[] = []
   readonly unpinCalls: SessionId[] = []
   onPin: IWorkspaces['pinSession'] = async (sessionId) => {
@@ -1054,6 +1060,47 @@ describe('UiWorkspaceService', () => {
 
     expect(b.sessions.retained[0]!.release).toHaveBeenCalledOnce()
     expect(b.selectPanel).toHaveBeenCalledTimes(2)
+  })
+
+  it('clears and releases the current Session without selecting another', async () => {
+    const current = sid('current')
+    const next = sid('next')
+    const b = bench({ sessions: sessionState([summary('current'), summary('next')]) })
+    b.uiWorkspace.openSession(current)
+    await b.uiWorkspace.deleteSession(current)
+    expect(b.workspaces.deleteSession).toHaveBeenCalledWith(current)
+    expect(b.sessions.retained[0]!.release).toHaveBeenCalledOnce()
+    expect(b.selectPanel).toHaveBeenCalledTimes(2)
+    expect(b.sessions.retain).toHaveBeenCalledOnce()
+    await b.uiWorkspace.deleteSession(next)
+    expect(b.sessions.retain).toHaveBeenCalledOnce()
+  })
+
+  it('leaves the current selection untouched when deleting another Session', async () => {
+    const current = sid('current')
+    const other = sid('other')
+    const b = bench({ sessions: sessionState([summary('current'), summary('other')]) })
+    b.uiWorkspace.openSession(current)
+
+    await b.uiWorkspace.deleteSession(other)
+
+    expect(b.sessions.retained[0]!.release).not.toHaveBeenCalled()
+    expect(b.selectPanel).toHaveBeenCalledOnce()
+    expect(b.sessions.retain).toHaveBeenCalledOnce()
+  })
+
+  it('does not navigate when deletion fails', async () => {
+    const current = sid('current')
+    const failure = new Error('delete rejected')
+    const b = bench({ sessions: sessionState([summary('current')]) })
+    b.workspaces.deleteSession.mockRejectedValueOnce(failure)
+    b.uiWorkspace.openSession(current)
+
+    await expect(b.uiWorkspace.deleteSession(current)).rejects.toThrow('delete rejected')
+
+    expect(b.sessions.retained[0]!.release).not.toHaveBeenCalled()
+    expect(b.selectPanel).toHaveBeenCalledOnce()
+    expect(b.sessions.retain).toHaveBeenCalledOnce()
   })
 
   it('forwards archive commands and preserves failures', async () => {

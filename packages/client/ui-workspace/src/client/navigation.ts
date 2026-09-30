@@ -86,6 +86,12 @@ export interface UiWorkspace {
    */
   unpinSession(sessionId: SessionId): Promise<void>
   /**
+   * Permanently delete a Session and clear the empty selection when the
+   * deleted Session is still the main selection.
+   * @param sessionId - Session to delete.
+   */
+  deleteSession(sessionId: SessionId): Promise<void>
+  /**
    * Open the Host-native directory picker.
    * @returns the selected directory, or null when cancelled.
    */
@@ -261,6 +267,11 @@ class UiWorkspaceService extends Service implements UiWorkspace {
 
   async unpinSession(sessionId: SessionId): Promise<void> {
     await this.workspaces.unpinSession(sessionId)
+  }
+
+  async deleteSession(sessionId: SessionId): Promise<void> {
+    await this.workspaces.deleteSession(sessionId)
+    if (this.mainReference?.sessionId === sessionId) this.clearMain()
   }
 
   async pickDirectory(): Promise<string | null> {

@@ -18,6 +18,11 @@ overrides:
   'extract-zip>yauzl': '3.4.0'
   '@deepseek-ai/cosmokit': 'link:vendor/cosmokit'
   '@deepseek-ai/schemastery': 'link:vendor/schemastery'
+  # The markdown extensions register mathText token types that only 2.0.3
+  # declares, while mdast-util-from-markdown still pins 2.0.2. Without one
+  # version, the Extension types handed to fromMarkdown come from a different
+  # copy than the ones its own signature uses.
+  'micromark-util-types': '2.0.3'
 
 peerDependencyRules:
   allowedVersions:

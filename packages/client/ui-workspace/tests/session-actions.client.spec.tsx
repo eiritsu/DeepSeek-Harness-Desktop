@@ -11,6 +11,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { WorkspaceSessionDeleteError } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { WorkspaceId, WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionStatusSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -21,12 +22,14 @@ import { en as commonEn } from '@deepseek-ai/dsh-client-locale/src/locales/en.ts
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import type {
   MenuOpenState, RowToast, RowToastState, SessionArchiveConfirmInjected, SessionArchiveConfirmRequest,
-  SessionRenameDialogInjected, SessionRenameTarget,
+  SessionDeleteDialogInjected, SessionDeleteRequest, SessionRenameDialogInjected, SessionRenameTarget,
 } from '../src/client/contract/slots.ts'
 import {
   ArchiveSessionMenuItem, ArchiveSessionRowButton, SessionArchiveConfirmDialog,
 } from '../src/client/session-actions/ArchiveSession.tsx'
 import { ForkSessionMenuItem } from '../src/client/session-actions/ForkSession.tsx'
+import { CopySessionIdMenuItem } from '../src/client/session-actions/CopySessionId.tsx'
+import { DeleteSessionMenuItem, SessionDeleteConfirmDialog } from '../src/client/session-actions/DeleteSession.tsx'
 import { PinSessionMenuItem, PinSessionRowButton } from '../src/client/session-actions/PinSession.tsx'
 import { RenameSessionMenuItem, SessionRenameDialog } from '../src/client/session-actions/RenameSession.tsx'
 import { RowActionToast } from '../src/client/session-actions/RowActionToast.tsx'
@@ -35,7 +38,12 @@ import { en, zh } from '../src/client/locales.ts'
 import { ShortcutRegistry } from '../../shortcuts/src/client/registry.ts'
 import type { ShortcutCommandId } from '@deepseek-ai/dsh-client-shortcuts/client'
 
-afterEach(cleanup)
+const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+afterEach(() => {
+  cleanup()
+  if (clipboardDescriptor === undefined) Reflect.deleteProperty(navigator, 'clipboard')
+  else Object.defineProperty(navigator, 'clipboard', clipboardDescriptor)
+})
 
 // The seat's key domain is workspace ∪ common; the stub mirrors the real
 // lookup chain (namespace, then common vocabulary, then the key).
@@ -228,6 +236,83 @@ describe('fork and rename rows', () => {
     expect(requestSessionRename).toHaveBeenCalledWith(sid('one'), 'Session title')
     expect(setMenuOpen).toHaveBeenCalledWith(false)
     expect(callOrder(setMenuOpen)).toBeLessThan(callOrder(requestSessionRename))
+  })
+})
+
+describe('copy Session ID row', () => {
+  it('closes the menu and reports accepted clipboard writes', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    const { state, setMenuOpen } = openMenu()
+    const reportCopyResult = vi.fn()
+    render(<CopySessionIdMenuItem {...menuRow(state)} reportCopyResult={reportCopyResult} />)
+    fireEvent.click(screen.getByRole('menuitem', { name: '复制 Session ID' }))
+    expect(setMenuOpen).toHaveBeenCalledWith(false)
+    await waitFor(() => { expect(reportCopyResult).toHaveBeenCalledWith(true) })
+    expect(writeText).toHaveBeenCalledWith(String(ROW.sessionId))
+  })
+
+  it('reports clipboard rejection as failure', async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error('clipboard denied'))
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    const { state } = openMenu()
+    const reportCopyResult = vi.fn()
+    render(<CopySessionIdMenuItem {...menuRow(state)} reportCopyResult={reportCopyResult} />)
+    fireEvent.click(screen.getByRole('menuitem', { name: '复制 Session ID' }))
+    await waitFor(() => { expect(reportCopyResult).toHaveBeenCalledWith(false) })
+  })
+})
+
+describe('delete Session action', () => {
+  it('closes the menu and requests confirmation', () => {
+    const { state, setMenuOpen } = openMenu()
+    const requestSessionDelete = vi.fn()
+    render(<DeleteSessionMenuItem {...menuRow(state)} requestSessionDelete={requestSessionDelete} />)
+    fireEvent.click(screen.getByRole('menuitem', { name: '删除会话' }))
+    expect(setMenuOpen).toHaveBeenCalledWith(false)
+    expect(requestSessionDelete).toHaveBeenCalledWith(sid('one'), ROW.displayTitle)
+  })
+
+  function deleteDialog(deleteSession: SessionDeleteDialogInjected['deleteSession'], translate = t) {
+    const request = createSnapshotStore<SessionDeleteRequest | null>(null)
+    const settleSessionDelete = vi.fn(() => { request.set(null) })
+    render(<SessionDeleteConfirmDialog {...overlay} t={translate} useDeleteRequest={bindSnapshotSelector(request)} settleSessionDelete={settleSessionDelete} deleteSession={deleteSession} />)
+    const ask = (): void => { act(() => { request.set({ sessionId: sid('one'), displayTitle: ROW.displayTitle }) }) }
+    return { ask, settleSessionDelete }
+  }
+
+  it('cancels without deleting', () => {
+    const deleteSession = vi.fn(async () => {})
+    const { ask, settleSessionDelete } = deleteDialog(deleteSession)
+    ask()
+    fireEvent.click(screen.getByRole('button', { name: '取消' }))
+    expect(settleSessionDelete).toHaveBeenCalledOnce()
+    expect(deleteSession).not.toHaveBeenCalled()
+  })
+
+  it('deletes only after confirmation', async () => {
+    const deleteSession = vi.fn(async () => {})
+    const { ask, settleSessionDelete } = deleteDialog(deleteSession)
+    ask()
+    expect(screen.getByRole('dialog').textContent).toContain('无法撤销')
+    fireEvent.click(screen.getByRole('button', { name: '永久删除' }))
+    await waitFor(() => { expect(deleteSession).toHaveBeenCalledWith(sid('one')) })
+    expect(settleSessionDelete).toHaveBeenCalledOnce()
+  })
+
+  it.each([
+    ['active work', 'workspace/session-active', '此会话仍有进行中的工作'],
+    ['writer lock', 'workspace/session-delete-blocked', '正被其他进程写入'],
+    ['generic failure', 'storage/failure', '删除会话失败：storage failed'],
+  ])('keeps the dialog open for %s', async (_label, code, text) => {
+    const reason = new Error('delete failed') as WorkspaceSessionDeleteError
+    Object.defineProperty(reason, 'name', { value: 'WorkspaceSessionDeleteError' })
+    Object.defineProperty(reason, 'rpcError', { value: { code, message: code === 'storage/failure' ? 'storage failed' : 'busy' } })
+    const { ask, settleSessionDelete } = deleteDialog(vi.fn().mockRejectedValue(reason))
+    ask()
+    fireEvent.click(screen.getByRole('button', { name: '永久删除' }))
+    await waitFor(() => { expect(screen.getByRole('alert').textContent).toContain(text) })
+    expect(settleSessionDelete).not.toHaveBeenCalled()
   })
 })
 
@@ -572,6 +657,7 @@ describe('RowActionToast', () => {
     ['pinFailed', '置顶失败，请稍后重试'],
     ['unpinFailed', '取消置顶失败，请稍后重试'],
     ['archivedNotOpenable', '已归档对话暂时无法查看，请取消归档后查看'],
+    ['sessionIdCopyFailed', '无法复制 Session ID'],
     ['defaultWorkspaceFailed', '无法创建默认工作区，请通过“选择工作区”选择文件夹'],
   ] as const)('shows the %s warning and takes it down when its hold ends', (kind, text) => {
     vi.useFakeTimers()
@@ -587,6 +673,12 @@ describe('RowActionToast', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('reports a successful Session ID clipboard write', () => {
+    const { notify } = toastSurface()
+    notify({ kind: 'sessionIdCopied' })
+    expect(screen.getByRole('alert').textContent).toBe('Session ID 已复制')
   })
 
   it('shows a refused creation with the Host reason and holds it as long as the archived notice', () => {
