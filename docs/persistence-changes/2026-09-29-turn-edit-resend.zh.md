@@ -27,8 +27,8 @@ id: 2026-09-29-turn-edit-resend
 baseline: false
 changes:
   - root: "event:agent/inbox/spliced"
-    previous: "2026-09-16-session-format-v4"
-    after: "d407e975f1520a7b28fbf6bc0f28aebf8a3bfbefed059fc26992a23364cd91b3"
+    previous: "2026-09-21-user-question-reply"
+    after: "66e6dd9f6b4f2174fe81b28e5ed926f04fac82ad24ab2000b51ec8a7c1057b8b"
     decision: same-version
   - root: "event:turn-resend/request-started"
     previous: null
@@ -40,7 +40,7 @@ changes:
     decision: same-version
   - root: "event:turn-resend/settled"
     previous: null
-    after: "0eefec399ea3aa0f91a07126d03deb32ff3a209a909da21fe38123aa4c27bae1"
+    after: "819f8cf021188410a8deea12f5b34f75e051c3016f721b7d064af946ba9fc9bd"
     decision: same-version
 ```
 

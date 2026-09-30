@@ -2,18 +2,18 @@
 # section, a hash of its English and Chinese blocks outside code blocks and generated regions.
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-29-turn-edit-resend.md
-/agent-note-edit-and-resend-a-completed-turn:
-  en: 02debe0d8279c3d6
-  zh: 74da40834aa68e8f
-/agent-note-edit-and-resend-a-completed-turn/problem:
+/agent-note-edit-and-resend-a-replaceable-turn:
+  en: 7052e450ced9de88
+  zh: 1c1b089b39bff9b0
+/agent-note-edit-and-resend-a-replaceable-turn/problem:
   en: 381684ed0228f256
   zh: b768686f0b30425f
-/agent-note-edit-and-resend-a-completed-turn/decision:
-  en: 3eafa67452a10b5f
-  zh: fc70da8ace2cc821
-/agent-note-edit-and-resend-a-completed-turn/alternatives-considered:
-  en: ba4e9b882828bab3
-  zh: 557c868287eda5ba
-/agent-note-edit-and-resend-a-completed-turn/consequences:
+/agent-note-edit-and-resend-a-replaceable-turn/decision:
+  en: 99e6e12d54a0f48b
+  zh: 6c4801eef2c4d759
+/agent-note-edit-and-resend-a-replaceable-turn/alternatives-considered:
+  en: 2576136c8c9e34f9
+  zh: d70090fc43ff2d72
+/agent-note-edit-and-resend-a-replaceable-turn/consequences:
   en: 83ce6050d91532eb
   zh: 985f08bdab8e5a5b

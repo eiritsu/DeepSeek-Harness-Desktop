@@ -1,5 +1,5 @@
 ---
-description: "The bundle layer that adds edit-and-resend of the latest completed turn to a dsh --profile surface."
+description: "The bundle layer that adds edit-and-resend of the latest replaceable turn to a dsh --profile surface."
 kind: "package-bundle"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This Bundle's Host service decides whether an Agent's latest completed turn may be edited, and replaces that turn's model-visible surface range with the edited prompt. Every attempt is recorded in the Session log under a caller-owned `operationId`, so a repeated submission is answered from the log instead of calling the model again. The original events stay in the append-only log. The Web profile stacks this Bundle: the browser half adds the edit entry and its card. A turn that ran tools stays editable, and the entry discloses the tools whose side effects a resend may repeat.
+This Bundle's Host service decides whether an Agent's latest replaceable turn may be edited, and replaces that turn's model-visible surface range with the edited prompt. Every attempt is recorded in the Session log under a caller-owned `operationId`, so a repeated submission is answered from the log instead of calling the model again. The original events stay in the append-only log. The Web profile stacks this Bundle: the browser half adds the edit entry and replaces that message with an in-place editor. A turn that ran tools stays editable, and the entry discloses the tools whose side effects a resend may repeat.
 
 ## Table of Contents
 
@@ -22,13 +22,13 @@ This Bundle's Host service decides whether an Agent's latest completed turn may 
 <a id="use-this-package"></a>
 ## Use this package
 
-Mount the `session-turn-edit-resend` row alongside a live Agent service. The service is a `TypertRemoteService` under the `turnResend` Remote namespace. The `web` profile stacks this Bundle and mounts its browser row, `@deepseek-ai/dsh-client-ui-turn-edit-resend`, which offers the edit entry on the latest completed turn.
+Mount the `session-turn-edit-resend` row alongside a live Agent service. The service is a `TypertRemoteService` under the `turnResend` Remote namespace. The `web` profile stacks this Bundle and mounts its browser row, `@deepseek-ai/dsh-client-ui-turn-edit-resend`, which offers the edit entry on the latest replaceable turn.
 
-`check(agent)` reports whether the Agent's latest turn can be edited now: the prompt text a composer is seeded with, its turn, the first replaced seq, and the tool names the turn called. `submit(agent, request, signal)` replaces the turn. A refusal is either the activity blocker (`agent-busy`, `inbox-pending`, `aborted`) or a selection refusal (`no-completed-turn`, `not-latest-turn`, `no-human-prompt`, `no-editable-text`).
+`check(agent)` reports whether the Agent's latest turn can be edited now: the prompt text a composer is seeded with, its turn, the first replaced seq, and the tool names the turn called. `submit(agent, request, signal)` replaces the turn. A refusal is either the activity blocker (`agent-busy`, `inbox-pending`, `aborted`) or a selection refusal (`no-replaceable-turn`, `not-latest-turn`, `no-human-prompt`, `no-editable-text`).
 
 ### When a turn is editable
 
-The Agent must be idle with no pending input, and its latest turn must have completed. `check` reads current state and promises nothing about a later `submit`, which selects the target again while it owns the Agent's idle phase.
+The Agent must be idle with no pending input, and its latest turn must have ended in a state this feature may replace: the loop completed it, or the user cancelled it. A turn that errored, was blocked, was truncated at its token ceiling, or was closed as a crash-orphan or fork seed is not replaceable. `check` reads current state and promises nothing about a later `submit`, which selects the target again while it owns the Agent's idle phase.
 
 A turn that ran tools stays editable, and its tool names ride `check`. The replacement shadows the turn's tool calls, their results, and its old answer in the model-visible surface, while the append-only log keeps every record. A resend asks the model to repeat those calls, so the browser entry confirms the repeat with the user before submitting; keeping the turn editable is the product decision, and the disclosure is the safeguard.
 
@@ -41,7 +41,7 @@ A turn that ran tools stays editable, and its tool names ride `check`. The repla
 
 ### Selection
 
-[`src/policy.ts`](src/policy.ts) reads the log alone. The target is the latest completed turn, and its surface span excludes the reserved system head, so a replacement can never shadow the system prompt. The replaced range starts at the direct human prompt and carries every later node of the turn.
+[`src/policy.ts`](src/policy.ts) reads the log alone. The target is the latest replaceable turn, and its surface span excludes the reserved system head, so a replacement can never shadow the system prompt. The replaced range starts at the direct human prompt and carries every later node of the turn.
 
 ### Durable operation journal
 

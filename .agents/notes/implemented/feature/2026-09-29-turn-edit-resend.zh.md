@@ -1,4 +1,4 @@
-# Agent Note: 编辑并重发已完成回合
+# Agent Note: 编辑并重发可替换回合
 
 Status: implemented
 
@@ -16,7 +16,9 @@ Status: implemented
 
 运行过工具的回合仍可编辑。其工具名随 `check.toolCalls` 返回；替换在模型可见表面遮蔽该回合的工具调用、其结果与其回答，而日志保留它们。浏览器一半与用户确认该重复，而不是拒绝该回合。
 
-`@deepseek-ai/dsh-client-ui-turn-edit-resend` 浏览器包在已定稿用户消息上添加编辑入口，并在 composer 上方添加内联卡片。它调用 `ctx.remote.turnResend`，渲染工具披露，提交编辑后的文本，并如实映射每种记录结果：`admitted` 清除卡片，`uncertain` 说明结果未知且不提供重复，`refused`/`failed`/`pending` 说明日志证明了什么。`web` profile 叠加该 Bundle，其 patch 挂载 Host 服务与浏览器行。`ui-conversation` 隐藏被替换遮蔽的 seq，因此可见对话显示替换后的一代。
+只有最近一条回合可替换，且仅当它以正常完成或用户取消结束时。出错、被阻塞、因输出 token 上限截断、因崩溃遗留而收尾，以及 fork 边界，都是 harness 无法重现的结束方式；`check` 对这些回合予以拒绝，而不是改写它并不拥有的历史。
+
+`@deepseek-ai/dsh-client-ui-turn-edit-resend` 浏览器包在已定稿用户消息上添加编辑入口，并在尝试打开期间用就地编辑器取代该消息。它调用 `ctx.remote.turnResend`，渲染工具披露，提交编辑后的文本，并如实映射每种记录结果：`admitted` 关闭编辑器，`uncertain` 说明结果未知且不提供重复，`refused`/`failed`/`pending` 说明日志证明了什么。`web` profile 叠加该 Bundle，其 patch 挂载 Host 服务与浏览器行。`ui-conversation` 隐藏被替换遮蔽的 seq，因此可见对话显示替换后的一代。
 
 该 Bundle 的 `src/types.ts` 是面向浏览器的契约出口：它只导入叶子模块（`@deepseek-ai/dsh-session/types`，绝不导入裸 Session 入口），并且不合并任何 cordis `Context`。裸 Session 入口声明 `Context.sessions: SessionStore`，而 Client 程序将同一键声明为 API `ISessions`；在 `skipLibCheck` 下，编译器静默保留其最先加载的声明，因此从契约可达的任一 Host 导入都会让每个 client 包的 `ctx.sessions` 翻转为 Host 存储。该契约将 Host 服务声明挡在 client 程序之外。
 
@@ -28,7 +30,7 @@ Status: implemented
 
 **重试不确定的操作。** 已否决：日志无法证明模型是否被调用，重试可能重复一个不可撤销的请求。
 
-**复用队列编辑器。** 已否决：排队消息尚未进入模型历史，而已完成回合已被消费。
+**复用队列编辑器。** 已否决：排队消息尚未进入模型历史，而可替换回合已被消费。
 
 ## Consequences
 

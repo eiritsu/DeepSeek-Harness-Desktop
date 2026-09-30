@@ -1,5 +1,5 @@
 ---
-description: "为 dsh --profile 增加“编辑并重发最近一条已完成回合”能力的 Bundle 层。"
+description: "为 dsh --profile 增加“编辑并重发最近一条可替换回合”能力的 Bundle 层。"
 kind: "package-bundle"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-bundle"
 
 ## 概述
 
-本 Bundle 的 Host 服务判定某个 Agent 最近一条已完成回合能否编辑，并用编辑后的提示词替换该回合的模型可见表面范围。每次尝试都以调用方拥有的 `operationId` 记入 Session 日志，因此重复提交由日志作答，而不会再次调用模型。原事件保留在追加式日志中。`web` profile 叠加本 Bundle：浏览器一半提供编辑入口及其卡片。运行过工具的回合仍可编辑，入口会披露重发可能重复其副作用的工具。
+本 Bundle 的 Host 服务判定某个 Agent 最近一条可替换回合能否编辑，并用编辑后的提示词替换该回合的模型可见表面范围。每次尝试都以调用方拥有的 `operationId` 记入 Session 日志，因此重复提交由日志作答，而不会再次调用模型。原事件保留在追加式日志中。`web` profile 叠加本 Bundle：浏览器一半提供编辑入口，并用就地编辑器取代该消息。运行过工具的回合仍可编辑，入口会披露重发可能重复其副作用的工具。
 
 ## 目录
 
@@ -22,13 +22,13 @@ kind: "package-bundle"
 <a id="use-this-package"></a>
 ## 使用本包
 
-将 `session-turn-edit-resend` 行与实时 Agent 服务一起挂载。该服务是 `turnResend` Remote 命名空间下的 `TypertRemoteService`。`web` profile 叠加本 Bundle 并挂载其浏览器行 `@deepseek-ai/dsh-client-ui-turn-edit-resend`，它在最近一条已完成回合上提供编辑入口。
+将 `session-turn-edit-resend` 行与实时 Agent 服务一起挂载。该服务是 `turnResend` Remote 命名空间下的 `TypertRemoteService`。`web` profile 叠加本 Bundle 并挂载其浏览器行 `@deepseek-ai/dsh-client-ui-turn-edit-resend`，它在最近一条可替换回合上提供编辑入口。
 
-`check(agent)` 报告该 Agent 最近一条回合当前能否编辑：composer 用于预填的提示文本、其回合号、首个被替换的 seq，以及该回合调用的工具名。`submit(agent, request, signal)` 替换该回合。拒绝要么是活动阻塞（`agent-busy`、`inbox-pending`、`aborted`），要么是选择拒绝（`no-completed-turn`、`not-latest-turn`、`no-human-prompt`、`no-editable-text`）。
+`check(agent)` 报告该 Agent 最近一条回合当前能否编辑：composer 用于预填的提示文本、其回合号、首个被替换的 seq，以及该回合调用的工具名。`submit(agent, request, signal)` 替换该回合。拒绝要么是活动阻塞（`agent-busy`、`inbox-pending`、`aborted`），要么是选择拒绝（`no-replaceable-turn`、`not-latest-turn`、`no-human-prompt`、`no-editable-text`）。
 
 ### 何时回合可编辑
 
-Agent 必须处于空闲且没有待处理输入，并且其最近一条回合已完成。`check` 读取当前状态，并不对之后的 `submit` 作任何承诺；`submit` 在拥有 Agent 空闲阶段时会再次选择目标。
+Agent 必须处于空闲且没有待处理输入，并且其最近一条回合的结束状态允许本功能替换：由循环正常完成，或由用户取消。出错、被阻塞、因输出 token 上限截断，或因崩溃遗留、fork 边界而关闭的回合不可替换。`check` 读取当前状态，并不对之后的 `submit` 作任何承诺；`submit` 在拥有 Agent 空闲阶段时会再次选择目标。
 
 运行过工具的回合仍可编辑，其工具名随 `check` 返回。替换会在模型可见表面遮蔽该回合的工具调用、其结果与其旧回答，而追加式日志保留每一条记录。重发要求模型再次调用这些工具，因此浏览器入口在提交前向用户确认该重复；保持可编辑是产品决定，披露即是保障。
 
@@ -41,7 +41,7 @@ Agent 必须处于空闲且没有待处理输入，并且其最近一条回合�
 
 ### 选择
 
-[`src/policy.ts`](src/policy.ts) 只读取日志。目标是最近一条已完成回合，其表面区间排除预留的系统头部，因此替换绝不会遮蔽系统提示词。被替换范围从直接人类提示词开始，并携带该回合其后的每个节点。
+[`src/policy.ts`](src/policy.ts) 只读取日志。目标是最近一条可替换回合，其表面区间排除预留的系统头部，因此替换绝不会遮蔽系统提示词。被替换范围从直接人类提示词开始，并携带该回合其后的每个节点。
 
 ### 持久操作日志
 

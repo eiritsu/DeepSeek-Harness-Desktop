@@ -3,23 +3,23 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/bundle/session-turn-edit-resend/README.md
 /:
-  en: 6db73b6c2dc92a8d
-  zh: cf10091bda2a29f0
+  en: e0c422cdb65eee12
+  zh: ae119ec20e301f9e
 /deepseek-ai-dsh-session-turn-edit-resend:
   en: bd29c254d6de5d76
   zh: 8bc0da87fc4a23a6
 /deepseek-ai-dsh-session-turn-edit-resend/summary:
-  en: 069f0716cb007528
-  zh: 619989da3aa4fcd7
+  en: 7ba9e7e7fbcc9fe0
+  zh: 2ac29d6dd4cdeb55
 /deepseek-ai-dsh-session-turn-edit-resend/table-of-contents:
   en: 122f0d41696980b1
   zh: ce6bc6fe7045d4c2
 /deepseek-ai-dsh-session-turn-edit-resend/use-this-package:
-  en: 6dd1c25e9c4cc75c
-  zh: 0d8addcdfb7bef2a
+  en: 89e69628ea42fd16
+  zh: 08b7b888c68c9585
 /deepseek-ai-dsh-session-turn-edit-resend/use-this-package/when-a-turn-is-editable:
-  en: 0cae0ee170ae1f5b
-  zh: 51f6b40356a6e193
+  en: 885ce4bf54d40501
+  zh: 169ce7c49e9d9015
 /deepseek-ai-dsh-session-turn-edit-resend/use-this-package/submitting-an-edit:
   en: 99b8ca64c8f86e5f
   zh: 3a1482eed320e89c
@@ -27,8 +27,8 @@
   en: ee4615a04fa6503d
   zh: ee2c5fb2204a43cf
 /deepseek-ai-dsh-session-turn-edit-resend/understand-the-implementation/selection:
-  en: 89382756863caed6
-  zh: fe4abf60c257b16d
+  en: df3709eb756729d1
+  zh: 457cecc702fb886e
 /deepseek-ai-dsh-session-turn-edit-resend/understand-the-implementation/durable-operation-journal:
   en: e2d7f140acf855a4
   zh: b7e20da7ae239fa6

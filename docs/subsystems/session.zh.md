@@ -1119,7 +1119,7 @@ Host edit-and-resend admission over the `turnResend` Remote namespace.
 @Remote check(agent: Agent): ResendEligibility
 
 /**
- * Replace the latest completed turn's prompt with the edited text and let the
+ * Replace the latest replaceable turn's prompt with the edited text and let the
  * driver send it as a new turn.
  *
  * Submission is idempotent in the caller's `operationId`: an identity the

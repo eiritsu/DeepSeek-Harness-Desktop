@@ -24,11 +24,11 @@ import type { SessionSeq } from '@deepseek-ai/dsh-session/types'
  */
 export type ResendOperationId = Branded<'ResendOperationId'>
 
-/** Why the most recent completed user turn cannot be edited and resent. */
+/** Why the most recent user turn cannot be edited and resent. */
 export type ResendRefusal =
-  /** The session has no turn that ended in completion. */
-  | 'no-completed-turn'
-  /** A turn opened after the last completed one, so the target is not the latest turn. */
+  /** The latest turn did not end in a state this feature may replace. */
+  | 'no-replaceable-turn'
+  /** A turn opened after the target one, so the target is not the latest turn. */
   | 'not-latest-turn'
   /** The target turn recorded no direct human prompt to replace. */
   | 'no-human-prompt'
@@ -101,7 +101,7 @@ export type ResendSubmission =
    */
   | { readonly recorded: true; readonly operation: ResendOperationRecord }
   /**
-   * The host declined a session with no completed turn to record against. No
+   * The host declined a session with no replaceable turn to record against. No
    * model call was made and nothing durable was written, so a repeated
    * submission is a fresh attempt rather than a duplicate.
    */
@@ -117,8 +117,8 @@ export interface ResendRequest {
 declare module '@deepseek-ai/dsh-session/types' {
   interface SessionEventMap {
     /**
-     * A caller asked to edit the latest completed user turn. Recorded before the
-     * host claims the agent, so a request that loses the idle-phase race is
+     * A caller asked to edit the latest replaceable user turn. Recorded before
+     * the host claims the agent, so a request that loses the idle-phase race is
      * still visible as a refusal rather than vanishing from the journal.
      */
     'turn-resend/requested': {

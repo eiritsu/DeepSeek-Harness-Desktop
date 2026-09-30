@@ -1,5 +1,5 @@
 /**
- * Edit the most recent completed user turn and send it again.
+ * Edit the most recent replaceable user turn and send it again.
  *
  * The service owns the whole attempt: it decides whether a turn may be replaced,
  * claims the agent's idle phase to re-validate that decision against the log it
@@ -87,7 +87,7 @@ export class SessionTurnEditResend extends TypertRemoteService {
   }
 
   /**
-   * Replace the latest completed turn's prompt with the edited text and let the
+   * Replace the latest replaceable turn's prompt with the edited text and let the
    * driver send it as a new turn.
    *
    * Submission is idempotent in the caller's `operationId`: an identity the
@@ -172,7 +172,7 @@ export class SessionTurnEditResend extends TypertRemoteService {
   /**
    * Decline a request, recording it against the turn the request reached.
    *
-   * A session with no completed turn leaves no trace, because there is no range
+   * A session with no replaceable turn leaves no trace, because there is no range
    * to name and nothing a repeated call could duplicate. Both events are
    * log-only and written together, so the journal holds a refusal as a complete
    * pair rather than an attempt that is neither started nor settled.

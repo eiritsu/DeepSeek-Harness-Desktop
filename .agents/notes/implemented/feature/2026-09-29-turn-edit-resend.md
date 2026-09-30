@@ -1,4 +1,4 @@
-# Agent Note: Edit and resend a completed turn
+# Agent Note: Edit and resend a replaceable turn
 
 Status: implemented
 
@@ -16,7 +16,9 @@ The `@deepseek-ai/dsh-session-turn-edit-resend` Bundle's Host service `turnResen
 
 A turn that ran tools stays editable. Its tool names ride `check.toolCalls`; the replacement shadows the turn's tool calls, their results, and its answer in the model-visible surface while the log keeps them. The browser half confirms the repeat with the user instead of refusing the turn.
 
-The `@deepseek-ai/dsh-client-ui-turn-edit-resend` browser package adds an edit entry to a settled user message and an inline card above the composer. It calls `ctx.remote.turnResend`, renders the tool disclosure, submits the edited text, and maps each recorded outcome honestly: `admitted` clears the card, `uncertain` states that the result is unknown and offers no repeat, and `refused`/`failed`/`pending` state what the log proves. The `web` profile stacks the Bundle, whose patch mounts the Host service and the browser row. `ui-conversation` hides the seqs a replacement shadowed, so the visible transcript shows the replacement generation.
+Only the latest turn is replaceable, and only once it ended by completion or by the user's cancellation. An error, a block, an output-token ceiling, a crash-orphan closer, and a fork-seed boundary are endings the harness cannot reproduce, so `check` refuses those turns rather than rewriting history it does not own.
+
+The `@deepseek-ai/dsh-client-ui-turn-edit-resend` browser package adds an edit entry to a settled user message and replaces that message with an in-place editor while the attempt is open. It calls `ctx.remote.turnResend`, renders the tool disclosure, submits the edited text, and maps each recorded outcome honestly: `admitted` closes the editor, `uncertain` states that the result is unknown and offers no repeat, and `refused`/`failed`/`pending` state what the log proves. The `web` profile stacks the Bundle, whose patch mounts the Host service and the browser row. `ui-conversation` hides the seqs a replacement shadowed, so the visible transcript shows the replacement generation.
 
 The Bundle's `src/types.ts` is the browser-facing contract outlet: it imports leaf modules only (`@deepseek-ai/dsh-session/types`, never the bare Session entry) and merges no cordis `Context`. The bare Session entry declares `Context.sessions: SessionStore`, and the Client program declares the same key as the API `ISessions`; under `skipLibCheck` the compiler silently keeps the declaration it loads first, so a Host import reachable from the contract flips `ctx.sessions` to the Host store for every client package. The contract keeps Host service declarations out of the client program.
 
@@ -28,7 +30,7 @@ The Bundle's `src/types.ts` is the browser-facing contract outlet: it imports le
 
 **Retry an uncertain operation.** Rejected: the log cannot prove whether the model was called, so a retry could duplicate an irreversible request.
 
-**Reuse the queue editor.** Rejected: a queued message has not entered model history, while a completed turn has already been consumed.
+**Reuse the queue editor.** Rejected: a queued message has not entered model history, while a replaceable turn has already been consumed.
 
 ## Consequences
 

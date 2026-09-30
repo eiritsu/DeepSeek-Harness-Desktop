@@ -21,7 +21,7 @@ import SessionTurnEditResend from '../src/index.ts'
 import type { ResendOperationId } from '../src/types.ts'
 import { findResendOperation, readResendJournal } from '../src/journal.ts'
 import { editPromptContent, selectResendTarget } from '../src/policy.ts'
-import { HANG, MockAdapter, textResponse, toolCallResponse } from './mock-adapter.ts'
+import { HANG, MockAdapter, SILENT_HANG, textResponse, toolCallResponse } from './mock-adapter.ts'
 
 const NEVER_ABORTED = new AbortController().signal
 
@@ -86,6 +86,56 @@ describe('edit and resend eligibility', () => {
       startSeq: agent.session.snapshotEvents().find(event => event.type === 'user/message')!.seq,
       toolCalls: [],
     })
+  })
+
+  it('offers the latest turn the user cancelled and replaces its partial answer', async () => {
+    const { ctx, agent, adapter } = await harness([HANG, textResponse('resent answer')])
+    // Cancel once the partial answer is in flight, so the turn records an
+    // interrupted assistant message the resend must shadow.
+    ctx.on('agent/assistant-stream', ({ agent: subject, frame }) => {
+      if (subject !== agent || frame.type !== 'chunk' || frame.chunk.type !== 'text-delta') return
+      agent.cancel({ kind: 'user' })
+    })
+    prompt(agent, 'stopped question')
+    await settle(agent)
+
+    // The cancelled turn is settled history: its partial answer is on the
+    // surface, so an edit replaces the turn instead of appending beside it.
+    expect(ctx.turnResend.check(agent)).toMatchObject({ eligible: true, text: 'stopped question', turn: 1 })
+
+    const submission = await ctx.turnResend.submit(agent, operation('op-stopped', 'edited stopped question'), NEVER_ABORTED)
+    await settle(agent)
+
+    expect(submission).toMatchObject({ recorded: true, operation: { outcome: 'admitted' } })
+    expect(conversation(agent)).toEqual(['edited stopped question', 'resent answer'])
+    expect(adapter.requests).toHaveLength(2)
+  })
+
+  it('offers a cancelled turn that produced no answer and resends its prompt', async () => {
+    const { ctx, agent, adapter } = await harness([SILENT_HANG, textResponse('resent answer')])
+    const promptAdmitted = new Promise<void>((resolve) => {
+      const dispose = ctx.on('session/event', (_session, event) => {
+        if (event.type !== 'user/message') return
+        dispose()
+        resolve()
+      })
+    })
+    prompt(agent, 'stopped question')
+    await promptAdmitted
+    agent.cancel({ kind: 'user' })
+    await settle(agent)
+    expect(agent.session.snapshotEvents().some(event => event.type === 'assistant/message')).toBe(false)
+
+    // The cancelled turn has no answer to shadow, so its range is the prompt
+    // alone; resending it simply asks again.
+    expect(ctx.turnResend.check(agent)).toMatchObject({ eligible: true, text: 'stopped question', turn: 1 })
+
+    const submission = await ctx.turnResend.submit(agent, operation('op-empty-output', 'edited stopped question'), NEVER_ABORTED)
+    await settle(agent)
+
+    expect(submission).toMatchObject({ recorded: true, operation: { outcome: 'admitted' } })
+    expect(conversation(agent)).toEqual(['edited stopped question', 'resent answer'])
+    expect(adapter.requests).toHaveLength(2)
   })
 
   it('keeps a tool turn editable, discloses its tools, and shadows its calls on resend', async () => {
@@ -157,13 +207,42 @@ describe('edit and resend eligibility', () => {
     expect(ctx.turnResend.check(agent)).toEqual({ eligible: false, refusal: 'inbox-pending' })
   })
 
-  it('refuses a session with no completed turn and records nothing', async () => {
+  it('refuses a session with no replaceable turn and records nothing', async () => {
     const { ctx, agent, adapter } = await harness([textResponse('unused')])
     const submission = await ctx.turnResend.submit(agent, operation('op-empty', 'edited'), NEVER_ABORTED)
 
-    expect(submission).toEqual({ recorded: false, refusal: 'no-completed-turn' })
+    expect(submission).toEqual({ recorded: false, refusal: 'no-replaceable-turn' })
     expect(journalOf(agent)).toEqual([])
     expect(adapter.requests).toEqual([])
+  })
+
+  it('refuses a turn the environment failed', async () => {
+    const { ctx, agent } = await harness([])
+    prompt(agent, 'doomed question')
+    await settle(agent)
+
+    // The exhausted script fails the model call, so the turn ends in error.
+    expect(agent.session.snapshotEvents().some(event => event.type === 'turn/end' && event.data.reason.kind === 'error')).toBe(true)
+    expect(ctx.turnResend.check(agent)).toEqual({ eligible: false, refusal: 'no-replaceable-turn' })
+  })
+
+  it('refuses a settled turn once a later turn owns the surface', async () => {
+    const { ctx, agent } = await harness([textResponse('first answer'), HANG])
+    prompt(agent, 'first question')
+    await settle(agent)
+    const secondStarted = new Promise<void>((resolve) => {
+      const dispose = ctx.on('session/event', (_session, event) => {
+        if (event.type !== 'turn/start' || event.data.turn !== 2) return
+        dispose()
+        resolve()
+      })
+    })
+    prompt(agent, 'second question')
+    await secondStarted
+
+    expect(selectResendTarget(agent.session)).toEqual({ eligible: false, refusal: 'not-latest-turn' })
+    agent.cancel({ kind: 'user' })
+    await settle(agent)
   })
 })
 
@@ -413,7 +492,7 @@ describe('target selection', () => {
     prompt(agent, 'long question')
     await turnStarted
 
-    expect(selectResendTarget(agent.session)).toEqual({ eligible: false, refusal: 'no-completed-turn' })
+    expect(selectResendTarget(agent.session)).toEqual({ eligible: false, refusal: 'no-replaceable-turn' })
     agent.cancel({ kind: 'user' })
     await settle(agent)
   })

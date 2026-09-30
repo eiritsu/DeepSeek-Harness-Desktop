@@ -30,8 +30,11 @@ export function toolCallResponse(callId: string, name: string, args: object): St
 /** Script entry: stream one partial delta, then hold the turn open until aborted. */
 export const HANG = 'hang'
 
+/** Script entry: hold the turn open with no output at all until aborted, so the turn records no assistant message. */
+export const SILENT_HANG = 'silent-hang'
+
 /** One scripted model call. */
-export type ScriptEntry = StreamChunk[] | typeof HANG
+export type ScriptEntry = StreamChunk[] | typeof HANG | typeof SILENT_HANG
 
 /** Adapter that answers each model call from a fixed script. */
 export class MockAdapter extends LlmAdapter {
@@ -63,6 +66,14 @@ export class MockAdapter extends LlmAdapter {
     for (const resolve of this.requestWaiters.splice(0)) resolve()
     const entry = this.script.shift()
     if (entry === undefined) throw new Error('MockAdapter: script exhausted')
+    if (entry === SILENT_HANG) {
+      await new Promise<void>((_resolve, reject) => {
+        const fail = (): void => { reject(new Error('aborted')) }
+        if (options.signal?.aborted === true) { fail(); return }
+        options.signal?.addEventListener('abort', fail, { once: true })
+      })
+      return
+    }
     if (entry === HANG) {
       yield { type: 'block-start', index: 0, blockType: 'text' }
       yield { type: 'text-delta', index: 0, text: 'partial' }
