@@ -1,0 +1,57 @@
+name: Desktop package
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-package-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DSH_TELEMETRY_DISABLED: '1'
+
+jobs:
+  win-x64:
+    name: Package Windows x64
+    runs-on: windows-2025
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Configure pnpm store path
+        id: pnpm-store
+        shell: bash
+        run: |
+          store_root="$RUNNER_TEMP/pnpm-store"
+          mkdir -p "$store_root"
+          echo "PNPM_CONFIG_STORE_DIR=$store_root" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Package unsigned Windows Desktop
+        env:
+          DSH_DESKTOP_APP_ID: ai.deepseek.harness.desktop.electron
+          DSH_DESKTOP_UNSIGNED: '1'
+        run: pnpm run package:desktop:win:x64:unsigned
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-win-x64-unsigned
+          path: apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/deepseek-harness-electron-0.1.21-win-x64.exe
+          if-no-files-found: error
+          retention-days: 7
