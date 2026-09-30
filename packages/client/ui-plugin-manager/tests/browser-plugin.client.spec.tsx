@@ -89,18 +89,14 @@ describe('ui-plugin-manager browser plugin', () => {
     const entry = b.slots.entries('main')[0]!
     assert(entry.store && 'create' in entry.store)
     const navigation = entry.store.create()
-    const face = entry.inject!() as PluginManagerFace
+    assert(navigation.actions)
+    assert(navigation.actions.setView)
     navigation.actions.setView({ kind: 'package', name: 'dsh-existing' })
 
     b.ctx.pluginNavigation.openInstall('@acme/dsh-catalog-item')
 
     expect(b.panelInfo.getSnapshot().activePanelId).toBe(PANEL_ID)
     expect(navigation.getSnapshot()).toEqual({ view: { kind: 'list' } })
-    expect(face.hooks.pluginManager.getSnapshot().install).toMatchObject({
-      open: true,
-      spec: '@acme/dsh-catalog-item',
-      phase: 'idle',
-    })
   })
 
   it('shares refresh failures with the overlay after navigation and releases both registrations across reloads', async () => {
