@@ -1,0 +1,25 @@
+# Bilingual-pair consistency record for 2026-10-01-native-path-file-upload-policies.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-10-01-native-path-file-upload-policies.md
+/agent-note-native-path-file-upload-policies:
+  en: 144b85d8c594d79c
+  zh: e605f1da7d1a2c9f
+/agent-note-native-path-file-upload-policies/problem:
+  en: cb97ead16ccbce06
+  zh: c0cf0cfeb1d1519e
+/agent-note-native-path-file-upload-policies/decision:
+  en: 11169d2a59200151
+  zh: ae46606dd4623845
+/agent-note-native-path-file-upload-policies/alternatives-considered:
+  en: 0d52a9fe1de01f91
+  zh: 16349d3491509419
+/agent-note-native-path-file-upload-policies/consequences:
+  en: 7cd7c7b5faff6439
+  zh: a4a357d5be25135d
+/agent-note-native-path-file-upload-policies/testing:
+  en: 2783be94424be351
+  zh: 2a51d708d4ac4b0a
+/agent-note-native-path-file-upload-policies/related:
+  en: bae0c4160ddef7e9
+  zh: 7472aaaf01890975

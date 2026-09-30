@@ -12,6 +12,7 @@ export type {
 } from './contract/groups.ts'
 export { ConversationController, UnsupportedImageMediaTypeError } from './service.ts'
 export type { IConversation } from './service.ts'
+export { NativeFileUploadPolicies } from './input/native-file-upload-policies.ts'
 export type {
   ConversationContextReader, ConversationLocation,
   ConversationLocationData, ConversationLocationDataScope, ConversationLocationDataSource,
@@ -84,5 +85,7 @@ declare module '@deepseek-ai/cordis' {
     conversation: import('./service.ts').IConversation
     /** Target-neutral Conversation registries and per-Session assembly. */
     uiConversation: import('./conversation/assembly.ts').UiConversation
+    /** Additive policies for routing native-path files into the composer upload rail. */
+    nativeFileUploadPolicies: import('./input/native-file-upload-policies.ts').NativeFileUploadPolicies
   }
 }

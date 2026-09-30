@@ -30,6 +30,7 @@ import { ComposerBlockRegistry } from './input/blocks.ts'
 import type { ComposerBlock } from './contract/composer-blocks.ts'
 import { InputHub } from './input/hub.ts'
 import { ComposerSubmissionPolicy } from './input/submission-policy.ts'
+import { NativeFileUploadPolicies } from './input/native-file-upload-policies.ts'
 import { queueDockEntry } from './queue/QueueDock.tsx'
 import { EnterBehaviorRow } from './settings/EnterBehaviorRow.tsx'
 import type { EnterBehaviorRowInjected } from './settings/EnterBehaviorRow.tsx'
@@ -156,6 +157,9 @@ export function apply(ctx: Context, config: Config = Config({})): void {
   const maxConcurrentFileUploads = config.maxConcurrentFileUploads as number
   const workspaceNavigation = ctx.get('uiWorkspace') as unknown as WorkspaceNavigation
   const uiConversation = new UiConversation(ctx, sessions)
+  const nativeFileUploadPolicies = new NativeFileUploadPolicies()
+  ctx.provide('nativeFileUploadPolicies', nativeFileUploadPolicies)
+  ctx.effect(() => () => { nativeFileUploadPolicies.clear() }, 'ui-conversation: native file upload policies')
 
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-conversation: dictionaries')
   const t = ctx.locale.bind(NS)
@@ -471,6 +475,10 @@ export function apply(ctx: Context, config: Config = Config({})): void {
             const path = bridge?.pathFor(file) ?? ''
             if (directory && path === '') return t('attachment.pathUnavailable')
             if (path === '' || (!directory && isImageMediaType(file.type))) {
+              uploads.push(file)
+              continue
+            }
+            if (!directory && nativeFileUploadPolicies.accepts(file)) {
               uploads.push(file)
               continue
             }

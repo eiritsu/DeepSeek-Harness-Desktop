@@ -436,6 +436,46 @@ describe('Conversation inject API', () => {
     }
   })
 
+  it('routes policy-matched native Office and PDF files through standard upload intake', async () => {
+    vi.stubGlobal('__DSH_HOST_PATHS__', { pathFor: (file: File) => `/proj/${file.name}` })
+    try {
+      const b = await bench()
+      onTestFinished(() => b.runtime.dispose())
+      const composer = b.composerApi(ROOT)
+      const { state } = b.inputApi(ROOT)
+      const policies = b.runtime.ctx.nativeFileUploadPolicies
+      const accepts = vi.fn((file: File) => /\.(docx|pdf)$/i.test(file.name))
+      const dispose = policies.register('office-documents', accepts)
+      const word = new File([Uint8Array.of(1)], 'brief.docx', {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      })
+      const pdf = new File([Uint8Array.of(2)], 'scan.pdf', { type: 'application/pdf' })
+      const folder = new File([], 'records')
+      const text = new File([Uint8Array.of(3)], 'notes.txt', { type: 'text/plain' })
+      const image = new File([Uint8Array.of(4)], 'shot.png', { type: 'image/png' })
+
+      expect(composer.addFiles?.([word, pdf, folder, text, image], new Set([folder]))).toBeNull()
+      expect(state.getSnapshot().draft).toBe('@records/ @notes.txt ')
+      expect(accepts.mock.calls.map(([file]) => file.name)).toEqual(['brief.docx', 'scan.pdf', 'notes.txt'])
+      expect(composer.resolveDraftAttachments?.(state.getSnapshot().attachmentIds).map(file => file.kind))
+        .toEqual(['file', 'file', 'image'])
+      await vi.waitFor(() => { expect(b.rootUpload).toHaveBeenCalledTimes(2) })
+
+      dispose()
+      const afterDispose = new File([Uint8Array.of(5)], 'next.docx')
+      expect(composer.addFiles?.([afterDispose])).toBeNull()
+      expect(state.getSnapshot().draft).toBe('@notes.txt @next.docx ')
+      const late = new File([Uint8Array.of(6)], 'late.docx')
+      policies.register('late-owner', file => file.name === late.name)
+      expect(policies.accepts(late)).toBe(true)
+      await b.feature.dispose()
+      expect(policies.accepts(late)).toBe(false)
+      await b.runtime.dispose()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('preserves selected text and file order and restores pasted directory chips from the draft', async () => {
     vi.stubGlobal('__DSH_HOST_PATHS__', { pathFor: (file: File) => `/proj/${file.name}` })
     onTestFinished(() => { vi.unstubAllGlobals(); cleanup() })
