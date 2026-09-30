@@ -1,0 +1,420 @@
+/* Archived sessions section: toolbar, collapsible Workspace groups, and the
+   destructive confirmations. Every measurement here is a floor or an ellipsis,
+   so a long conversation title or a long Workspace name narrows its own cell
+   instead of widening the settings panel. */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  max-width: 760px;
+  color: var(--dsw-alias-label-primary);
+  container-type: inline-size;
+}
+
+.heading {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.intro {
+  margin: 0;
+  font-size: 13px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* The Settings panel, not the viewport, determines when the toolbar wraps. */
+
+.toolbar {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(145px, 1fr) minmax(165px, 1.15fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.search {
+  min-width: 0;
+}
+
+/* The selects share the search box's box: the Input primitive's height,
+   padding, and corner radius, so the toolbar reads as one row of controls. */
+.select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  min-width: 0;
+  width: 100%;
+  padding: 0 8px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-md);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  cursor: pointer;
+}
+
+.select:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.select:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: -1px;
+}
+
+.selectText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The order selector names what it orders by before naming the active order,
+   and the fixed label gives away its width instead of competing with it. */
+
+.selectLabel {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+@container (max-width: 560px) {
+  .toolbar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .search {
+    grid-column: 1 / -1;
+  }
+}
+
+@container (max-width: 390px) {
+  .toolbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Count and the bulk control share one line; the count keeps the room. */
+
+.meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.metaCount {
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.bulkDelete {
+  flex: none;
+  border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 55%, var(--dsw-alias-border-l3));
+  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 12%, transparent);
+  color: var(--dsw-alias-state-error-primary);
+  white-space: normal;
+  text-align: left;
+}
+
+.bulkDelete:hover:not(:disabled) {
+  border-color: var(--dsw-alias-state-error-primary);
+  background: var(--dsw-alias-interactive-bg-hover-danger);
+}
+
+.bulkDelete:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 2px;
+}
+
+.bulkDelete:disabled {
+  color: var(--dsw-alias-label-dimmed);
+  border-color: var(--dsw-alias-border-l2);
+  background: transparent;
+}
+
+/* Read failure: the page's own sentence says the stream is terminal, and the
+   transport's message names what broke. There is no retry to offer — the
+   Workspace follow stream owns reconnection and publishes nothing to resume it. */
+
+.failure {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-md);
+}
+
+.failureIcon {
+  flex: none;
+  margin-top: 2px;
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.failureText {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+
+.failureTitle {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.failureDetail {
+  margin: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.status {
+  margin: 0;
+  padding: 24px 0;
+  font-size: 13px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* Workspace groups */
+
+.groups {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+}
+
+.groupHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  padding: 6px 4px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.groupHead:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.groupHead:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: -2px;
+  border-radius: var(--dsw-radius-sm);
+}
+
+.groupChevron {
+  display: inline-flex;
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  transition: transform 120ms ease;
+}
+
+.groupChevron[data-collapsed='true'] {
+  transform: rotate(-90deg);
+}
+
+.groupIcon {
+  flex: none;
+}
+
+.groupName {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.groupCount {
+  flex: none;
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.groupPanel {
+  min-width: 0;
+}
+
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 26px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Row: title takes the room, the date and the two commands hold theirs, and
+   the title is the only cell that gives way. */
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 32px;
+  border-radius: var(--dsw-radius-sm);
+  padding: 0 4px;
+}
+
+.row:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.rowName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.rowTime {
+  flex: none;
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.rowActions {
+  flex: none;
+  display: inline-flex;
+  gap: 2px;
+}
+
+/* A row's commands fade in on hover or focus-within, and only where a device
+   can hover: a touch device never fires the hover that would reveal them, so
+   its rows keep both commands visible. Opacity rather than visibility leaves
+   the commands focusable and keeps the row's width unchanged, so revealing one
+   row never reflows its neighbours. */
+@media (hover: hover) {
+  .rowActions {
+    opacity: 0;
+    transition: opacity 80ms ease;
+  }
+
+  .row:hover .rowActions,
+  .row:focus-within .rowActions {
+    opacity: 1;
+  }
+}
+
+/* A narrow settings sheet cannot hold a title, a date, and two commands on one
+   32px line — and touch devices show the commands at all times — so the row
+   becomes two lines: the title takes the first, the date and the commands
+   share the second. Nothing is dropped and neither cell leaves the row. */
+@media (max-width: 560px) {
+  .meta {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .metaCount {
+    flex: 1 1 100%;
+  }
+
+  .bulkDelete {
+    max-width: 100%;
+  }
+
+  .row {
+    flex-wrap: wrap;
+    align-content: center;
+    height: auto;
+    min-height: 32px;
+    padding: 4px;
+    row-gap: 2px;
+  }
+
+  .rowName {
+    flex: 1 1 100%;
+  }
+
+  .rowTime {
+    margin-inline-end: auto;
+  }
+}
+
+.rowAction,
+.rowDanger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: var(--dsw-radius-sm);
+  padding: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.rowAction:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+
+.rowDanger {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.rowDanger:hover {
+  background: var(--dsw-alias-interactive-bg-hover-danger);
+}
+
+.rowAction:disabled,
+.rowDanger:disabled {
+  color: var(--dsw-alias-label-dimmed);
+  cursor: default;
+}
+
+.rowAction:focus-visible,
+.rowDanger:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: -2px;
+}
+
+/* Bulk-deletion scope step: the count and the scope, nothing to overflow. */
+
+.confirmDialog {
+  max-width: 420px;
+}
+
+.confirmText {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.confirmAction {
+  margin-left: 8px;
+}
