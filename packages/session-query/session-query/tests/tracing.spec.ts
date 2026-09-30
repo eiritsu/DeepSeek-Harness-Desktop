@@ -99,6 +99,8 @@ class TracePersistence extends SessionPersistence {
     this.afterList = undefined
   }
 
+  delete(): Promise<void> { return Promise.reject(new Error('not used')) }
+
   create(header: SessionHeader): Promise<SessionHandle> {
     TracePersistence.entries.set(header.id, { meta: structuredClone(header), events: [] })
     return Promise.resolve(new TraceHandle(header.id, structuredClone(header), 'write'))

@@ -14,7 +14,7 @@ import {
   sessionFormatCatalog,
 } from '@deepseek-ai/dsh-session-format-catalog'
 import { readdirSync, type Dirent } from 'node:fs'
-import { open, mkdir, readdir, realpath, link, rm, stat, truncate } from 'node:fs/promises'
+import { lstat, open, mkdir, readdir, realpath, link, rm, stat, truncate, unlink } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { scheduler } from 'node:timers/promises'
@@ -506,6 +506,42 @@ class JsonlSessionPersistence extends SessionPersistence {
     }
     signal?.throwIfAborted()
     return snapshots
+  }
+
+  /**
+   * Remove every committed generation while holding this Session's cross-process writer lock.
+   * @param id - stored Session to remove.
+   * @returns resolution after all generation files are absent.
+   * @throws {SessionPersistenceNotFoundError} when no generation exists.
+   * @throws {SessionAlreadyOwnedError} while a local or cross-process writer owns the session.
+   */
+  async delete(id: SessionId): Promise<void> {
+    this.tracker.claimDelete(id)
+    let lease: SessionWriteLease | undefined
+    try {
+      const target = await this.findDeletionDirectory(id)
+      if (target === undefined) throw new SessionPersistenceNotFoundError(id)
+      const { dir } = target
+      lease = await this.acquireLease(id, undefined, dir)
+      const lockedDirectory = await lstat(dir)
+      if (!lockedDirectory.isDirectory() || lockedDirectory.isSymbolicLink()
+        || lockedDirectory.dev !== target.dev || lockedDirectory.ino !== target.ino) {
+        throw new Error(`session "${id}": storage directory changed while deletion was acquiring its writer lock`)
+      }
+      const generationNames = await this.generationNamesInDirectory(dir)
+      if (generationNames.length === 0) throw new SessionPersistenceNotFoundError(id)
+      for (const { name } of generationNames) await unlink(join(dir, name))
+      this.coldLogMemo.delete(id)
+      const preparation = this.migrationPreparations.get(id)
+      preparation?.controller.abort(new SessionPersistenceNotFoundError(id))
+      if (process.platform !== 'win32') await this.syncDirPosix(dir)
+    } finally {
+      try {
+        await lease?.release()
+      } finally {
+        this.tracker.releaseDelete(id)
+      }
+    }
   }
 
   // --- handle-facing storage internals (package-private via the handle class below) ---
@@ -1498,6 +1534,50 @@ class JsonlSessionPersistence extends SessionPersistence {
     }
     signal?.throwIfAborted()
     return matches[0]
+  }
+
+  /** Locate one id-owned directory without requiring its generations to be readable. */
+  private async findDeletionDirectory(
+    id: SessionId,
+  ): Promise<{ readonly dir: string; readonly dev: number; readonly ino: number } | undefined> {
+    const matches: Array<{ readonly dir: string; readonly dev: number; readonly ino: number }> = []
+    for (const project of await this.listProjectDirs()) {
+      const dir = join(project, encodeSegment(id))
+      let directory: Awaited<ReturnType<typeof lstat>>
+      try {
+        directory = await lstat(dir)
+      } catch (error: unknown) {
+        if (isENOENT(error)) continue
+        throw error
+      }
+      if (!directory.isDirectory() || directory.isSymbolicLink()) {
+        throw new Error(`session "${id}": refusing to delete through a non-directory session path`)
+      }
+      if ((await this.generationNamesInDirectory(dir)).length > 0) {
+        matches.push({ dir, dev: directory.dev, ino: directory.ino })
+      }
+    }
+    if (matches.length > 1) {
+      throw new Error(`duplicate JSONL session id "${id}" appears in multiple project directories`)
+    }
+    return matches[0]
+  }
+
+  /** List only canonical generation filenames; never recurse into directory entries. */
+  private async generationNamesInDirectory(
+    dir: string,
+  ): Promise<Array<{ readonly name: string; readonly version: number }>> {
+    const entries = await readdir(dir, { withFileTypes: true })
+    const compressions: readonly JsonlCompression[] = ['none', 'zstd']
+    return entries.flatMap(({ name }) => {
+      for (const compression of compressions) {
+        const version = parseGenerationLogFilename(name, compression)
+        if (version !== undefined) return [{ name, version, configured: compression === this.compression }]
+      }
+      return []
+    }).sort((left, right) => left.version - right.version
+      || Number(left.configured) - Number(right.configured))
+      .map(({ name, version }) => ({ name, version }))
   }
 
   /** Require an existing configured root to be a readable directory. */

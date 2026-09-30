@@ -165,6 +165,11 @@ class TestPersistence extends SessionPersistence {
     this.revisions.set(entry.meta.id, ++this.nextRevision)
   }
 
+  delete(id: SessionIdType): Promise<void> {
+    if (!TestPersistence.entries.delete(id)) return Promise.reject(new SessionPersistenceNotFoundError(id))
+    return Promise.resolve()
+  }
+
   create(header: SessionHeader): Promise<SessionHandle> {
     TestPersistence.set({ meta: header, events: [] })
     return Promise.resolve(new TestHandle(header.id, structuredClone(header), 'write'))
@@ -831,6 +836,22 @@ describe('SQLite reconciliation and source lifecycle', () => {
     await expect(ctx.sessionQuery.searchSessions({ query: 'durable' })).resolves.toEqual({ items: [] })
     await expect(ctx.sessionQuery.searchEvents({ sessionId: durable.id, query: 'needle' }))
       .rejects.toThrow(expectCode('SESSION_QUERY_SESSION_NOT_FOUND'))
+  })
+
+  it('removes a physically deleted persisted Session from the next indexed query', async () => {
+    const durable = header('physically-deleted', 5)
+    TestPersistence.reset([{ meta: durable, events: messageEvents('remove this needle') }])
+    const ctx = await liveContext()
+    const persistence = await ctx.plugin(TestPersistence)
+    await expect(ctx.sessionQuery.searchSessions({ query: 'needle' }))
+      .resolves.toMatchObject({ items: [{ header: durable, persisted: true }] })
+
+    await ctx.sessionPersistence.delete(durable.id)
+
+    await expect(ctx.sessionQuery.searchSessions({ query: 'needle' })).resolves.toEqual({ items: [] })
+    await expect(ctx.sessionQuery.searchEvents({ sessionId: durable.id, query: 'needle' }))
+      .rejects.toThrow(expectCode('SESSION_QUERY_SESSION_NOT_FOUND'))
+    await persistence.dispose()
   })
 
   it('does not load a persisted log while the same session is live', async () => {

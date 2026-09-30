@@ -1,7 +1,7 @@
 import { MessageId, createMessage } from '@deepseek-ai/dsh-llm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { appendFile, mkdtemp, mkdir, rm, readFile, writeFile, readdir, stat, symlink } from 'node:fs/promises'
+import { appendFile, lstat, mkdtemp, mkdir, rm, readFile, writeFile, readdir, rename, stat, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative, resolve } from 'node:path'
 import { scheduler } from 'node:timers/promises'
@@ -20,6 +20,7 @@ import {
 import { runLiveWritePathContract } from '../../session-persistence/tests/live-write-contract.ts'
 import { LIVE_WRITE_BATCH_MAX_DELAY_MS, type JsonlSessionHandle } from '../src/storage.ts'
 import { JsonlGenerationSourceChangedError } from '../src/generation.ts'
+import { SessionWriteLease } from '../src/lease.ts'
 import SessionStore from '@deepseek-ai/dsh-session'
 
 const statRace = vi.hoisted(() => ({
@@ -35,6 +36,11 @@ const statFailure = vi.hoisted(() => ({
 }))
 
 const readdirFailure = vi.hoisted(() => ({
+  path: undefined as string | undefined,
+  error: undefined as Error | undefined,
+}))
+
+const unlinkFailure = vi.hoisted(() => ({
   path: undefined as string | undefined,
   error: undefined as Error | undefined,
 }))
@@ -100,6 +106,12 @@ vi.mock('node:fs/promises', async (importOriginal) => {
       }
       return actual.readdir(...args)
     }) as typeof actual.readdir,
+    unlink: (async (...args: Parameters<typeof actual.unlink>) => {
+      if (String(args[0]) === unlinkFailure.path && unlinkFailure.error !== undefined) {
+        throw unlinkFailure.error
+      }
+      return actual.unlink(...args)
+    }) as typeof actual.unlink,
   }
 })
 
@@ -302,6 +314,8 @@ afterEach(async () => {
   statFailure.error = undefined
   readdirFailure.path = undefined
   readdirFailure.error = undefined
+  unlinkFailure.path = undefined
+  unlinkFailure.error = undefined
   vi.restoreAllMocks()
   const results = await Promise.allSettled(contexts.map(ctx => ctx.fiber.dispose()))
   for (const d of directories) await rm(d, { recursive: true, force: true })
@@ -697,6 +711,130 @@ describe('JsonlSessionPersistence: immutable format generations', () => {
   })
 
   afterEach(async () => { await ctx.fiber.dispose() })
+
+  it('deletes only this Session generations, preserving the coordination lock inode', async () => {
+    const header = meta('delete-physical-session', '/work')
+    await writeLog(ctx.sessionPersistence, header, oneTurnLog())
+    const dir = sessionDir(root, header.cwd, header.id)
+    const lockPath = join(dir, 'session.lock')
+    const before = await stat(lockPath, { bigint: true })
+    await ctx.sessionPersistence.delete(header.id)
+
+    await expect(ctx.sessionPersistence.stat(header.id)).resolves.toBeUndefined()
+    expect(await readdir(dir)).toEqual(['session.lock'])
+    const after = await stat(lockPath, { bigint: true })
+    expect([after.dev, after.ino]).toEqual([before.dev, before.ino])
+    await expect(readAll(ctx.sessionPersistence, header.id)).rejects.toMatchObject({ name: 'SessionPersistenceNotFoundError' })
+  })
+
+  it('leaves fork-child and sibling generations readable after deleting one Session', async () => {
+    const parent = meta('delete-fork-parent', '/work')
+    const child = { ...meta('delete-fork-child', '/work'), parentSession: parent.id }
+    const sibling = meta('delete-sibling', '/work')
+    await writeLog(ctx.sessionPersistence, parent, oneTurnLog())
+    await writeLog(ctx.sessionPersistence, child, oneTurnLog())
+    await writeLog(ctx.sessionPersistence, sibling, oneTurnLog())
+
+    await ctx.sessionPersistence.delete(parent.id)
+
+    await expect(readAll(ctx.sessionPersistence, child.id)).resolves.toMatchObject({ events: oneTurnLog() })
+    await expect(readAll(ctx.sessionPersistence, sibling.id)).resolves.toMatchObject({ events: oneTurnLog() })
+    await expect(readAll(ctx.sessionPersistence, parent.id)).rejects.toMatchObject({ name: 'SessionPersistenceNotFoundError' })
+  })
+
+  it('deletes canonical generations even when the directory contains an opposite encoding', async () => {
+    const header = meta('delete-mixed-encoding', '/work')
+    await writeLog(ctx.sessionPersistence, header, oneTurnLog())
+    const opposite = generationLogPath(root, header.cwd, header.id, 2, 'zstd')
+    await writeFile(opposite, 'unreadable historical encoding')
+
+    await ctx.sessionPersistence.delete(header.id)
+    expect(await readdir(sessionDir(root, header.cwd, header.id))).toEqual(['session.lock'])
+  })
+
+  it('unlinks a generation symlink without deleting its target', async () => {
+    const header = meta('delete-generation-symlink', '/work')
+    await writeLog(ctx.sessionPersistence, header, oneTurnLog())
+    const generation = rawLogPath(root, header.cwd, header.id)
+    const attachment = join(root, 'shared-attachment')
+    await writeFile(attachment, 'shared bytes')
+    await rm(generation)
+    await symlink(attachment, generation)
+
+    await ctx.sessionPersistence.delete(header.id)
+
+    await expect(readFile(attachment, 'utf8')).resolves.toBe('shared bytes')
+    await expect(stat(generation)).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('refuses a symlinked Session directory without traversing its target', async () => {
+    const header = meta('delete-directory-symlink', '/work')
+    await writeLog(ctx.sessionPersistence, header, oneTurnLog())
+    const dir = sessionDir(root, header.cwd, header.id)
+    const target = join(root, 'outside-session-target')
+    await mkdir(target)
+    const targetFile = join(target, 'session.v3.jsonl')
+    await writeFile(targetFile, 'protected session bytes')
+    await rm(dir, { recursive: true })
+    await symlink(target, dir, 'dir')
+
+    await expect(ctx.sessionPersistence.delete(header.id)).rejects.toThrow(/refusing to delete through a non-directory/)
+    await expect(readFile(targetFile, 'utf8')).resolves.toBe('protected session bytes')
+  })
+
+  it('rechecks the Session directory identity after acquiring its lock', async () => {
+    const header = meta('delete-directory-race', '/work')
+    await writeLog(ctx.sessionPersistence, header, oneTurnLog())
+    const dir = sessionDir(root, header.cwd, header.id)
+    const relocated = join(root, 'relocated-session-directory')
+    const acquire = SessionWriteLease.acquire.bind(SessionWriteLease)
+    vi.spyOn(SessionWriteLease, 'acquire').mockImplementation(async (path, id) => {
+      const lease = await acquire(path, id)
+      await rename(path, relocated)
+      await symlink(relocated, path, 'dir')
+      return lease
+    })
+
+    await expect(ctx.sessionPersistence.delete(header.id)).rejects.toThrow(/storage directory changed/)
+    await expect(readFile(join(relocated, generationLogFilename(SESSION_FORMAT_VERSION, 'none')), 'utf8'))
+      .resolves.toContain('"type":"session"')
+    expect((await lstat(dir)).isSymbolicLink()).toBe(true)
+  })
+
+  it('retains the highest generation when unlinking it fails after older files were removed', async () => {
+    const header = meta('delete-generation-failure', '/work')
+    await writeLog(ctx.sessionPersistence, header, oneTurnLog())
+    const dir = sessionDir(root, header.cwd, header.id)
+    const older = generationLogPath(root, header.cwd, header.id, 0, 'none')
+    const middle = generationLogPath(root, header.cwd, header.id, SESSION_FORMAT_VERSION - 1, 'none')
+    const highest = generationLogPath(root, header.cwd, header.id, SESSION_FORMAT_VERSION, 'none')
+    await writeFile(older, 'older generation')
+    await writeFile(middle, 'middle generation')
+    unlinkFailure.path = highest
+    unlinkFailure.error = Object.assign(new Error('simulated unlink failure'), { code: 'EIO' })
+
+    await expect(ctx.sessionPersistence.delete(header.id)).rejects.toMatchObject({ code: 'EIO' })
+    await expect(readAll(ctx.sessionPersistence, header.id)).resolves.toMatchObject({ events: oneTurnLog() })
+    await expect(stat(older)).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(stat(middle)).rejects.toMatchObject({ code: 'ENOENT' })
+    await expect(stat(highest)).resolves.toBeDefined()
+    expect(await readdir(dir)).toContain('session.lock')
+  })
+
+  it('refuses deletion while another persistence instance owns the writer lock', async () => {
+    const header = meta('delete-foreign-writer', '/work')
+    await writeLog(ctx.sessionPersistence, header, oneTurnLog())
+    const foreign = new Context()
+    await foreign.plugin(JsonlSessionPersistence, { root, compression: 'none' })
+    const writer = await foreign.sessionPersistence.open(header.id, 'write')
+    try {
+      await expect(ctx.sessionPersistence.delete(header.id)).rejects.toMatchObject({ name: 'SessionAlreadyOwnedError' })
+      await expect(readAll(ctx.sessionPersistence, header.id)).resolves.toMatchObject({ events: oneTurnLog() })
+    } finally {
+      await writer.close()
+      await foreign.fiber.dispose()
+    }
+  })
 
   it.each([3, SESSION_FORMAT_VERSION])('shares deeply frozen opaque JSON from format v%s', async (version) => {
     type NestedValue = {

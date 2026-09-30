@@ -439,6 +439,17 @@ export class JsonlBackendTracker {
     this.writers.delete(id)
   }
 
+  /** Claim an id for deletion, excluding local creates and write opens. */
+  claimDelete(id: SessionId): void {
+    if (this.writers.has(id)) throw new SessionAlreadyOwnedError(id)
+    this.writers.set(id, null)
+  }
+
+  /** Release an id after deletion or a failed delete. */
+  releaseDelete(id: SessionId): void {
+    this.writers.delete(id)
+  }
+
   /**
    * The pending entry for a created-but-unmaterialized session, if any.
    * @param id - the session to look up.

@@ -117,6 +117,10 @@ class TestPersistence extends SessionPersistence {
   onRead: (() => void | Promise<void>) | undefined
   onStat: (() => void | Promise<void>) | undefined
 
+  async delete(id: SessionId): Promise<void> {
+    if (!this.durable.delete(id)) throw new SessionPersistenceNotFoundError(id)
+  }
+
   async create(header: SessionHeader): Promise<SessionHandle> {
     if (this.durable.has(header.id)) throw new SessionAlreadyExistsError(header.id)
     const stored: StoredSession = { meta: header, events: [] }
