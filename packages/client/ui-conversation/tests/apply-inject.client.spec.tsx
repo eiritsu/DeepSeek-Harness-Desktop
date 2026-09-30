@@ -464,7 +464,7 @@ describe('Conversation inject API', () => {
       dispose()
       const afterDispose = new File([Uint8Array.of(5)], 'next.docx')
       expect(composer.addFiles?.([afterDispose])).toBeNull()
-      expect(state.getSnapshot().draft).toBe('@notes.txt @next.docx ')
+      expect(state.getSnapshot().draft).toBe('@records/ @notes.txt @next.docx ')
       const late = new File([Uint8Array.of(6)], 'late.docx')
       policies.register('late-owner', file => file.name === late.name)
       expect(policies.accepts(late)).toBe(true)
