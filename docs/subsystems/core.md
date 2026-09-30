@@ -42,6 +42,13 @@ Source: [`packages/core/agent/src/index.ts`](../../packages/core/agent/src/index
  */
 interface AgentHandle {
   agent: Agent
+  /**
+   * Seal this Agent against new input and dispose it only when it is idle with
+   * no queued inbox work. The check and seal are synchronous; a false result
+   * leaves the Agent untouched.
+   * @returns true after disposal, or false when the Agent is active or queued.
+   */
+  disposeIfIdle(): Promise<boolean>
   dispose(): Promise<void>
 }
 ```

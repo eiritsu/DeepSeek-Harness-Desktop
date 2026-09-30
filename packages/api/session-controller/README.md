@@ -27,6 +27,8 @@ Desktop analytics follows the [product collection policy](../../client/product-a
 <a id="use-this-package"></a>
 ## Use this package
 
+Every Session list summary carries `createdAt` from its stored Session header; `updatedAt` remains the most recent activity time.
+
 History pages and follow opening snapshots carry one `{ type: 'event', event: SessionWireEvent }` record per durable Session event. The Client retains each accepted record as one durable `SessionEventLikeEntry`; Assistant token boundaries remain inside the compact stream on `assistant/message` or `assistant/attempt`. Tool arguments, result content, failures, and `tool/result.data.meta` pass through unchanged; the controller does not resolve a Tool definition, run a presenter, or attach UI data.
 
 The Client journal validates current Session event envelopes before publishing follow snapshots, live entries, or history pages. It reuses the browser-safe Session validators for required surface markers, exact replacement endpoints, earlier unique source seqs, embedded Assistant provider metadata, request-header omissions, and tool-error consistency. Invalid records fail without field stripping or normalization; range membership and source existence remain durable-log checks on the Host.
@@ -56,7 +58,7 @@ The user-invocable `skills/list` metadata includes the winning provider’s opti
 
 Fork copies the exact inclusive event prefix selected by `atSeq`, including a cut inside an open turn. The child records its inherited marker before synthetic fork results and closing events. Omitting `atSeq` selects the latest completed turn and its standalone tail, stopping before the next turn or queued input; a nonexistent event is rejected. The chat action selects a completed turn.
 
-A resume blocked by an existing write handle returns `session/writer-held` with the Session id; other resume failures retain `gateway/internal`.
+A resume blocked by an existing write handle returns `session/writer-held` with the Session id; other resume failures retain `gateway/internal`. The controller retains each AgentHandle it creates or resumes. Workspace deletion reserves the Session id against new resolves and mutations, waits for in-flight creation or resume, then asks only this controller's handle to atomically close if idle and without queued input; an active or queued handle is left untouched and deletion is refused. A live Agent owned by another provider and a writer in another process also block deletion. If physical deletion fails after the idle Agent closes, the reservation is released and a later lookup can resume the Session.
 
 `loadThrough(seq)` retains older pages privately until its shared target is covered or loading ends, then publishes the successful pages as one ordered prepend. Live events remain visible while history loads. A later page failure retains the successful prefix; replacing the history window discards buffered pages from the replaced window. Ordinary `loadOlder()` publishes one Host-selected page directly.
 
@@ -83,8 +85,6 @@ References keep local Session data, scoped Contexts, and history streams alive, 
 GUI model selection requires the exact provider/model pair in the available catalog; unavailable choices reject with `session/model-unavailable`. Prompt admission retains the saved route without a catalog availability gate, so request execution reports missing credentials or unavailable models. `initializeDefaultModel()` saves the first available account model after login when no other provider has a configured API key; credential checks use configured references independently of model availability. A provider with no available models rejects initialization with `session/provider-models-unavailable`. Availability never substitutes another model or rewrites a Session selection.
 
 A successful `selectModel` response acknowledges the Session-local selection without waiting for the default profile setting to save. Default saves run in the background in submission order; a failure logs a warning and leaves the Session selection intact. New Sessions read the last successfully saved default.
-
-A selection stores the reasoning level a person chose from the fixed ladder — `Default`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` — without asking whether the chosen route can send it, because the choice is the intent and the request is what has to encode it. `Default` stores no level at all, leaving the model's own default to be materialized when a request goes out. A level the route cannot encode is refused by that request as `UNSUPPORTED_REASONING_EFFORT` and recorded as the turn's error; the selection is kept, so the person can change it without re-picking the model.
 
 -----
 

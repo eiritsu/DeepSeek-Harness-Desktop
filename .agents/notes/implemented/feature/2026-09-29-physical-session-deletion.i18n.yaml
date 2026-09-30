@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-09-29-physical-session-deletion.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-29-physical-session-deletion.md
+/agent-note-physical-session-deletion:
+  en: b15cc13566508067
+  zh: b4fc8aa38d055813
+/agent-note-physical-session-deletion/problem:
+  en: 465309202ef7aaa2
+  zh: 157155a2db2ee152
+/agent-note-physical-session-deletion/decision:
+  en: 40d512501e723d57
+  zh: c7879d34690e8b64
+/agent-note-physical-session-deletion/alternatives-considered:
+  en: ed4aa4bd7a4811bb
+  zh: 29a71486c83d54bd
+/agent-note-physical-session-deletion/consequences:
+  en: a01f1fe43b0fb304
+  zh: 0f359b14cbccf313

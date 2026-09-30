@@ -27,6 +27,8 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
+每条 Session 列表 summary 的 `createdAt` 来自持久 Session header；`updatedAt` 保留最近活动时间。
+
 历史页与 follow opening 快照为每个持久 Session 事件携带一条 `{ type: 'event', event: SessionWireEvent }` record。Client 把每条已接受 record 保留为一个持久 `SessionEventLikeEntry`；Assistant token 边界保留在 `assistant/message` 或 `assistant/attempt` 的紧凑流内。工具参数、结果内容、失败信息和 `tool/result.data.meta` 原样通过；控制器不解析工具定义、不运行展示转换器，也不附加 UI 数据。
 
 Client journal 在发布 follow 快照、live entry 或历史页之前验证当前 Session 事件 envelope。它复用浏览器安全的 Session validator，检查必需的 surface marker、精确的 replacement endpoint、更早且唯一的 source seq、内嵌 Assistant 提供方元数据、request header 可选字段的省略规则以及工具错误一致性。无效 record 直接失败，不删除字段或归一化；范围成员与来源存在性仍由 Host 的持久日志检查。
@@ -56,7 +58,7 @@ Session 对象还承载本地提交回显：`session.beginSubmission` 在调用�
 
 Fork 复制 `atSeq` 所选的精确事件前缀，包含切点事件，允许在开放轮次内截取。子会话在合成的 fork 结果和结束事件之前记录继承标记。省略 `atSeq` 时选择最近已结束轮次及其独立尾部，在下一轮次或排队输入之前停止；不存在的事件会被拒绝。聊天操作选择已结束轮次。
 
-恢复会话时若已有写句柄占用，返回 `session/writer-held`，并携带会话 id；其他恢复失败仍返回 `gateway/internal`。
+恢复会话时若已有写句柄占用，返回 `session/writer-held`，并携带会话 id；其他恢复失败仍返回 `gateway/internal`。控制器保留自己创建或恢复的每个 AgentHandle。Workspace 删除会先为 Session id 设置准入门禁，阻止新的解析与变更并等待正在进行的创建或恢复，然后仅请求本控制器持有的 handle 在空闲且没有排队输入时原子关闭；活动或排队中的 handle 保持不动并拒绝删除。其他 provider 持有的 live Agent，以及另一进程的 writer，也会阻止删除。若空闲 Agent 关闭后物理删除失败，准入门禁会释放，后续查询可以恢复该 Session。
 
 `loadThrough(seq)` 在共享目标被覆盖或加载结束前私下保留较早页面，随后把成功取得的页面按顺序作为一次前插发布。历史加载期间实时事件仍然可见。后续页面失败时保留已成功取得的部分；历史窗口被替换时丢弃被替换窗口的暂存页面。普通 `loadOlder()` 直接发布 Host 选取的一页结果。
 
@@ -83,8 +85,6 @@ Client 的首次 `follow`、重连首屏与 `loadOlder()` 至少请求 50 条以
 GUI 模型选择要求确切提供方／模型对出现在可用目录中；不可用的选择以 `session/model-unavailable` 拒绝。提示词准入保留已保存的路由，不按目录可用性阻断发送，由请求执行报告凭据缺失或模型不可用。`initializeDefaultModel()` 在账号登录后、其他提供方均未配置 API key 时，将第一个可用账号模型保存为默认模型；凭据检查使用已配置的引用，不依赖模型是否可用。提供方没有可用模型时，初始化以 `session/provider-models-unavailable` 拒绝。可用性变化不会替换模型或改写会话选择。
 
 `selectModel` 成功返回表示会话级模型选择已生效，不等待默认 profile 设置保存。默认设置在后台按提交顺序保存；保存失败会记录警告，并保留会话选择。新会话读取最近一次成功保存的默认值。
-
-选择会原样记录人在固定阶梯——`Default`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`——中选定的推理等级，不先问所选路由能否发送：这个选择是意图，能否编码由发请求时决定。选 `Default` 时不记录任何等级，模型自身的默认值在请求发出时才物化。路由无法编码的等级由该请求以 `UNSUPPORTED_REASONING_EFFORT` 拒绝，并记录为该轮的错误；选择被保留下来，因此人可以直接改等级而不必重选模型。
 
 -----
 

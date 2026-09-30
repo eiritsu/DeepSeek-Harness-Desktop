@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-09-29-archived-sessions-settings-page.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-29-archived-sessions-settings-page.md
+/agent-note-archived-sessions-settings-page:
+  en: 82c0823c1115b02e
+  zh: 686f85ba6e0f76b5
+/agent-note-archived-sessions-settings-page/problem:
+  en: e35ddd10b7e83fd0
+  zh: a0305a1a18255418
+/agent-note-archived-sessions-settings-page/decision:
+  en: b8b1b4c7c79521fb
+  zh: a3962b05e948c6b1
+/agent-note-archived-sessions-settings-page/alternatives-considered:
+  en: 5b3c1bb032b275ee
+  zh: d942dcbdde03c2e8
+/agent-note-archived-sessions-settings-page/consequences:
+  en: 8b3d472fcf1a336c
+  zh: d2b62e8906af1122

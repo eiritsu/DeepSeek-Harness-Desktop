@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to keep an ordered, persistent list of project directories and the sessions run in each directory. Hosts can build project sidebars, hide sessions from grouping without deleting their histories, and remove projects without deleting folders, files, or sessions. Re-adding a removed directory creates a fresh project, while sessions whose directories cannot be validated remain ungrouped. Choose it for GUI or host workflows that need durable project grouping; it is invisible to models and adds no prompt or request-context cost, but requires session persistence and storage backends.
+Use this package to keep an ordered, persistent list of project directories and the sessions run in each directory. Hosts can hide sessions from grouping without deleting their histories, physically delete an individual Session after its work is idle, and remove projects without deleting folders, files, or sessions. Re-adding a removed directory creates a fresh project, while sessions whose directories cannot be validated remain ungrouped. Choose it for GUI or host workflows that need durable project grouping; it is invisible to models and adds no prompt or request-context cost, but requires session persistence and storage backends.
 
 ## Table of Contents
 
@@ -75,6 +75,8 @@ A session joins the project of the directory it runs in: create a session in a p
 ### Hiding and restoring sessions, and removing projects
 
 Hide a session from the grouping when it should stop appearing there: it disappears from the visible list, while its session, history, and place in the project stay intact. A session with running work — its own turn, a running subagent, a background job, or an active reminder — is not hidden underneath that work: the registry refuses with the list of what runs, and a caller that asks to stop the work first has it stopped the way the user's own stop actions do, then hidden. Restore a hidden session when it should appear again: it returns to its recorded position under its project, or to the ungrouped sessions when it belongs to none, and continues the conversation from a regularly ended log. Remove a project when it is no longer needed: it leaves the list, and its folder, files, and session histories are never touched — those sessions become ungrouped. Adding the same directory again afterwards starts a fresh project without the old sessions.
+
+`workspaceRegistry.deleteSession(id)` is different from hiding: it refuses while the Session has active or queued work, while a live Agent is owned elsewhere, or while another process holds the writer lock. The Session Controller reserves the id against new API commands and closes only its own idle Agent before persistence physically removes every stored generation. The registry clears membership, archive, and pin references and publishes list removal; a failed metadata cleanup can be retried with the same id. Deletion does not delete fork children or shared attachments. The JSONL backend retains the empty Session directory and coordination lock file after deletion so another process cannot race a new lock inode against the old writer.
 
 -----
 
