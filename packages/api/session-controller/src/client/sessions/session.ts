@@ -1,7 +1,7 @@
 // Sessions remain resident after creation so their open Remote sources keep running off-screen.
 
 import type { Context } from '@deepseek-ai/cordis'
-import type { InboxState, InboxTarget } from '@deepseek-ai/dsh-agent/types'
+import type { InboxClientState, InboxTarget } from '@deepseek-ai/dsh-agent/types'
 import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
 import type { AttachmentIdType, FileAttachmentRef, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { SubagentAddress } from '@deepseek-ai/dsh-subagent/client'
@@ -696,7 +696,7 @@ export class Session implements SessionFace {
     }
     for (const entry of visible) this.observeSubmissionEvent(entry.event)
     if (projections !== undefined) {
-      const inbox = projections.values.inbox as InboxState | undefined
+      const inbox = projections.values.inbox as InboxClientState | undefined
       for (const target of ['next-turn', 'next-step'] as const) {
         this.observeSubmissionInsertions(target, inbox?.[target] ?? [], 0, projections.asOfSeq)
       }
@@ -827,7 +827,7 @@ export class Session implements SessionFace {
   /** Inbox acceptance retires queued echoes; its watermark completes admitted Chat handoffs. */
   private observeSubmissionInbox(): void {
     if (this.submissionSettlements.size === 0) return
-    const inbox = this.projections.get('inbox') as InboxState | undefined
+    const inbox = this.projections.get('inbox') as InboxClientState | undefined
     if (inbox === undefined) return
     const seq = this.projections.seqOf('inbox')
     for (const target of ['next-turn', 'next-step'] as const) {

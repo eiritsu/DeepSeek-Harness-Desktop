@@ -130,6 +130,19 @@ it('checks macOS directory packages without writing a release record', async () 
   expect(writeFileSync).not.toHaveBeenCalled()
 })
 
+it('builds only an unsigned macOS DMG and never notarizes or records a release', async () => {
+  const { run, stages } = supervisor()
+  await packageTarget(parseDesktopPackageInvocation(['mac-arm64', '--unsigned'], 'darwin', 'arm64'), environment, run)
+  const builders = stages.filter(stage => stage.startsWith('exec electron-builder'))
+  expect(builders).toEqual(['exec electron-builder --config electron-builder.config.mjs --mac --arm64 --publish never'])
+  expect(stages).toContain('exec tsx scripts/smoke-packaged-runtime.ts --unsigned')
+  expect(stages).not.toContain('exec tsx scripts/smoke-packaged-runtime.ts')
+  expect(withMacOSNotarizationProxy).not.toHaveBeenCalled()
+  expect(packageMacOSArtifacts).not.toHaveBeenCalled()
+  for (const call of run.run.mock.calls) expect(call[3].env.DSH_DESKTOP_UNSIGNED).toBe('1')
+  expect(writeFileSync).not.toHaveBeenCalled()
+})
+
 it.each([undefined, '2'])('passes macOS pack concurrency %s only to workspace packing and download routing only to download stages', async (concurrency) => {
   const { run } = supervisor()
   await packageTarget(parseDesktopPackageInvocation(['mac-arm64', '--prepare-only'], 'darwin', 'arm64'), {

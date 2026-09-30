@@ -129,10 +129,27 @@ describe('desktop macOS release signature', () => {
     })
   })
 
-  it('rejects unsigned macOS builds and malformed signing modes', async () => {
+  it('builds only an unsigned macOS DMG without signing, notarization, or updater metadata', async () => {
     const { createElectronBuilderConfig } = await import('../electron-builder.config.mjs')
-    expect(() => createElectronBuilderConfig({ ...RELEASE_ENVIRONMENT, DSH_DESKTOP_UNSIGNED: '1' }))
-      .toThrow(/unsigned builds require Windows/u)
+    const config = createElectronBuilderConfig({
+      DSH_DESKTOP_APP_ID: RELEASE_ENVIRONMENT.DSH_DESKTOP_APP_ID,
+      DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN: 'https://policy.example.com',
+      DSH_DESKTOP_MANDATORY_UPDATE_CONFIG: JSON.stringify({ allowedAuthOrigins: ['https://login.example.com'] }),
+      DSH_DESKTOP_TARGET_PLATFORM: 'darwin',
+      DSH_DESKTOP_TARGET_ARCH: 'arm64',
+      DSH_DESKTOP_UNSIGNED: '1',
+    }, 'darwin', 'arm64')
+    expect(portablePath(config.directories.output)).toContain('/targets/mac-arm64/unsigned-artifacts')
+    expect(config.artifactName).toBe('deepseek-harness-${version}-${os}-${arch}-unsigned.${ext}')
+    expect(config).toMatchObject({
+      mac: { identity: null, forceCodeSigning: false, notarize: false, target: ['dmg'] },
+      dmg: { sign: false, writeUpdateInfo: false },
+      publish: null,
+    })
+  })
+
+  it('rejects malformed signing modes', async () => {
+    const { createElectronBuilderConfig } = await import('../electron-builder.config.mjs')
     expect(() => createElectronBuilderConfig({ ...RELEASE_ENVIRONMENT, DSH_DESKTOP_UNSIGNED: 'yes' }))
       .toThrow(/must be 0 or 1/u)
   })

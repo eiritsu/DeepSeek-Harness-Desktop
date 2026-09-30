@@ -206,6 +206,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Adapters register provider implementations; the loop and compaction call the provider-neutral stream service.',
   },
   {
+    key: 'modelCatalog',
+    pkg: 'model-catalog',
+    title: 'Shared canonical model facts',
+    mode: 'core',
+    consumers: ['llm-pi-ai'],
+    note: 'Publishes one generation of models.dev facts per canonical model; an adapter pins one generation while it describes a model and encodes a request against it.',
+  },
+  {
     key: 'deepseekLlmApiExtensions',
     pkg: 'deepseek-llm-api-extensions',
     title: 'Official DeepSeek request extensions',
@@ -467,6 +475,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     title: 'Session-level feedback recorder',
     mode: 'core',
     note: 'Records one Session-level remark with its category as a log-only feedback/record event on a live Session through the Host unary Remote contract; the /feedback command shares the same producer.',
+  },
+  {
+    key: 'turnResend',
+    pkg: 'session-turn-edit-resend',
+    title: 'Durable edit-and-resend admission',
+    mode: 'core',
+    consumers: ['client-ui-turn-edit-resend'],
+    note: 'Owns the append-only surface replacement for the latest completed turn, its idempotent operation journal, and the pre-request flush barrier through the Host unary Remote contract. A resend shadows the old turn in the model-visible surface while the log keeps it; tool turns stay editable and disclose their tools.',
   },
   {
     key: 'workspaceRegistry',

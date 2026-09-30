@@ -240,6 +240,7 @@ declare module '@deepseek-ai/cordis' {
 }
 
 export { DEFAULT_MAX_PARALLEL_TOOL_CALLS }
+export type { ClaimedInput } from './inbox.ts'
 
 /**
  * One launcher-selected session identity for a configured agent. `resume`

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import type { ProcessGroupData } from '../src/client/contract/process-groups.ts'
-import type { InboxState } from '@deepseek-ai/dsh-agent/types'
+import type { InboxClientState } from '@deepseek-ai/dsh-agent/types'
 import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
@@ -39,7 +39,7 @@ import { en, zh } from '../src/client/locale.ts'
 import { AssistantNodeView } from '../src/client/chat/AssistantNodeView.tsx'
 import { CommandNodeView, ManualCompactionNodeView } from '../src/client/chat/CommandNodeView.tsx'
 import {
-  CompactionNodeView, ContextMessageNodeView, RetryNodeView, TurnErrorNodeView,
+  CompactionNodeView, ContextMessageNodeView, RetryNodeView, SteeringMessageNodeView, TurnErrorNodeView,
   TurnMaxTokensNodeView, UnknownNodeView, UserMessageNodeView,
 } from '../src/client/chat/MessageItem.tsx'
 import { TurnTailNodeView } from '../src/client/chat/TurnTailNodeView.tsx'
@@ -86,7 +86,7 @@ const SID = 's1' as SessionId
 type RoutedChatNodeOwner = ChatNodeOwnerProps & { readonly node: ChatNode }
 
 interface TestSessionSnapshot extends SessionSnapshot {
-  readonly testInbox?: InboxState
+  readonly testInbox?: InboxClientState
 }
 
 function sessionSnapshot(overrides: Partial<TestSessionSnapshot> = {}): TestSessionSnapshot {
@@ -336,7 +336,7 @@ function makeHarness(
       case 'user':
         return <UserMessageNodeView {...nodeProps} node={nodeOwner.node} />
       case 'steering':
-        return <UserMessageNodeView {...nodeProps} node={nodeOwner.node} />
+        return <SteeringMessageNodeView {...nodeProps} node={nodeOwner.node} />
       case 'context':
         return <ContextMessageNodeView {...nodeProps} node={nodeOwner.node} />
       case 'assistant-step':
@@ -1794,7 +1794,7 @@ describe('ChatView', () => {
         : pending.find(input => element.textContent?.includes(input.text))!.requestId
           + (element.hasAttribute('data-submission-echo') ? '*' : ''))
       expect(flow()).toEqual(['A*', 'B*', 'C*'])
-      const inbox: InboxState = { 'next-step': [], 'next-turn': hostOrder.split('').map(id => ({
+      const inbox: InboxClientState = { 'next-step': [], 'next-turn': hostOrder.split('').map(id => ({
         id: id as never, role: 'user', source: { kind: 'user', rpcId: id as never },
         content: [{ type: 'text', text: `input ${id}` }],
       })) }
@@ -1846,7 +1846,7 @@ describe('ChatView', () => {
 
   it.each(['compact', 'standard', 'detailed'] as const)(
     'hides an admitted local steer while its Inbox claim projection is delayed (%s)', (mode) => {
-      const pending: InboxState['next-step'] = ['first', 'second'].map(text => ({
+      const pending: InboxClientState['next-step'] = ['first', 'second'].map(text => ({
         id: text as never, role: 'user', source: { kind: 'user', rpcId: text as never },
         content: [{ type: 'text', text: `steer ${text}` }],
       }))

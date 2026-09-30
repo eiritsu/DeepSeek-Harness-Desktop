@@ -145,6 +145,13 @@ export class SessionCommandController {
 
   /**
    * Validate and install one Session-local model selection; save the default in the background.
+   *
+   * The selection is stored as the intent a person expressed: every level of
+   * the fixed ladder is selectable whatever the serving route can encode, and
+   * the request that carries the intent is where a level this route cannot
+   * encode is refused as `UNSUPPORTED_REASONING_EFFORT`. Choosing the Default
+   * row therefore stores no effort at all, and the model's own default is
+   * materialized at request time rather than being written back as a choice.
    * @param request - Session identity and requested model selection.
    * @returns the normalized selection installed for the Session, without waiting for default persistence.
    */
@@ -153,19 +160,12 @@ export class SessionCommandController {
     return this.agents.serializeImageAdmission(agent, async () => {
       try {
         await this.requireModel(request)
-        const resolved = await this.ctx.llm.resolveCallConfig({
+        const selected: AgentModelSelection = {
           provider: request.provider,
           model: request.model,
           ...(request.reasoningEffort === undefined
             ? {}
             : { reasoningEffort: ReasoningEffortId(request.reasoningEffort) }),
-        })
-        const selected: AgentModelSelection = {
-          provider: resolved.provider,
-          model: resolved.model,
-          ...(resolved.reasoningEffort === undefined
-            ? {}
-            : { reasoningEffort: resolved.reasoningEffort }),
         }
         this.agents.selectForNextRequest(agent, selected)
         void this.ctx.agentDefaultModel.saveSelection(selected).catch((error: unknown) => {

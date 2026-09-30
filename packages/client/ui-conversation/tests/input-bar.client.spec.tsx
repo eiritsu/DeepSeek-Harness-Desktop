@@ -9,7 +9,7 @@
 // the shell (jsdom's beforeinput lacks the ranges Lexical needs).
 
 import './control-row-dom.ts'
-import type { InboxState } from '@deepseek-ai/dsh-agent/types'
+import type { InboxClientState } from '@deepseek-ai/dsh-agent/types'
 import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
@@ -83,8 +83,8 @@ interface BenchOptions {
   onRequestWorkspace?: () => void
   promptError?: SessionSnapshot['promptError']
   /** Authoritative queue rows served to the machine overlay (empty = none). */
-  queue?: InboxState['next-turn']
-  nextStep?: InboxState['next-step']
+  queue?: InboxClientState['next-turn']
+  nextStep?: InboxClientState['next-step']
   /** The hub's steer-all face (empty-draft accelerated Enter). */
   steerQueue?: () => void
   variant?: 'hero' | 'composer'
@@ -107,7 +107,7 @@ interface BenchOptions {
 }
 
 /** One pending queue row (the runtime snapshot shape, as the dock tests build it). */
-function row(id: string): InboxState['next-turn'][number] {
+function row(id: string): InboxClientState['next-turn'][number] {
   return {
     id: id as never, role: 'user', source: { kind: 'user' },
     content: [{ type: 'text', text: id }],
@@ -134,7 +134,7 @@ function bench(over?: BenchOptions) {
     actx: SCTX,
     defaultSink: sink,
     commandAttachments: { serialize: () => Promise.resolve([]), release: () => {}, unsupportedNotice: (token: string) => `${token.trim()} attachments-unsupported` },
-    inbox: createSnapshotStore<InboxState>({
+    inbox: createSnapshotStore<InboxClientState>({
       'next-turn': over?.queue ?? [],
       'next-step': over?.nextStep ?? [],
     }),

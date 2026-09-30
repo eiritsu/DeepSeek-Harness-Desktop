@@ -38,10 +38,41 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
 /** One of the two ordered pending-message lists owned by an agent. */
 export type InboxTarget = 'next-turn' | 'next-step'
 
-/** Complete pending Inbox value reconstructed from durable splices. */
-export interface InboxState {
+/**
+ * Surface range one resent user message takes the place of.
+ *
+ * The resent message enters the surface where the range stood: the log keeps
+ * both records, `Session.deriveMessages()` returns the resent message in place
+ * of the shadowed nodes, and the shadowed nodes stay readable in the log. The
+ * range and its complete cited sources are validated by `Session.append()` when
+ * the message is admitted.
+ */
+export interface SurfaceReplacement {
+  /** Seq of the first shadowed surface node. */
+  readonly startSeq: SessionSeq
+  /** Seq of the last shadowed surface node. */
+  readonly endSeq: SessionSeq
+  /** Every shadowed surface node, ascending. */
+  readonly sourceEventSeqs: readonly SessionSeq[]
+}
+
+/** Surface ranges of pending resends, keyed by the pending message identity. */
+export type SurfaceReplacements = Readonly<Record<string, SurfaceReplacement>>
+
+/**
+ * Pending Inbox value a client receives. A queued resend's surface range is
+ * admitted by the host driver and has no client consumer, so it stays on the
+ * host fold state.
+ */
+export interface InboxClientState {
   readonly 'next-turn': readonly UserMessage[]
   readonly 'next-step': readonly UserMessage[]
+}
+
+/** Complete pending Inbox value reconstructed from durable splices. */
+export interface InboxState extends InboxClientState {
+  /** Surface ranges carried by queued resends, keyed by pending message identity. */
+  readonly replacements: SurfaceReplacements
 }
 
 /**
@@ -99,6 +130,12 @@ declare module '@deepseek-ai/dsh-session/types' {
       removedCount?: number
       inserted: UserMessage[]
       outcome?: 'canceled'
+      /**
+       * Surface ranges of inserted resends, keyed by inserted message identity.
+       * Recorded in the same commit as the splice so a restart between queueing
+       * and claiming still admits the message as a replacement.
+       */
+      replacements?: SurfaceReplacements
     }
   }
 }

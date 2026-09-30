@@ -8,7 +8,7 @@ import {
   FileTypeIcon, fileSizeText, IconEditOutlineRegular, IconQueueOutlineRegular, IconSendOutlineRegular,
   IconTrashOutlineRegular, projectUserText, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { InboxState } from '@deepseek-ai/dsh-agent/types'
+import type { InboxClientState } from '@deepseek-ai/dsh-agent/types'
 import type { QueueAction } from '@deepseek-ai/dsh-api-session-controller/types'
 import type { MessageId } from '@deepseek-ai/dsh-llm/brand'
 import { NS } from '../locales.ts'
@@ -17,7 +17,7 @@ import css from './QueueDock.module.css'
 const EMPTY_QUEUE = [] as const
 const QUEUE_PREVIEW_CHARS = 200
 
-function previewOf(content: InboxState['next-turn'][number]['content']): string {
+function previewOf(content: InboxClientState['next-turn'][number]['content']): string {
   const flat = content
     .filter(block => block.type !== 'image' && block.type !== 'file')
     .map(block => (block.type === 'text' ? block.text : `[${block.type}]`))
@@ -26,7 +26,7 @@ function previewOf(content: InboxState['next-turn'][number]['content']): string 
   return chars.length > QUEUE_PREVIEW_CHARS ? `${chars.slice(0, QUEUE_PREVIEW_CHARS).join('')}…` : flat
 }
 
-function textOf(content: InboxState['next-turn'][number]['content']): string | null {
+function textOf(content: InboxClientState['next-turn'][number]['content']): string | null {
   if (!content.every(block => block.type === 'text')) return null
   return content.map(block => block.text).join('')
 }
@@ -46,7 +46,7 @@ export interface QueueDockInjected {
  * @param content - the row's wire content blocks.
  * @returns the row's durable image references in block order.
  */
-function queueAttachments(content: InboxState['next-turn'][number]['content']): Array<
+function queueAttachments(content: InboxClientState['next-turn'][number]['content']): Array<
   | { readonly type: 'image'; readonly attachment: ImageAttachmentRef }
   | { readonly type: 'file'; readonly attachment: FileAttachmentRef }
 > {
@@ -154,7 +154,7 @@ export type QueueDockProps = PropsRuntime<'conversation.input.dock'> & QueueDock
  * show sending status and disabled actions until their Host queue rows arrive.
  */
 export function QueueDock({ useSession, useProjection, updateQueue, notify, loadImage, t }: QueueDockProps) {
-  const inbox = useProjection('inbox') as unknown as InboxState | undefined
+  const inbox = useProjection('inbox') as unknown as InboxClientState | undefined
   const pendingSubmissions = useSession(s => s.pendingSubmissions)
   const queue = useMemo(() => {
     const rows = inbox?.['next-turn'] ?? EMPTY_QUEUE

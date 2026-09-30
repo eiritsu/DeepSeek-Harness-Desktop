@@ -9,7 +9,7 @@
  * listeners onto it.
  */
 import type { Context } from '@deepseek-ai/cordis'
-import type { InboxState } from '@deepseek-ai/dsh-agent/types'
+import type { InboxClientState } from '@deepseek-ai/dsh-agent/types'
 import {
   createSnapshotStore, type ObservableSnapshot, type SnapshotStore,
 } from '@deepseek-ai/dsh-client-store'
@@ -50,7 +50,7 @@ export interface SessionInputDeps {
   /** PopupSelect shell face resolver (dismissal on submit lock / escape). */
   popup?: (() => PopupDismissFace | undefined) | undefined
   /** Agent Inbox projection; its next-turn list is overlaid onto InputState.queue. */
-  inbox?: ObservableSnapshot<InboxState | undefined> | undefined
+  inbox?: ObservableSnapshot<InboxClientState | undefined> | undefined
   /**
    * Steer every still-pending queued message into the running turn, in FIFO
    * order (the empty-draft accelerated-Enter gesture); absent = unsupported.
@@ -93,7 +93,7 @@ function projectionContentChanged(prev: EditorProjection, next: EditorProjection
   })
 }
 
-const EMPTY_QUEUE: InboxState['next-turn'] = []
+const EMPTY_QUEUE: InboxClientState['next-turn'] = []
 
 /** No-pipeline lexicon: zero text-ref decorations. */
 const EMPTY_LEXICON: ReadonlyMap<'/' | '@', readonly string[]> = new Map()

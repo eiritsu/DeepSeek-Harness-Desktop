@@ -3,13 +3,34 @@
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type {} from '@deepseek-ai/dsh-settings'
-import type { LlmModelInfo } from '@deepseek-ai/dsh-llm'
+import { modelReasoningEfforts } from '@deepseek-ai/dsh-llm'
+import type { LlmModelInfo, LlmResolvedModelInfo } from '@deepseek-ai/dsh-llm'
 import type { Context } from '@deepseek-ai/cordis'
 import type {
   ModelCatalog,
   ModelReasoning,
   ModelSelection,
 } from './types.ts'
+
+/**
+ * The ladder one catalog entry offers.
+ *
+ * The rows are the fixed harness vocabulary rather than the route's encodable
+ * set, so every model reads the same to a person; only `defaultEffort` comes
+ * from the exact-model resolution, because a request naming no effort is
+ * materialized with it. A level the route cannot encode is refused at request
+ * time instead of being hidden here.
+ * @param resolved - the exact-model resolution this entry advertises.
+ * @returns the reasoning metadata every selector renders.
+ */
+function selectorReasoning(resolved: LlmResolvedModelInfo): ModelReasoning {
+  return {
+    efforts: modelReasoningEfforts().map(effort => ({ id: effort.id, name: effort.name })),
+    ...resolved.reasoning?.defaultEffort === undefined
+      ? {}
+      : { defaultEffort: resolved.reasoning.defaultEffort },
+  }
+}
 
 /**
  * Build the browser model catalog without requiring a Session.
@@ -27,23 +48,11 @@ export async function buildModelCatalog(
       const models = await ctx.llm.listModels(provider.id)
       const entries = await Promise.all(models.map(async (model) => {
         const resolved = await ctx.llm.resolveModelInfo(provider.id, model.id)
-        const reasoning: ModelReasoning | undefined = resolved.reasoning === undefined
-          ? undefined
-          : {
-            efforts: resolved.reasoning.efforts.map(effort => ({
-              id: effort.id,
-              name: effort.name,
-              ...(effort.description === undefined ? {} : { description: effort.description }),
-            })),
-            ...(resolved.reasoning.defaultEffort === undefined
-              ? {}
-              : { defaultEffort: resolved.reasoning.defaultEffort }),
-          }
         return {
           id: model.id,
           name: model.name,
           ...(model.description === undefined ? {} : { description: model.description }),
-          ...(reasoning === undefined ? {} : { reasoning }),
+          reasoning: selectorReasoning(resolved),
         }
       }))
       return {

@@ -524,7 +524,15 @@ describe('automation-only ACP bridge', () => {
       configId: 'model',
       value: plain.value,
     })
-    expect(selected.configOptions.find(option => option.id === 'reasoning_effort')).toBeUndefined()
+    // The ladder is the harness vocabulary rather than the route's own set, so
+    // a model that encodes no level still publishes all seven rows and reports
+    // the Default choice.
+    const effort = selected.configOptions.find(option => option.id === 'reasoning_effort')
+    expect(effort?.type).toBe('select')
+    if (effort?.type !== 'select') throw new Error('expected a reasoning effort select option')
+    expect(effort.currentValue).toBe('')
+    expect(effort.options.map(option => option.name))
+      .toEqual(['Default', 'Minimal', 'Low', 'Medium', 'High', 'Extra high', 'Max'])
     await harness.client.prompt({ sessionId: created.sessionId, prompt: [{ type: 'text', text: 'use plain' }] })
 
     expect(harness.adapter.requests[0]).toMatchObject({ provider: 'mock', model: 'plain' })
@@ -615,6 +623,38 @@ describe('automation-only ACP bridge', () => {
     await harness.client.prompt({ sessionId: created.sessionId, prompt: [{ type: 'text', text: 'reason' }] })
 
     expect(harness.adapter.requests[0]?.reasoningEffort).toBe('low')
+  })
+
+  it('accepts a ladder level this route cannot encode and refuses the request carrying it', async () => {
+    // Mock Reasoner encodes low and high, so Max is a real harness level this
+    // route cannot send. Choosing it is a valid selection; the turn that
+    // carries it is what answers UNSUPPORTED_REASONING_EFFORT.
+    harness = await makeBridgeHarness({ script: [textResponse('unreached')] })
+    await harness.client.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
+    const created = await harness.client.newSession({ cwd: process.cwd(), mcpServers: [] })
+    const reasoning = created.configOptions?.find(option => option.id === 'reasoning_effort')
+    if (reasoning?.type !== 'select') throw new Error('expected a reasoning select option')
+    const max = reasoning.options.find(option => !('group' in option) && option.name === 'Max')
+    if (max === undefined || 'group' in max) throw new Error('expected the Max reasoning effort')
+
+    const selected = await harness.client.setSessionConfigOption({
+      sessionId: created.sessionId,
+      configId: 'reasoning_effort',
+      value: max.value,
+    })
+    expect(selected.configOptions.find(option => option.id === 'reasoning_effort'))
+      .toMatchObject({ currentValue: 'max' })
+
+    await expect(harness.client.prompt({
+      sessionId: created.sessionId, prompt: [{ type: 'text', text: 'reason hardest' }],
+    })).rejects.toThrow(/does not support reasoning effort "max"/)
+    // The refusal precedes provider I/O and is recorded as the turn's outcome,
+    // so the client shows why the turn failed instead of an empty answer.
+    expect(harness.adapter.requests).toEqual([])
+    const agent = harness.ctx.agents.get(SessionId(created.sessionId))
+    expect(agent?.session.snapshotEvents().findLast(event => event.type === 'turn/end')).toMatchObject({
+      data: { reason: { kind: 'error', error: { code: 'UNSUPPORTED_REASONING_EFFORT' } } },
+    })
   })
 
   it('rejects unknown config choices without changing the selected route', async () => {

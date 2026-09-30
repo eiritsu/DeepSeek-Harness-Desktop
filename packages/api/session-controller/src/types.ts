@@ -119,14 +119,24 @@ export interface ModelSelectionProjection {
   readonly next: ModelSelection | null
 }
 
-/** One adapter-owned reasoning effort for an exact model route. */
+/** One reasoning level a selector offers, from the fixed harness ladder. */
 export interface ModelReasoningEffort {
   readonly id: string
+  /** Untranslated caption for surfaces with no dictionary; `id` keys a localized one. */
   readonly name: string
-  readonly description?: string
 }
 
-/** Selectable reasoning metadata for one exact model route. */
+/**
+ * The reasoning ladder every model in the catalog offers.
+ *
+ * `efforts` is the fixed harness vocabulary, not the route's capability: a
+ * selector shows the same rows for every model, and a level the serving route
+ * cannot encode is refused at request time as `UNSUPPORTED_REASONING_EFFORT`
+ * rather than silently lowered. The choice to send no effort is the "Default"
+ * row and is not part of this list. `defaultEffort` names the effort a request
+ * carrying none is materialized with, so a surface can show what "Default"
+ * will actually become.
+ */
 export interface ModelReasoning {
   readonly efforts: readonly ModelReasoningEffort[]
   readonly defaultEffort?: string

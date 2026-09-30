@@ -2,7 +2,7 @@
 
 import { describe, expect, onTestFinished } from 'vitest'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import type { InboxState } from '@deepseek-ai/dsh-agent/types'
+import type { InboxClientState } from '@deepseek-ai/dsh-agent/types'
 import type { SessionControlFrame } from '@deepseek-ai/dsh-api-session-controller/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { SessionManager } from '../src/client/sessions/manager.ts'
@@ -30,7 +30,7 @@ function message(label: string, body: string) {
   })
 }
 
-function inboxFrame(value: InboxState): Extract<SessionControlFrame, { type: 'projection' }> {
+function inboxFrame(value: InboxClientState): Extract<SessionControlFrame, { type: 'projection' }> {
   return {
     type: 'projection',
     sessionId: SID,

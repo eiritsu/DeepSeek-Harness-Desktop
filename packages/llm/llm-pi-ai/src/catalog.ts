@@ -67,6 +67,26 @@ function declaredInput(configured: readonly PiAiModality[] | undefined): Model<A
 }
 
 /**
+ * The reasoning facts one model entry declared, or nothing when it declared
+ * none. The declared level keys are exactly the ones the materialized
+ * `thinkingLevelMap` encodes, so a consumer falls back to them only where the
+ * shared record leaves the vocabulary open.
+ * @param entry - the configured model entry.
+ * @returns the declaration, or an empty object when the field was omitted.
+ */
+function declaredReasoningFacts(
+  entry: PiAiModelProfile,
+): Pick<DeclaredModelFacts, 'reasoning' | 'reasoningEfforts'> {
+  const efforts = entry.reasoningEfforts
+  if (efforts === undefined) return {}
+  if (efforts === false) return { reasoning: false }
+  // `resolveModelReasoning` runs before this and refuses a null (a valueless
+  // `reasoningEfforts:`) or an empty dict, so by here the field names at least
+  // one level and its keys are the levels the materialized map encodes.
+  return { reasoning: true, reasoningEfforts: Object.keys(efforts) }
+}
+
+/**
  * Every pi-ai thinking level, in pi-ai's canonical escalation order. The
  * `Record` key type is a drift gate: a pi-ai upgrade that adds or removes a
  * level fails compilation here naming the drifted key, instead of silently
@@ -810,6 +830,27 @@ function resolveModelCompat(
   return { compat: { ...inherited, ...configured } as ModelCompat }
 }
 
+/**
+ * Model facts a profile declared for itself, by model id.
+ *
+ * These are the values a deployment named in configuration, as distinct from
+ * the ones the installed catalog or a route fallback supplied. They answer only
+ * where the shared model catalog leaves a field open: the shared record is a
+ * fact about the canonical model and overrides a local declaration, so a
+ * deployment's own entry is the fallback for what the catalog has no answer
+ * for. Only the fields an entry actually named appear here.
+ */
+export interface DeclaredModelFacts {
+  /** Request modalities the entry declared for this model. */
+  readonly inputModalities?: readonly PiAiModality[]
+  /** Context window the entry declared for this model. */
+  readonly contextWindow?: number
+  /** Whether the entry declared this model a reasoning model, or denied it. */
+  readonly reasoning?: boolean
+  /** Thinking levels the entry declared this model accepts. */
+  readonly reasoningEfforts?: readonly string[]
+}
+
 /** One route's materialized catalog, plus the request caps its profile chose. */
 export interface RouteCatalog {
   /** The materialized models in configuration order. */
@@ -827,6 +868,8 @@ export interface RouteCatalog {
    * picked, so only an explicit configuration lands here.
    */
   configuredMaxTokens: ReadonlyMap<string, number>
+  /** Model facts the profile declared itself, by model id. */
+  declaredFacts: ReadonlyMap<string, DeclaredModelFacts>
 }
 
 /**
@@ -892,6 +935,7 @@ export function resolveRouteModels(
   assertOfferedCompatFields(provider, 'route', request.compat)
   const seen = new Set<string>()
   const configuredMaxTokens = new Map<string, number>()
+  const declaredFacts = new Map<string, DeclaredModelFacts>()
   const resolveEntry = (entry: PiAiModelProfile): Model<Api> => {
     assertOfferedCompatFields(provider, `model "${entry.id}"`, entry.compat)
     if (entry.id.length === 0) invalid(provider, 'has a model with an empty id')
@@ -922,7 +966,7 @@ export function resolveRouteModels(
     // Only a value the profile named is a deployment choice; the catalog's is
     // the model's capability and stays out of request defaults.
     if (entry.maxTokens !== undefined) configuredMaxTokens.set(entry.id, entry.maxTokens)
-    return {
+    const resolved: Model<Api> = {
       // The installed entry lays the floor, and the fields below override it.
       // Enumerating instead would silently drop every `Model` field this
       // package does not model — reasoning-level spellings, compatibility
@@ -941,6 +985,17 @@ export function resolveRouteModels(
       ...resolveModelReasoning(provider, entry, base),
       ...resolveModelCompat(provider, entry, request.compat, base, api),
     }
+    // The fields this entry named, kept beside the merged descriptor so the
+    // shared model catalog answers with them only where its own record leaves
+    // a field open. Recorded after the model builds, so a refused entry
+    // contributes no declaration.
+    const declaredModalities = declaredInput(entry.input)
+    declaredFacts.set(entry.id, {
+      ...declaredModalities === undefined ? {} : { inputModalities: declaredModalities },
+      ...entry.contextWindow === undefined ? {} : { contextWindow: entry.contextWindow },
+      ...declaredReasoningFacts(entry),
+    })
+    return resolved
   }
   const models: Model<Api>[] = []
   for (const entry of entries) {
@@ -966,5 +1021,5 @@ export function resolveRouteModels(
     invalid(provider, `sets compat "${field}", but no model on the route speaks a protocol that takes it;`
       + ` it exists on ${takers.join(', ')}`)
   }
-  return { models: serviceableModels, configuredMaxTokens, modelErrors }
+  return { models: serviceableModels, configuredMaxTokens, declaredFacts, modelErrors }
 }

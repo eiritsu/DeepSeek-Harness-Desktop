@@ -18,7 +18,7 @@ import type { ModelCatalogDirectory } from './catalog.ts'
 export interface ModelDirectoryState {
   /** Saved selection, retained even when its provider or model leaves the catalog. */
   current: ModelSelection | null
-  /** Saved effort caption retained when the selected model is unavailable. */
+  /** Saved effort id retained when the selected model is unavailable; the entry names it. */
   retainedEffort?: string
   /** Whether the current selection is present in the available catalog; null while unresolved. */
   routable: boolean | null
@@ -160,9 +160,9 @@ export class ModelDirectory {
     const projected = modelSelectionProjection(this.projected.getSnapshot())
     const intended = projected?.next ?? catalog.value?.default
     const reasoning = intended === undefined ? undefined : this.catalog.reasoningFor(intended)
-    const effort = intended?.reasoningEffort ?? reasoning?.defaultEffort
-    const retainedEffort = effort === undefined ? undefined
-      : reasoning?.efforts.find(level => level.id === effort)?.name ?? effort
+    // The id, not a caption: the model is unavailable here, so the entry that
+    // renders the trigger owns the localized name.
+    const retainedEffort = intended?.reasoningEffort ?? reasoning?.defaultEffort
     if (catalog.status !== 'ready' || catalog.value === null || projected === undefined) {
       this.store.set({
         current: catalog.value === null ? null : this.store.getSnapshot().current,

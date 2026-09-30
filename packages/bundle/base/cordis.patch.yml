@@ -127,6 +127,14 @@
     - id: llm-pi-ai
       name: '@deepseek-ai/dsh-llm-pi-ai'
 
+    # Shared model facts: one periodic read of the models.dev catalog, answered
+    # from a durable last-good snapshot so an unreachable catalog costs freshness
+    # and nothing else. Adapters read it as a fact source over their installed
+    # catalogs, never as a replacement for what their transport can encode, and
+    # a composition without it keeps every fact it had.
+    - id: model-catalog
+      name: '@deepseek-ai/dsh-model-catalog'
+
     - id: session-persistence-jsonl
       name: '@deepseek-ai/dsh-session-persistence-jsonl'
       config:

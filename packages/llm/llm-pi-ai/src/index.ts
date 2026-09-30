@@ -78,6 +78,7 @@ export type { PiAiAdapterOptions } from './adapter.ts'
 export { Config } from './config.ts'
 export type {
   Options,
+  DeclaredModelFacts,
   PiAiCompatProfile,
   PiAiModality,
   PiAiModelOverride,
@@ -219,6 +220,11 @@ export function apply(ctx: Context, config: Config): void {
       hostPath => ctx.get('fs')?.processPathFromHostPath(hostPath),
       ref,
     ),
+    // The shared catalog, when one is mounted. Read per operation and compared
+    // by identity, so a refresh rebuilds the collection rather than letting a
+    // selector describe a model from one generation and the request encode it
+    // from the next.
+    modelFacts: () => ctx.get('modelCatalog')?.facts,
     onReplayDegrade: ({ provider, model, reason }) => {
       ctx.logger.warn(
         `llm-pi-ai: unusable replay state on assistant history for route "${provider}/${model}";`

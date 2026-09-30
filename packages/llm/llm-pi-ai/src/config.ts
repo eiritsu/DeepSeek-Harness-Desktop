@@ -34,6 +34,7 @@ import {
   THINKING_TOKEN_BUDGET_FIELDS,
 } from './catalog.ts'
 import type {
+  DeclaredModelFacts,
   PiAiCompatProfile,
   PiAiModality,
   PiAiModelOverride,
@@ -80,6 +81,7 @@ export const DEFAULT_MAX_TOKENS = 32_768
 export const DEFAULT_INPUT: readonly PiAiModality[] = ['text']
 
 export type {
+  DeclaredModelFacts,
   PiAiCompatProfile,
   PiAiModality,
   PiAiModelOverride,
@@ -216,6 +218,12 @@ export interface ResolvedPiAiProviderProfile
    * own, so a catalog capability must not appear here.
    */
   configuredMaxTokens: ReadonlyMap<string, number>
+  /**
+   * Model facts the profile declared itself, by model id. The shared model
+   * catalog overrides every field it carries; these answer only for the fields
+   * the catalog leaves open.
+   */
+  declaredFacts: ReadonlyMap<string, DeclaredModelFacts>
 }
 
 /** Plugin configuration: the provider routes this instance owns. */
@@ -501,6 +509,7 @@ export function resolveProfiles(
       ...rest.headers === undefined ? {} : { headers: { ...rest.headers } },
       ...rest.thinkingBudgets === undefined ? {} : { thinkingBudgets: { ...rest.thinkingBudgets } },
       configuredMaxTokens: catalog?.configuredMaxTokens ?? new Map(),
+      declaredFacts: catalog?.declaredFacts ?? new Map(),
       modelErrors: catalog?.modelErrors ?? new Map(),
       ...piProvider === undefined ? {} : { piProvider },
       ...catalogError === undefined ? {} : { catalogError },

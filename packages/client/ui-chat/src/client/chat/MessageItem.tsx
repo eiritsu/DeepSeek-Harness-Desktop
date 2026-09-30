@@ -1,5 +1,6 @@
 import { Fragment, memo, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import type { PendingSubmission } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { MessageImageSource } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { fileExtension, FileTypeIcon, fileSizeText, JsonBlock, projectUserText, StateDot, TextShimmer } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -316,10 +317,46 @@ export function PendingSubmissionBubble({ submission, renderMessageImages, t }: 
   )
 }
 
-/** User and admitted-steering keyed Chat renderer. */
+/** Props of the user-message renderer, which is the only declarer of the action seat. */
+type UserMessageNodeViewProps =
+  ChatNodeViewProps<'user'>
+  & { renderSlot?: PropsRenderSlots<'conversation.chat.user-actions'>['renderSlot'] }
+
+/** User keyed Chat renderer carrying the message action seat. */
 export const UserMessageNodeView = memo(function UserMessageNodeView({
+  node, renderMessageImages, openFile, openSkill, renderSlot, t,
+}: UserMessageNodeViewProps) {
+  const data = node.data
+  const location = node.location
+  const turn = location.kind === 'turn' || location.kind === 'step' ? location.turn.turn : undefined
+  return (
+    <UserStyleBubble
+      content={data.content}
+      references={{ openFile, openSkill }}
+      renderMessageImages={renderMessageImages}
+      {...data.referenceLabels === undefined ? {} : { referenceLabels: data.referenceLabels }}
+      {...data.skillNames === undefined ? {} : { skillNames: data.skillNames }}
+      t={t}
+      actions={text => (
+        <MessageIconActions
+          text={text}
+          time={data.time}
+          clock="start"
+          className={css.actions}
+          extraActions={renderSlot === undefined
+            ? null
+            : renderSlot('conversation.chat.user-actions', { seq: data.seq, turn })}
+          t={t}
+        />
+      )}
+    />
+  )
+})
+
+/** Admitted-steering keyed Chat renderer; the action seat belongs to the user key alone. */
+export const SteeringMessageNodeView = memo(function SteeringMessageNodeView({
   node, renderMessageImages, openFile, openSkill, t,
-}: ChatNodeViewProps<'user' | 'steering'>) {
+}: ChatNodeViewProps<'steering'>) {
   const data = node.data
   return (
     <UserStyleBubble

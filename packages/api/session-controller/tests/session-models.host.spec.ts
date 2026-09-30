@@ -10,7 +10,7 @@ import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry, { agentEvents } from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import AttachmentStore from '@deepseek-ai/dsh-attachment'
-import LlmRuntime, { LlmAdapter, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { LlmAdapter, modelReasoningEfforts, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type {
   GenerateOptions, LlmCallConfig, LlmCallConfigAdapterDefaults, LlmModelInfo,
   LlmModelReasoningInfo, LlmProviderInfo, LlmResolvedModelInfo, StreamChunk,
@@ -18,7 +18,7 @@ import type {
 } from '@deepseek-ai/dsh-llm'
 import SessionStore from '@deepseek-ai/dsh-session'
 import type { SessionId } from '@deepseek-ai/dsh-session'
-import type { SessionPromptRequest, SessionRequestId } from '../src/types.ts'
+import type { ModelReasoning, SessionPromptRequest, SessionRequestId } from '../src/types.ts'
 import { ApiSessionAgentController } from '../src/agent.ts'
 import { buildModelCatalog, hasProviderApiKey } from '../src/catalog.ts'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
@@ -81,6 +81,17 @@ const REASONING: LlmModelReasoningInfo = {
     { id: ReasoningEffortId('max'), name: 'Max' },
   ],
   defaultEffort: ReasoningEffortId('high'),
+}
+
+/**
+ * What a selector receives: the fixed ladder for every model, plus the one
+ * per-route fact the entry may need — what "Default" materializes into.
+ */
+function selectorReasoning(defaultEffort?: ReasoningEffortId): ModelReasoning {
+  return {
+    efforts: modelReasoningEfforts().map(effort => ({ id: effort.id, name: effort.name })),
+    ...defaultEffort === undefined ? {} : { defaultEffort },
+  }
 }
 
 async function harness(logged?: {
@@ -423,12 +434,12 @@ describe('Web session model selection', () => {
       id: 'deepseek-official',
       name: 'DeepSeek',
       models: [
-        { id: 'deepseek-chat', name: 'DeepSeek Chat', reasoning: REASONING },
+        { id: 'deepseek-chat', name: 'DeepSeek Chat', reasoning: selectorReasoning(ReasoningEffortId('high')) },
         {
           id: 'deepseek-reasoner',
           name: 'DeepSeek Reasoner',
           description: 'Reasoning model',
-          reasoning: REASONING,
+          reasoning: selectorReasoning(ReasoningEffortId('high')),
         },
       ],
     }])
@@ -467,16 +478,22 @@ describe('Web session model selection', () => {
 
     const catalog = await buildModelCatalog(ctx)
     expect(catalog.groups).toEqual(expect.arrayContaining([
-      { id: 'plain', name: 'Plain', models: [{ id: 'plain-model', name: 'Plain Model' }] },
+      {
+        id: 'plain',
+        name: 'Plain',
+        // This route declares no reasoning at all, and the selector still
+        // offers the ladder: picking a level here fails the request with
+        // UNSUPPORTED_REASONING_EFFORT instead of hiding the row.
+        models: [{ id: 'plain-model', name: 'Plain Model', reasoning: selectorReasoning() }],
+      },
       {
         id: 'described-reasoning',
         name: 'Described Reasoning',
         models: [{
           id: 'reasoning-model',
           name: 'Reasoning Model',
-          reasoning: {
-            efforts: [{ id: 'high', name: 'High', description: 'More thinking' }],
-          },
+          // One encodable level, one fixed ladder, and no default to name.
+          reasoning: selectorReasoning(),
         }],
       },
     ]))
@@ -520,20 +537,6 @@ describe('Web session model selection', () => {
       reasoningEffort: 'max',
     })
 
-    const unsupported = await remote.selectModel(request({
-      sessionId,
-      provider: 'deepseek-official',
-      model: 'deepseek-reasoner',
-      reasoningEffort: 'medium',
-    }))
-    expect(unsupported).toMatchObject({
-      ok: false,
-      error: {
-        code: 'session/model-unavailable',
-        message: 'provider "deepseek-official" model "deepseek-reasoner" does not support reasoning effort "medium"',
-      },
-    })
-
     const rejected = await remote.selectModel(request({
       sessionId,
       provider: 'missing',
@@ -561,6 +564,50 @@ describe('Web session model selection', () => {
     })
     expect(currentSelection(ctx, sessionId))
       .toEqual({ provider: 'deepseek-official', model: 'deepseek-reasoner', reasoningEffort: 'max' })
+    await ctx.fiber.dispose()
+  })
+
+  it('keeps every ladder level selectable and refuses an unencodable one at request time', async () => {
+    // DeepSeek Reasoner encodes off, high, and max. Medium is a real harness
+    // level this route cannot send, so the selection keeps it and the request
+    // that carries it answers UNSUPPORTED_REASONING_EFFORT — never a downgrade
+    // to a neighboring level, and never a refused selection.
+    const { ctx, agent, sessionId } = await harness()
+    const remote = createSessionTestRemote(ctx, {
+      defaultModelSelection: () => ({ provider: 'deepseek-official', model: 'deepseek-chat' }),
+      cwd: '/tmp',
+    })
+    const signal = new AbortController().signal
+    const seed: LlmCallConfig = { provider: 'seed', model: 'seed', temperature: 0.2 }
+
+    const catalog = expectValue(await remote.modelCatalog())
+    const offered = catalog.groups.find(group => group.id === 'deepseek-official')
+      ?.models.find(model => model.id === 'deepseek-reasoner')?.reasoning?.efforts.map(effort => effort.id)
+    expect(offered).toEqual(modelReasoningEfforts().map(effort => effort.id))
+
+    const selected = expectValue(await remote.selectModel(request({
+      sessionId, provider: 'deepseek-official', model: 'deepseek-reasoner', reasoningEffort: 'medium',
+    })))
+    expect(selected.selected).toEqual({
+      provider: 'deepseek-official', model: 'deepseek-reasoner', reasoningEffort: 'medium',
+    })
+    expect(currentSelection(ctx, sessionId)).toEqual(selected.selected)
+
+    // The request under way keeps its own route; the next one carries the intent.
+    await expect(agentEvents(ctx, agent).waterfall(
+      'agent/request', { turn: 1, step: 0, signal }, () => Promise.resolve(seed),
+    )).resolves.toEqual(seed)
+    await ctx.systemPrompt.assemble()
+    const config = await agentEvents(ctx, agent).waterfall(
+      'agent/request', { turn: 1, step: 1, signal }, () => Promise.resolve(seed),
+    )
+    expect(config).toMatchObject({
+      provider: 'deepseek-official', model: 'deepseek-reasoner', reasoningEffort: 'medium',
+    })
+    await expect(ctx.llm.prepareCall(config)).rejects.toMatchObject({
+      code: 'UNSUPPORTED_REASONING_EFFORT',
+      message: 'provider "deepseek-official" model "deepseek-reasoner" does not support reasoning effort "medium"',
+    })
     await ctx.fiber.dispose()
   })
 
@@ -674,14 +721,16 @@ describe('Web session model selection', () => {
     expect(saved).toHaveLength(1)
 
     // Storage failing is not the selection failing: the switch already applies
-    // to this session, so the call still succeeds.
+    // to this session, so the call still succeeds. Choosing the Default row
+    // stores no level at all; the model's own default is materialized when a
+    // request goes out, never written back as something the person picked.
     reject = true
     const stillAccepted = expectValue(await remote.selectModel(request({
       sessionId, provider: 'deepseek-official', model: 'deepseek-chat',
     })))
-    expect(stillAccepted.selected).toEqual({ provider: 'deepseek-official', model: 'deepseek-chat', reasoningEffort: 'high' })
+    expect(stillAccepted.selected).toEqual({ provider: 'deepseek-official', model: 'deepseek-chat' })
     expect(currentSelection(ctx, sessionId))
-      .toEqual({ provider: 'deepseek-official', model: 'deepseek-chat', reasoningEffort: 'high' })
+      .toEqual({ provider: 'deepseek-official', model: 'deepseek-chat' })
     await expect.poll(() => warn.mock.calls).toContainEqual([
       'session-controller: model selection changed for the Session but the default was not saved: Error: read-only document',
     ])
@@ -864,17 +913,15 @@ describe('Web session model selection', () => {
     expectValue(await remote.selectModel(request({
       sessionId, provider: 'image-capable', model: 'vision',
     })))
-    expect(await remote.selectModel(request({
+    // Both routes advertise the model, so the selection is accepted; what the
+    // route's own exact-model resolution says about it belongs to the request
+    // that has to encode it, not to the choice of a listed model.
+    expectValue(await remote.selectModel(request({
       sessionId, provider: 'metadata-broken', model: 'listed',
-    }))).toMatchObject({
-      ok: false, error: { code: 'session/model-unavailable', message: 'reasoning metadata offline' },
-    })
-    expect(await remote.selectModel(request({
+    })))
+    expectValue(await remote.selectModel(request({
       sessionId, provider: 'string-error', model: 'plain',
-    }))).toMatchObject({
-      ok: false,
-      error: { code: 'session/model-unavailable', message: 'string selection failure' },
-    })
+    })))
     await ctx.fiber.dispose()
   })
 })

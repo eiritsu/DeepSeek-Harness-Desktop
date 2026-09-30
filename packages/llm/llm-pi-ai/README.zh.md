@@ -98,6 +98,12 @@ pi-ai 提供登录的提供方可以通过 harness 授权 seam 登录：流程�
 
 profile 的 `models` 列表会替换而非扩展路由的已安装目录；每个条目从同 id 已安装模型取未设置字段的默认值，因此把路由收窄到两个模型、修正一个容量或添加比已安装目录更新的模型都是一行编辑。`modelOverrides` 无需该代价即可重塑个别已安装目录模型——修正一个模型，保留其余三十七个——当它与 `models` 列表并存、位于手工声明路由上、或点名目录未描述的模型时会被拒绝，因为静默不变的模型会成为别人日后寻找的拼写错误。
 
+### 采纳共享目录中的模型事实
+
+挂载 [`dsh-model-catalog`](../model-catalog/README.zh.md) 时，本适配器会就它列出、描述或服务的每个模型向其询问；对该记录携带的每个字段，共享记录都优先于 pi-ai 的已安装条目和路由自身的配置。配置中已命名的字段只在记录未覆盖它的地方作答：路由自己写出的上下文窗口、模态或思考词汇，是目录未描述该模型时的回退值；除此之外共享记录胜出。
+
+共享记录只做收窄，因为它不得凭空发明传输层能发送的东西。可接受的模态与请求路径能携带的模态取交集；声明不具备推理的记录会在任何提供方 I/O 之前以 `UNSUPPORTED_REASONING_EFFORT` 拒绝每个显式等级；通道声明的等级与 pi-ai 能编码的等级取交集——两侧都不接受的等级既不会被提供，也不会被发送。`maxOutputTokens` 描述模型本身，并限制请求申请的上限，超出时以 `UNSUPPORTED_OPTION` 失败并同时给出两个数字；它绝不是请求默认值，请求默认值仍是部署配置的 `maxTokens`。每次刷新发布新一代次时，整个模型集合都会重建，因此一次操作描述模型与编码请求时使用的是同一份事实。
+
 ### 带推理（reasoning）与协议兼容运行
 
 `reasoningEfforts` 声明模型可选择的 thinking 等级：每个键都是选择器提供的等级，其值是分派时在协议中发送的拼写，因此 `max: ultra` 可以为拥有自有词汇的网关重命名等级。省略该字段时保留已安装目录条目的能力；`false` 声明非推理模型。对于 pi-ai 无法识别的端点，`compat` 开关重塑请求——哪个角色携带系统提示词、哪个字段限制输出、thinking 等级如何传递——可逐路由、逐模型配置。条目与已安装目录都没有尺寸的模型，会采用路由的 `defaultContextWindow` 与 `defaultMaxTokens` 回退值。
@@ -169,6 +175,7 @@ Config 更新严格验证发生变化的 provider。初始加载将已存储的�
 
 - [dsh-llm 服务](../llm/README.zh.md)——本适配器注册其上的提供方无关服务。
 - [llm-deepseek 适配器](../llm-deepseek/README.zh.md)——`deepseek-official` 路由的 DeepSeek 直连孪生。
+- [model-catalog](../model-catalog/README.zh.md)——挂载时本适配器读取的共享模型事实。
 - [LLM 流式子系统](../../../docs/subsystems/llm-streaming.zh.md)——`StreamChunk` 协议与适配器约定。
 - [llm-retry](../llm-retry/README.zh.md)——应用每个 profile `retryPolicy` 的重试执行器。
 - [孪生 LLM 适配器](../../../.agents/notes/implemented/architecture/2026-06-13-twin-llm-adapters.zh.md)——为什么 DeepSeek 路由交付两个结构不同的适配器。
@@ -224,6 +231,7 @@ pi-ai 事件变成 harness 的推理、文本、工具调用、用量与 finish 
 - **Anthropic 模型发现最多读取 1,000 个模型**——请求使用 API 的最大页大小，但不会遍历 `has_more`；第一页之外的条目需要手工添加。
 - **每条路由一种协议格式**——混合协议目录路由无法承载另一协议格式的模型；把提供方拆到两个路由键是变通办法。
 - **模态声明不受校验**——声明 `image` 而其网关不支持的模型会在提示词准入后被提供方拒绝。持久图片仍留在历史中，同一误声明模型可能再次失败；切换到纯文本模型仍然可行，因为共享 LLM 运行时会针对该请求把图片引用投影为稳定文本。
+- **共享事实与最近一次成功读取目录一样新**——此后已变化的输出上限或通道等级列表会拒绝一个提供方本可回答的请求，这是明确的失败而非静默降级。目录是共享事实并优先于本地声明；路由自己的字段只在记录未覆盖它时作答。
 - **未认证路由取决于其协议**——不点名凭据的路由解析为已配置但无密钥，但 pi-ai 的 OpenAI 兼容实现仍要求 API 密钥或 `Authorization` 标头，因此无密钥本地服务器需要由 `apiKeyEnv` 引用或 `headers` 中的 `Authorization` 条目提供的占位凭据。
 - **不支持 `GenerateOptions.stop`**——pi-ai 的通用流式选项无法跨提供方保证停止序列行为。
 - **只有历史中首条 `system` 消息会成为 pi-ai 的 `systemPrompt`**——本适配器使用 pi-ai 的单一 `systemPrompt` 输入，因此后续的 `system` 消息，或在同时设置了 `GenerateOptions.system` 时的首条消息，会在原位置折叠为 `user` 消息；系统提示词的提供方专属放置遵循 pi-ai，而非 harness 自有的协议覆盖。system 或 assistant 历史中的图片（包括首条系统消息中的图片）在两条转换路径上都会以 `UNSUPPORTED_CONTENT` 失败。

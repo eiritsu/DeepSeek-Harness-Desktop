@@ -3,7 +3,10 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionConfigOption, SessionConfigValueId } from '@agentclientprotocol/sdk'
 import { installModelSelection, type ModelSelection, type ModelSelectionRef } from '@deepseek-ai/dsh-agent'
-import { ReasoningEffortId, type LlmCallConfig, type LlmRuntime } from '@deepseek-ai/dsh-llm'
+import {
+  isModelReasoningEffort, modelReasoningEfforts, ReasoningEffortId,
+  type LlmCallConfig, type LlmRuntime,
+} from '@deepseek-ai/dsh-llm'
 
 const MODEL_CONFIG_ID = 'model'
 const REASONING_CONFIG_ID = 'reasoning_effort'
@@ -109,23 +112,27 @@ export class AcpModelControl {
         const state = await this.state(signal)
         const selected = state.choices.get(value)
         if (selected === undefined) throw new AcpModelConfigError(`unknown model option: ${value}`)
-        await this.resolveSelection(selected, signal)
-        this.selected = selected
+        // A new route starts from the harness default again: the level chosen
+        // for the previous model was a choice about that model.
+        this.selected = await this.resolveRoute(selected, signal)
       } else if (configId === REASONING_CONFIG_ID) {
-        const info = await this.llm.resolveModelInfo(current.provider, current.model, signal)
-        const providerDefault = value === PROVIDER_DEFAULT_REASONING_VALUE
-          && info.reasoning?.defaultEffort === undefined
-        if (
-          info.reasoning === undefined
-          || (!providerDefault && !info.reasoning.efforts.some(effort => effort.id === value))
-        ) {
+        // The ladder is the fixed harness vocabulary, not the route's own set,
+        // so a level this route cannot encode is stored as chosen here and
+        // refused by the request that carries it as
+        // `UNSUPPORTED_REASONING_EFFORT` — the same explicit failure a person
+        // gets from the browser selector, never a silent drop to a
+        // neighboring level.
+        if (value !== PROVIDER_DEFAULT_REASONING_VALUE && !isModelReasoningEffort(value)) {
           throw new AcpModelConfigError(`unknown reasoning effort for ${current.provider}/${current.model}: ${value}`)
         }
-        this.selected = await this.resolveSelection({
-          provider: current.provider,
-          model: current.model,
-          ...providerDefault ? {} : { reasoningEffort: ReasoningEffortId(value) },
-        }, signal)
+        const route = await this.resolveRoute(current, signal)
+        this.selected = {
+          provider: route.provider,
+          model: route.model,
+          ...value === PROVIDER_DEFAULT_REASONING_VALUE
+            ? {}
+            : { reasoningEffort: ReasoningEffortId(value) },
+        }
       } else {
         throw new AcpModelConfigError(`unknown session config option: ${configId}`)
       }
@@ -145,14 +152,12 @@ export class AcpModelControl {
     const selected = this.selected
     if (selected === undefined) return { choices: new Map(), options: [] }
     let resolved: ModelSelection
-    let routeAvailable = true
     try {
-      resolved = await this.resolveSelection(selected, signal)
+      resolved = await this.resolveRoute(selected, signal)
       this.hasResolvedState = true
     } catch (error: unknown) {
       if (!this.hasResolvedState) throw error
       resolved = selected
-      routeAvailable = false
     }
     const choices = new Map<SessionConfigValueId, ModelSelection>()
     const groups = await Promise.all(this.llm.listProviders().map(async (provider) => {
@@ -193,41 +198,46 @@ export class AcpModelControl {
       currentValue,
       options: groups.filter(group => group.options.length > 0),
     }]
-    const info = routeAvailable
-      ? await this.llm.resolveModelInfo(resolved.provider, resolved.model, signal)
-      : undefined
-    if (info?.reasoning !== undefined) {
-      options.push({
-        id: REASONING_CONFIG_ID,
-        name: 'Reasoning effort',
-        category: 'thought_level',
-        type: 'select',
-        currentValue: resolved.reasoningEffort === undefined
-          ? PROVIDER_DEFAULT_REASONING_VALUE
-          : String(resolved.reasoningEffort),
-        options: [
-          ...info.reasoning.defaultEffort === undefined
-            ? [{ value: PROVIDER_DEFAULT_REASONING_VALUE, name: 'Provider default' }]
-            : [],
-          ...info.reasoning.efforts.map(effort => ({
-            value: String(effort.id),
-            name: effort.name,
-            ...effort.description === undefined ? {} : { description: effort.description },
-          })),
-        ],
-      })
-    }
+    // The ladder is offered for every model, on a route that could not be
+    // resolved included: a person picking a level is naming what the model
+    // should do, and the refusal comes from the request. The current value
+    // reports the stored intent, so a route that materializes its own default
+    // does not report a level the person never picked.
+    options.push({
+      id: REASONING_CONFIG_ID,
+      name: 'Reasoning effort',
+      category: 'thought_level',
+      type: 'select',
+      currentValue: selected.reasoningEffort !== undefined
+        && isModelReasoningEffort(selected.reasoningEffort)
+        ? selected.reasoningEffort
+        : PROVIDER_DEFAULT_REASONING_VALUE,
+      options: [
+        { value: PROVIDER_DEFAULT_REASONING_VALUE, name: 'Default' },
+        ...modelReasoningEfforts().map(effort => ({ value: effort.id, name: effort.name })),
+      ],
+    })
     return { choices, options }
   }
 
-  /** Validate an exact route and retain only Agent-owned selection fields. */
-  private async resolveSelection(selection: ModelSelection, signal?: AbortSignal): Promise<ModelSelection> {
-    const resolved: LlmCallConfig = await this.llm.resolveCallConfig(selection, signal)
-    return {
-      provider: resolved.provider,
-      model: resolved.model,
-      ...resolved.reasoningEffort === undefined ? {} : { reasoningEffort: resolved.reasoningEffort },
-    }
+  /**
+   * Prove one exact route resolves, without judging the effort stored beside it.
+   *
+   * Selection is where a person names what they want, and capability belongs to
+   * the request that carries it out. A level this route cannot encode is
+   * therefore kept as the stored intent and refused by the request as
+   * `UNSUPPORTED_REASONING_EFFORT`, and the Default row stores no effort at all
+   * rather than the level a route would materialize for it.
+   * @param selection - the exact route to prove, with any stored intent.
+   * @param signal - optional cancellation for the capability lookup.
+   * @returns the exact provider and model the next request will use.
+   */
+  private async resolveRoute(selection: ModelSelection, signal?: AbortSignal): Promise<ModelSelection> {
+    const resolved: LlmCallConfig = await this.llm.resolveCallConfig(
+      { provider: selection.provider, model: selection.model },
+      signal,
+    )
+    return { provider: resolved.provider, model: resolved.model }
   }
 }
 

@@ -43,6 +43,7 @@ import type { FileAttachmentRef } from '@deepseek-ai/dsh-attachment'
 
 export * from './attribution.ts'
 export * from './brand.ts'
+export * from './reasoning.ts'
 export * from './error.ts'
 export * from './api-key.ts'
 export * from './types.ts'
