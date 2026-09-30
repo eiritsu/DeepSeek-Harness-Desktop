@@ -2376,6 +2376,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-turn-edit-resend':
         specifier: workspace:*
         version: link:../../client/ui-turn-edit-resend
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:~

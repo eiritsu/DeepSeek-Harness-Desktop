@@ -45,7 +45,8 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@deepseek-ai/dsh-client-ui-turn-edit-resend": "workspace:*"
+    "@deepseek-ai/dsh-client-ui-turn-edit-resend": "workspace:*",
+    "zod": "^4.4.3"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
