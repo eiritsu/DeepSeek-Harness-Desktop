@@ -119,8 +119,30 @@ describe('Chat apply wiring', () => {
     }
   })
 
-  it('contributes Chat View, node renderers, and stats', async () => {
+  it('claims one user message body through the Chat service', async () => {
     const b = await bench()
+    try {
+      const user = b.runtime.slots.entries('conversation.chat.node').find(entry => entry.options.key === 'user')
+      expect(user?.children).toMatchObject({
+        'conversation.chat.user-actions': { kind: 'list', scope: 'session' },
+        'conversation.chat.user-body': { kind: 'chain', scope: 'session' },
+      })
+      const inject = user?.inject as ((sessionId: SessionId) => Record<string, unknown>) | undefined
+      if (inject === undefined) throw new Error('ui-chat did not register the user renderer inject')
+      const hooks = inject(SID).hooks as { messageClaims: ObservableSnapshot<ReadonlySet<number>> }
+      const source = hooks.messageClaims
+      expect(source.getSnapshot()).toEqual(new Set())
+
+      const release = b.runtime.ctx.uiChat.claimUserMessageBody(SID, 5, 'test')
+      expect(source.getSnapshot()).toEqual(new Set([5]))
+      release()
+      expect(source.getSnapshot()).toEqual(new Set())
+    } finally {
+      await b.runtime.dispose()
+    }
+  })
+
+  it('contributes Chat View, node renderers, and stats', async () => {    const b = await bench()
     const views = b.runtime.slots.entries('conversation.view')
     expect(views.map(row => row.options.id)).toEqual(['chat'])
     expect(resolveSlotLabel(views[0]?.options.label)).toBe('对话')

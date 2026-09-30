@@ -53,6 +53,11 @@ import { chatSnapshotFixture } from './chat-snapshot-fixture.client.ts'
 import { installTurnNavigatorObserver } from './turn-navigator-fixture.ts'
 import { ConversationGroupStore } from '../../ui-conversation/src/client/conversation/group-store.ts'
 
+/** A detached body-claim hook: no message of the fixture is claimed. */
+function useDetachedMessageClaims<S>(selector: (claims: ReadonlySet<number>) => S): S {
+  return selector(new Set())
+}
+
 function installGroupedSnapshot(
   builder: ChatSnapshotBuilder, state: ProcessState, groups: ConversationGroupStore<ProcessGroupData>, source: ChatSnapshot,
 ): ChatSnapshot {
@@ -331,7 +336,11 @@ function makeHarness(
     const { turnData, disclosureReset } = opts?.hookContext as ChatNodeHookContext
     const useTurnData: UseChatNodeTurnData = dataKey => useTurnDataValue(turnData, dataKey)
     const useDisclosure = bindDisclosure(disclosureReset)
-    const nodeProps = { ...props, ...nodeOwner, useTurnData, useDisclosure, __renders: undefined }
+    const nodeProps = {
+      ...props, ...nodeOwner, useTurnData, useDisclosure,
+      useMessageClaims: useDetachedMessageClaims,
+      __renders: undefined,
+    }
     switch (nodeOwner.node.kind) {
       case 'user':
         return <UserMessageNodeView {...nodeProps} node={nodeOwner.node} />

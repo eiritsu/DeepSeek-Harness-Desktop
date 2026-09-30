@@ -64,7 +64,14 @@ export const messageDefinition: ConversationNodeDefinition<MessageNode> = {
   target: 'chat',
   match: (event) => {
     if (event.type === 'user/message') {
-      return isAppendSurfaceEvent(event) && !isCompactionCheckpoint(event)
+      // An edit-and-resend admits the edited prompt as a replacement copy; the
+      // presentation layer hides the seqs it shadowed, so that copy is the
+      // visible generation and renders where the original stood. Other
+      // replacement copies stay model-only, and a compaction checkpoint keeps
+      // its own command row.
+      const currentGeneration = isAppendSurfaceEvent(event)
+        || (isReplacementSurfaceEvent(event) && event.data.source.kind === 'user')
+      return currentGeneration && !isCompactionCheckpoint(event)
         ? { id: String(event.data.id), role: 'start' }
         : null
     }

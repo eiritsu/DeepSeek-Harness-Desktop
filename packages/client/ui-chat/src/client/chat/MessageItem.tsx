@@ -1,9 +1,11 @@
 import { Fragment, memo, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
+import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
+import type { InjectFace, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import type { PendingSubmission } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { MessageImageSource } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { fileExtension, FileTypeIcon, fileSizeText, JsonBlock, projectUserText, StateDot, TextShimmer } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { MessageBodyClaimSet } from '../message-claims.ts'
 import type { ChatNodeOwnerProps, ChatNodeViewProps, ChatViewSlotProps } from '../contract/slots.ts'
 import type { ModelRetryNode, TurnErrorNode, UserMessageNode } from '../contract/snapshot.ts'
 import { CompactionItem } from './CompactionItem.tsx'
@@ -317,19 +319,25 @@ export function PendingSubmissionBubble({ submission, renderMessageImages, t }: 
   )
 }
 
-/** Props of the user-message renderer, which is the only declarer of the action seat. */
+/** Props of the user-message renderer, which is the only declarer of the action seat and body chain. */
 type UserMessageNodeViewProps =
   ChatNodeViewProps<'user'>
+  & InjectFace<{ hooks: { messageClaims: ObservableSnapshot<MessageBodyClaimSet> } }>
   & { renderSlot?: PropsRenderSlots<'conversation.chat.user-actions'>['renderSlot'] }
+  & { renderSlotChain?: PropsRenderSlots<'conversation.chat.user-body'>['renderSlotChain'] }
 
-/** User keyed Chat renderer carrying the message action seat. */
+/** User keyed Chat renderer carrying the message action seat and body chain. */
 export const UserMessageNodeView = memo(function UserMessageNodeView({
-  node, renderMessageImages, openFile, openSkill, renderSlot, t,
+  node, renderMessageImages, openFile, openSkill, renderSlot, renderSlotChain, useMessageClaims, t,
 }: UserMessageNodeViewProps) {
   const data = node.data
   const location = node.location
   const turn = location.kind === 'turn' || location.kind === 'step' ? location.turn.turn : undefined
-  return (
+  // The body chain elects on owner props alone, so the claim is read here: the
+  // claimant renders in place of this bubble and the bubble returns when the
+  // claim is released.
+  const claimed = useMessageClaims(claims => claims.has(data.seq))
+  const bubble = (
     <UserStyleBubble
       content={data.content}
       references={{ openFile, openSkill }}
@@ -350,6 +358,12 @@ export const UserMessageNodeView = memo(function UserMessageNodeView({
         />
       )}
     />
+  )
+  if (renderSlotChain === undefined) return bubble
+  return renderSlotChain(
+    'conversation.chat.user-body',
+    { seq: data.seq, turn, claimed },
+    { fallback: bubble, overlay: true },
   )
 })
 

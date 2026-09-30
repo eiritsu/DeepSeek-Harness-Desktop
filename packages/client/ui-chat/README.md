@@ -105,6 +105,8 @@ Each group owns local `useDisclosure` state that survives mode changes while its
 
 The Chat-node slot injects a reset-bound `useDisclosure` Hook for reasoning and tools. Intermediate renderers forward it without subscribing; each invocation owns independent open state. Source callbacks retain their receiver and stable identity. When an enclosing Turn actually hides a process member, its seat resets those disclosures without replacing component keys or changing the Hook reference. Display-mode changes preserve their open state.
 
+A feature can present one user message in place: `ctx.uiChat.claimUserMessageBody(sessionId, seq, owner)` claims that message's body, and a `conversation.chat.user-body` chain entry whose selector accepts the claim renders in place of the shipped bubble until the claim is released. The bubble stays mounted underneath and returns with the claim's release; a newer claim replaces an older one, and the replaced claim's release is a no-op. The user-message renderer reads the claim through its own registration's `hooks` compartment, so the chain's selector stays pure over owner props.
+
 Process rows share one text and icon color in every Work details mode: tertiary at rest and secondary on hover, while error and warning text keeps its semantic color. Leading icons, disclosure chevrons, and their boxes scale with the content font-size delta.
 
 -----

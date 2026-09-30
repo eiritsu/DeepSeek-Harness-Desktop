@@ -1,7 +1,9 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { PerformanceUsageMode } from '../../chat-settings.ts'
 import type { ChatPresentationPolicy } from '../presentation-policy.ts'
+import type { MessageBodyClaims } from '../message-claims.ts'
 import { NS } from '../locale.ts'
 import { AssistantNodeView } from './AssistantNodeView.tsx'
 import { CommandNodeView, ManualCompactionNodeView } from './CommandNodeView.tsx'
@@ -21,17 +23,23 @@ import { TurnTriggerNodeView } from './TurnTriggerNodeView.tsx'
  * @param ctx - owning UI Conversation context.
  * @param performanceUsage - live statistics detail preference.
  * @param presentation - live presentation policy.
+ * @param messageClaims - body-claim registry backing the user-message body chain.
  */
 export function registerChatNodeRenderers(
   ctx: Context,
   performanceUsage: ObservableSnapshot<PerformanceUsageMode>,
   presentation: ObservableSnapshot<ChatPresentationPolicy>,
+  messageClaims: MessageBodyClaims,
 ): void {
   ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({
     name: 'conversation.chat.node',
     key: 'user',
     locale: NS,
-    children: { 'conversation.chat.user-actions': { kind: 'list', scope: 'session' } },
+    inject: (sessionId: SessionId) => ({ hooks: { messageClaims: messageClaims.source(sessionId) } }),
+    children: {
+      'conversation.chat.user-actions': { kind: 'list', scope: 'session' },
+      'conversation.chat.user-body': { kind: 'chain', scope: 'session' },
+    },
   }, UserMessageNodeView))
   ctx.slots.inject('conversation.chat.node', () => ctx.slots.register(
     { name: 'conversation.chat.node', key: 'steering', locale: NS }, SteeringMessageNodeView))

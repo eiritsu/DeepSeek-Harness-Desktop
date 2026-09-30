@@ -38,6 +38,11 @@ const useDetachedChat: ChatNodeViewProps['useChat'] = bindSnapshotSelector({
   getSnapshot: () => ({ order: [], nodes: new Map() }),
 } as never)
 
+/** A detached body-claim hook: no message of the fixture is claimed. */
+function useDetachedMessageClaims<S>(selector: (claims: ReadonlySet<number>) => S): S {
+  return selector(new Set())
+}
+
 interface MessageItemProps {
   readonly node: ConversationNode
   readonly t: ChatNodeViewProps['t']
@@ -71,7 +76,7 @@ function MessageItem({ node, t: translate, referenceLabels, skillNames }: Messag
   } as unknown as ChatNodeViewProps
   switch (node.kind) {
     case 'user':
-      return <UserMessageNodeView {...props as ChatNodeViewProps<'user'>} />
+      return <UserMessageNodeView {...props as ChatNodeViewProps<'user'>} useMessageClaims={useDetachedMessageClaims} />
     case 'steering':
       return <SteeringMessageNodeView {...props as ChatNodeViewProps<'steering'>} />
     case 'context':

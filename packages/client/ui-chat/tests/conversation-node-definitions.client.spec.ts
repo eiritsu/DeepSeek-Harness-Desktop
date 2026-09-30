@@ -587,6 +587,35 @@ describe('built-in conversation node Definitions', () => {
     ])
   })
 
+  it('renders the edit-and-resend replacement copy but keeps other replacements model-only', () => {
+    const replaced = { surfaceOp: { op: 'replace', startSeq: 2, endSeq: 5 }, sourceEventSeqs: [2, 3, 4, 5] }
+    const reseed = (message: Record<string, unknown>): SessionLiveEventEntry[] => [
+      at(1, 'turn/start', { turn: 1 }),
+      at(2, 'user/message', textMessage('user-1', 'original'), { surfaceOp: 'append' }),
+      at(3, 'step/start', { turn: 1, step: 1 }),
+      at(4, 'assistant/message', { turn: 1, step: 1, message: assistantMessage('answer-1', 'answer') }, { surfaceOp: 'append' }),
+      at(5, 'turn/end', { turn: 1, reason: { kind: 'completed' } }),
+      at(6, 'turn/start', { turn: 2 }),
+      at(7, 'user/message', message, replaced),
+    ]
+
+    const userTexts = (view: ChatSnapshot): (string | undefined)[] => [...view.nodes.values()]
+      .filter(candidate => candidate.kind === 'user')
+      .map(candidate => (candidate.data as { content: readonly { type: string; text?: string }[] })
+        .content.find(block => block.type === 'text')?.text)
+
+    const resent = snapshot(assembler(reseed(textMessage('user-2', 'edited'))))
+    expect(userTexts(resent)).toEqual(['original', 'edited'])
+
+    // A plugin may replace a range with a model-only user message; only the
+    // human prompt copy is the visible generation.
+    const injected = snapshot(assembler(reseed({
+      ...textMessage('context-1', 'model-only context'),
+      source: { kind: 'context' },
+    })))
+    expect(userTexts(injected)).toEqual(['original'])
+  })
+
   it.each(['next-turn', 'idle-notice', 'idle-human'] as const)(
     'keeps the %s opening input before its control from admission through first output', (route) => {
       const target = route === 'next-turn' ? 'next-turn' : 'next-step'

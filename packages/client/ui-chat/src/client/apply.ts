@@ -33,6 +33,7 @@ import { StatsPills } from './chat/StatsPills.tsx'
 import { registerConversationNodes } from './conversation-nodes/register.ts'
 import { QuotaNoticeHost } from './chat/QuotaNoticeHost.tsx'
 import { en, NS, zh } from './locale.ts'
+import { MessageBodyClaims } from './message-claims.ts'
 import { TranscriptViewRow, type TranscriptViewRowInjected } from './settings/TranscriptViewRow.tsx'
 import { createChatStore } from './stores.ts'
 import { TranscriptViewPolicy } from './transcript-view.ts'
@@ -109,6 +110,10 @@ export function apply(ctx: Context): void {
     return source
   }
   registerConversationNodes(ctx)
+  const messageClaims = new MessageBodyClaims()
+  ctx.provide('uiChat', {
+    claimUserMessageBody: (sessionId, seq, owner) => messageClaims.claim(sessionId, seq, owner),
+  })
   ctx.uiSession.provide({
     hooks: ['chat'],
     resolve: binding => ({ hooks: { chat: chatSource(binding) } }),
@@ -151,7 +156,7 @@ export function apply(ctx: Context): void {
   const performancePolicy = new PerformanceUsagePolicy(chatSettings)
   ctx.effect(() => () => { transcriptView.dispose(); performancePolicy.dispose() })
   const performanceUsage = performancePolicy.mode
-  registerChatNodeRenderers(ctx, performanceUsage, presentation)
+  registerChatNodeRenderers(ctx, performanceUsage, presentation, messageClaims)
 
   ctx.slots.inject('settings.general.item', () => ctx.slots.register({
     name: 'settings.general.item',

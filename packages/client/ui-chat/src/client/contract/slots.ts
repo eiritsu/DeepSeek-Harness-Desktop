@@ -67,6 +67,18 @@ export interface UserActionOwnerProps {
   turn: number | undefined
 }
 
+/**
+ * Owner currency of one settled user message's body. The message's own seq
+ * addresses the durable prompt; `turn` is its resolved Turn when the loaded
+ * window places it in one; `claimed` reports whether an entry claimed this
+ * message's body through the Chat service.
+ */
+export interface UserMessageBodyOwnerProps {
+  seq: number
+  turn: number | undefined
+  claimed: boolean
+}
+
 /** Stable quota failure codes retained in the Session log; both raise the frame-wide notice. */
 export type QuotaNoticeCode = 'QUOTA' | 'ACCOUNT_QUOTA'
 
@@ -336,6 +348,14 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * IconActions row, between copy and branch.
      */
     'conversation.chat.user-actions': { kind: 'list'; scope: 'session'; owner: UserActionOwnerProps }
+    /**
+     * Selector-routed replacement for one settled user message's body. The
+     * elected entry renders in place of the shipped bubble while its owner
+     * holds that message's body claim; the bubble stays mounted underneath and
+     * returns when the claim is released. An entry that declines leaves the
+     * shipped bubble.
+     */
+    'conversation.chat.user-body': { kind: 'chain'; scope: 'session'; owner: UserMessageBodyOwnerProps }
     /**
      * Frame-wide quota notice chain. The Chat-owned host in `shell.overlay`
      * offers the one live notice; the first entry whose selector claims its

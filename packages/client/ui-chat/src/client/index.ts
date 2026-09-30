@@ -37,7 +37,9 @@ export type {
   CommandRowOwnerProps, CommandRowProps, MessageImagesProps, OpenFileOptions, PresentationInjected,
   QuotaNoticeCode, QuotaNoticeHostProps, QuotaNoticeInjected, QuotaNoticeOwnerProps, QuotaNoticeState,
   TurnProcessOwnerProps, TurnTailOwnerProps, UseChat, UseChatNodeTurnData, UseDisclosure, UsePresentation,
+  UserActionOwnerProps, UserMessageBodyOwnerProps,
 } from './contract/slots.ts'
+export type { MessageBodyClaimSet, UiChatService } from './message-claims.ts'
 export type {
   TurnProcessSpec,
 } from './contract/turn-process.ts'
