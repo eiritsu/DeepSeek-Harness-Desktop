@@ -137,7 +137,11 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
     return result
   }
 
-  /** Send a physical Session deletion request; Host feed events update projections. */
+  /**
+   * Send a physical Session deletion request; Host feed events update projections.
+   * @param sessionId - Session to delete.
+   * @returns the Host's Remote result for the deletion request.
+   */
   async deleteSession(
     sessionId: WorkspaceDeleteSessionRequest['sessionId'],
   ): Promise<RemoteResult<WorkspaceDeleteSessionValue>> {

@@ -229,7 +229,10 @@ export class ApiSessionAgentController {
     }
   }
 
-  /** Recheck a previously resolved Agent before a command commits Session work. */
+  /**
+   * Recheck a previously resolved Agent before a command commits Session work.
+   * @param agent - the resolved Agent whose availability is rechecked.
+   */
   assertMutable(agent: Agent): void {
     if (this.deleting.has(agent.id)) {
       throw new RemoteError('session/agent-busy', 'session deletion is in progress', { reason: 'SESSION_DELETING' })
@@ -239,7 +242,11 @@ export class ApiSessionAgentController {
     }
   }
 
-  /** Create a fork child under this controller's lifecycle ownership. */
+  /**
+   * Create a fork child under this controller's lifecycle ownership.
+   * @param options - Agent creation request naming the child Session and its model route.
+   * @returns the created Agent, shared with every concurrent caller for the same Session.
+   */
   async createOwned(options: CreateAgentOptions): Promise<Agent> {
     if (this.deleting.has(options.sessionId) || this.deleted.has(options.sessionId)) {
       throw new Error(`session "${options.sessionId}" is being deleted`)
