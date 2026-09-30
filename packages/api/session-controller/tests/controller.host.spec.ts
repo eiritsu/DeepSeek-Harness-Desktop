@@ -56,9 +56,11 @@ describe('SessionController facade', () => {
     const status = vi.fn()
     const failure = vi.fn()
     const activity = vi.fn()
+    const removed = vi.fn()
     ctx.on('api-session/status', status)
     ctx.on('api-session/error', failure)
     ctx.on('api-session/activity', activity)
+    ctx.on('api-session/removed', removed)
 
     await expect(controller.inspect(sessionId)).resolves.toEqual({
       meta: header,
@@ -111,6 +113,8 @@ describe('SessionController facade', () => {
     expect(status).toHaveBeenCalledWith(sessionId, true)
     expect(failure).toHaveBeenCalledWith(sessionId, expect.stringContaining('fixture failure'))
     expect(activity).toHaveBeenCalledWith(sessionId, expect.any(Number))
+    ctx.emit('workspace/session-deleted', { sessionId })
+    expect(removed).toHaveBeenCalledWith(sessionId)
     session.append('request/header', {
       header: { config: { provider: 'fixture', model: 'fixture-model' } },
       reason: 'initial',

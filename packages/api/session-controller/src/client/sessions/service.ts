@@ -45,6 +45,8 @@ export interface SessionSummary {
    * browser shows only the selected blank entry.
    */
   blank: boolean
+  /** Durable creation time; absent only for local or navigation placeholders. */
+  createdAt?: number
   updatedAt: number
   /** Current host-computed projection values retained by the object layer. */
   projectionValues?: Readonly<Partial<SessionProjectionMap>>
@@ -621,6 +623,7 @@ export class ClientSessions implements ISessions {
         running: entry.running,
         retainedBy: this.retentionSnapshot(entry.sessionId).retainedBy,
         blank: entry.blank,
+        ...(entry.createdAt === undefined ? {} : { createdAt: entry.createdAt }),
         updatedAt: entry.updatedAt,
         ...(entry.projectionValues === undefined
           ? {}

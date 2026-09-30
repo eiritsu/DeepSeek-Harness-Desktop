@@ -188,6 +188,8 @@ export interface SessionSummary {
   /** Whether this Session currently owns a live Agent. */
   readonly agentAvailable: boolean
   readonly sessionId: SessionId
+  /** Creation time read from the durable Session header. */
+  readonly createdAt: number
   readonly updatedAt: number
   readonly running: boolean
   readonly blank: boolean

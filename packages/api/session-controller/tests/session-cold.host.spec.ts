@@ -112,11 +112,13 @@ describe('sessions.list cold merge', () => {
     expect(response.value.items).toEqual([
       expect.objectContaining({
         sessionId: sid('uncached'),
+        createdAt: 200,
         blank: false,
         updatedAt: 200,
       }),
       expect.objectContaining({
         sessionId: sid('legacy-title'),
+        createdAt: 100,
         blank: false,
         updatedAt: 100,
         projections: { kind: 'cached', asOfSeq: 2, values: { title: 'Cached predecessor title' } },
@@ -168,11 +170,12 @@ describe('sessions.list cold merge', () => {
     expect(response.ok).toBe(true)
     if (!response.ok) throw new Error('unreachable')
     const byId = Object.fromEntries(response.value.items.map(item => [item.sessionId, item]))
-    expect(byId['cached-blank']).toMatchObject({ blank: true, updatedAt: 100, running: false })
-    expect(byId['cached-conversation']).toMatchObject({ blank: false, updatedAt: 1000 })
+    expect(byId['cached-blank']).toMatchObject({ createdAt: 100, blank: true, updatedAt: 100, running: false })
+    expect(byId['cached-conversation']).toMatchObject({ createdAt: 200, blank: false, updatedAt: 1000 })
     // A cache miss leaves blankness unknown; the row stays visible without a body read.
     expect(byId['uncached']).toMatchObject({
       blank: false,
+      createdAt: 300,
       updatedAt: 300,
       parentSessionId: 'session-parent',
       origin: 'subagent',
@@ -181,6 +184,7 @@ describe('sessions.list cold merge', () => {
     // A cold seeded header reads the cache by header alone, like any other
     // cold row: the cache binds the lifecycle, and a listing never seeds a fold.
     expect(byId['seeded-cold']).toMatchObject({
+      createdAt: 450,
       blank: false,
       updatedAt: 1200,
       projections: {
@@ -225,6 +229,7 @@ describe('attached updatedAt tracks human prompts', () => {
     const listed = await remote.list(request({}))
     if (!listed.ok) throw new Error('list failed')
     const summary = listed.value.items.find(item => item.sessionId === 'resumed-untouched')
+    expect(summary?.createdAt).toBe(500)
     expect(summary?.updatedAt).toBe(500)
 
     // A lifecycle boundary is not a human update.

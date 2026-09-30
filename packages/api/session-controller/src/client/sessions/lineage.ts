@@ -7,7 +7,9 @@ import type { SessionProjectionMap } from '@deepseek-ai/dsh-session-projection/t
 import type { SessionSummary } from '../../types.ts'
 
 /** Host list summary enriched with the latest Session Controller title projection. */
-export interface TitledSessionSummary extends SessionSummary {
+export type TitledSessionSummary = Omit<SessionSummary, 'createdAt'> & {
+  /** Durable creation time; absent for local placeholders without a Host header. */
+  createdAt?: number
   title?: string
   /** Current host-computed projection values for list consumers. */
   projectionValues?: Readonly<Partial<SessionProjectionMap>>
@@ -16,6 +18,7 @@ export interface TitledSessionSummary extends SessionSummary {
 /** One flattened session-list row with lineage depth. */
 export interface SessionListEntry {
   sessionId: SessionId
+  createdAt?: number
   title?: string
   updatedAt: number
   running: boolean

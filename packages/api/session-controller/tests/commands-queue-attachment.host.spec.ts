@@ -9,6 +9,7 @@ import type { ContextFormed } from '@deepseek-ai/dsh-llm'
 import SessionStore, {
   SESSION_FORMAT_VERSION, Session, SessionId, SessionLogOffset, SessionSeq,
 } from '@deepseek-ai/dsh-session'
+import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
 import type { SessionEvent, SessionHeader, UserMessage } from '@deepseek-ai/dsh-session'
 import { snapshotSubagentDescriptor, SUBAGENT_DESCRIPTOR_VERSION } from '@deepseek-ai/dsh-subagent'
 import { subagentIdentityProjectionDefinition } from '@deepseek-ai/dsh-subagent/src/projection.ts'
@@ -35,6 +36,7 @@ async function commandHarness(
   cancel: ReturnType<typeof vi.fn>
 }> {
   const ctx = new Context()
+  await ctx.plugin(TypertRegistry)
   await ctx.plugin(SessionStore)
   await ctx.plugin(AgentRegistry)
   installSessionReadTestServices(ctx)
@@ -100,14 +102,15 @@ async function commandHarness(
     current: { provider: 'fixture', model: 'fixture-model' },
     assembled: undefined,
   }
-  const agents = {
+  const agents = Object.assign(new ApiSessionAgentController(ctx), {
     resolveAgent: (id: SessionId) => Promise.resolve(id === agent.id
       ? { agent }
       : { error: new RemoteError('session/not-found', 'missing', { sessionId: id }) }),
+    assertMutable: () => {},
     selectionFor: () => selection,
     serializeImageAdmission: <Value>(_agent: Agent, operation: () => Promise<Value>) => operation(),
     composeAgent: () => Promise.resolve({ setup: () => {} }),
-  } as unknown as ApiSessionAgentController
+  })
   return {
     ctx,
     controller: new SessionCommandController(ctx, agents, '/workspace'),

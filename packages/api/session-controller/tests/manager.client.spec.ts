@@ -25,6 +25,7 @@ const API_ROSTER = webApp.closure(['@deepseek-ai/dsh-api-gateway'])
 const it = createClientTest({ roster: API_ROSTER })
 
 type SummaryOver = Partial<{
+  createdAt: number
   updatedAt: number
   running: boolean
   agentAvailable: boolean
@@ -35,7 +36,7 @@ type SummaryOver = Partial<{
 }>
 
 function summary(sessionId: SessionId, over: SummaryOver = {}) {
-  return { agentAvailable: true, sessionId, updatedAt: 100, running: false, blank: false, ...over }
+  return { agentAvailable: true, sessionId, createdAt: 50, updatedAt: 100, running: false, blank: false, ...over }
 }
 
 function makeManager(
@@ -606,6 +607,9 @@ describe('list lifecycle', () => {
     const result = await manager.create()
     expect(result).toMatchObject({ ok: true, value: { sessionId: S2 } })
     expect(manager.getListSnapshot().items.map(i => i.sessionId)).toEqual([S2])
+    expect(manager.getListSnapshot().items[0]?.createdAt).toBeUndefined()
+    manager.handleSessionAdded(summary(S2, { createdAt: 25 }))
+    expect(manager.getListSnapshot().items[0]?.createdAt).toBe(25)
   })
 
   it('retains title projections before list arrival, keeps last-wins by seq, and clears them on removal', async ({ mock, remote }) => {

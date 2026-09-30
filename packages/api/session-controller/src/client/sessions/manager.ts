@@ -73,12 +73,14 @@ interface ProjectionInflight {
 type ProjectionLoad = Omit<SessionProjectionSnapshot, 'values'>
 
 type SessionListMutation =
-  | { kind: 'upsert' | 'placeholder'; summary: SessionSummary }
+  | { kind: 'upsert' | 'placeholder'; summary: LocalSessionSummary }
   | { kind: 'remove'; sessionId: SessionId }
   | { kind: 'status'; sessionId: SessionId; running: boolean; agentAvailable: boolean }
   | { kind: 'activity'; sessionId: SessionId; updatedAt: number }
   /** Local first-send flip: the sender clears blank without waiting for a host frame. */
   | { kind: 'engaged'; sessionId: SessionId }
+
+type LocalSessionSummary = Omit<SessionSummary, 'createdAt'> & { createdAt?: number }
 
 /** Instance cluster + frame entry + the session list. */
 export class SessionManager {
@@ -99,7 +101,7 @@ export class SessionManager {
    *  is instantiated (list rows read the 'title' key), and an instantiated Session adopts the
    *  same store so history-baseline seeding and frames converge on one row set. */
   private readonly projectionStores = new Map<SessionId, ProjectionValueStore>()
-  private summaries: SessionSummary[] = []
+  private summaries: LocalSessionSummary[] = []
   private listState: 'idle' | 'loading' | 'error' = 'idle'
   /** Arrival phase; the pending → ready edge fires on the first successful pull (see SessionListPhase). */
   private listPhase: SessionListPhase = 'pending'
@@ -287,7 +289,7 @@ export class SessionManager {
     })
   }
 
-  private effectiveBlank(summary: SessionSummary): boolean {
+  private effectiveBlank(summary: LocalSessionSummary): boolean {
     return summary.blank && !this.engagedSessions.has(summary.sessionId)
   }
 
@@ -297,7 +299,7 @@ export class SessionManager {
    * @param summaries - list rows of the caller's snapshot.
    * @returns the retained identity set.
    */
-  private retainedIds(summaries: readonly SessionSummary[]): Set<SessionId> {
+  private retainedIds(summaries: readonly LocalSessionSummary[]): Set<SessionId> {
     const retained = new Set(summaries.map(summary => summary.sessionId))
     for (const sessionId of this.sessions.keys()) retained.add(sessionId)
     for (const sessionId of this.addresses.keys()) retained.add(sessionId)
@@ -403,7 +405,7 @@ export class SessionManager {
         const result = await this.remote.session.list({})
         if (this.listMutations !== mutations) return
         if (result.ok) {
-          const baseline: SessionSummary[] = this.listPhase === 'pending'
+          const baseline: LocalSessionSummary[] = this.listPhase === 'pending'
             ? [...result.value.items]
             : mergeOrderedBaseline(established, result.value.items, summary => summary.sessionId)
           // A removal supersedes running observed in the pull, including after re-addition.
@@ -770,7 +772,8 @@ export class SessionManager {
     const items = fresh.map((entry) => {
       const prev = this.entryCache.get(entry.sessionId)
       if (
-        prev !== undefined && prev.updatedAt === entry.updatedAt && prev.running === entry.running
+        prev !== undefined && prev.createdAt === entry.createdAt
+        && prev.updatedAt === entry.updatedAt && prev.running === entry.running
         && prev.blank === entry.blank
         && prev.parentSessionId === entry.parentSessionId && prev.cwd === entry.cwd
         && prev.origin === entry.origin && prev.title === entry.title && prev.depth === entry.depth
@@ -799,17 +802,19 @@ export class SessionManager {
 }
 
 /** Apply one list mutation without deriving display order. */
-function applyMutation(summaries: readonly SessionSummary[], mutation: SessionListMutation): SessionSummary[] {
+function applyMutation(summaries: readonly LocalSessionSummary[], mutation: SessionListMutation): LocalSessionSummary[] {
   switch (mutation.kind) {
     case 'upsert':
     case 'placeholder': {
       const existing = summaries.find(summary => summary.sessionId === mutation.summary.sessionId)
       if (existing === undefined) return [mutation.summary, ...summaries]
-      const filled: SessionSummary = {
+      const filled: LocalSessionSummary = {
         ...existing,
         // Blank only lowers: a stale true (session-added racing the local
         // first send) never re-hides an already-surfaced session.
         blank: existing.blank && mutation.summary.blank,
+        ...(existing.createdAt === undefined && mutation.summary.createdAt !== undefined
+          ? { createdAt: mutation.summary.createdAt } : {}),
         ...(mutation.kind === 'upsert' ? {
           agentAvailable: mutation.summary.agentAvailable,
           running: mutation.summary.running,
@@ -820,7 +825,8 @@ function applyMutation(summaries: readonly SessionSummary[], mutation: SessionLi
         ...(existing.origin === undefined && mutation.summary.origin !== undefined
           ? { origin: mutation.summary.origin } : {}),
       }
-      if (filled.cwd === existing.cwd && filled.parentSessionId === existing.parentSessionId
+      if (filled.createdAt === existing.createdAt
+        && filled.cwd === existing.cwd && filled.parentSessionId === existing.parentSessionId
         && filled.origin === existing.origin && filled.blank === existing.blank
         && filled.agentAvailable === existing.agentAvailable && filled.running === existing.running
       ) return [...summaries]

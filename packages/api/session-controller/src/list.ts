@@ -109,6 +109,7 @@ export class ApiSessionList {
     const metadata = projections?.values.sessionListMetadata
     return {
       sessionId: session.id,
+      createdAt: session.header.createdAt,
       updatedAt: updatedAt(session.header, metadata),
       agentAvailable: this.ctx.agents.get(session.id)?.session === session,
       running: this.ctx.agents.get(session.id)?.status === 'running',
@@ -148,6 +149,7 @@ export class ApiSessionList {
     const metadata = projections?.values.sessionListMetadata
     return {
       sessionId: header.id,
+      createdAt: header.createdAt,
       updatedAt: updatedAt(header, metadata),
       agentAvailable: false,
       running: false,

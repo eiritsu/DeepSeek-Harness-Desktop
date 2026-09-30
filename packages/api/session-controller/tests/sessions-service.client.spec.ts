@@ -54,6 +54,7 @@ const it = createClientTest({ roster: API_ROSTER }).extend<{ bench: BenchFactory
 /** Refresh the manager list from programmable rows and flush the microtask batch. */
 type FeedRow = {
   id: string
+  createdAt?: number
   cwd?: string
   parentId?: string
   origin?: 'subagent'
@@ -65,7 +66,7 @@ type FeedRow = {
 async function feedList(b: Bench, rows: FeedRow[]): Promise<void> {
   b.mock.remote.session.list.mockResolvedValue(ok({
     items: rows.map(r => ({ agentAvailable: true,
-      sessionId: sid(r.id), updatedAt: 1, running: r.running ?? false, blank: r.blank ?? false,
+      sessionId: sid(r.id), createdAt: r.createdAt ?? 1, updatedAt: 1, running: r.running ?? false, blank: r.blank ?? false,
       ...(r.cwd !== undefined ? { cwd: r.cwd } : {}),
       ...(r.parentId !== undefined ? { parentSessionId: sid(r.parentId) } : {}),
       ...(r.origin !== undefined ? { origin: r.origin } : {}),
@@ -85,12 +86,14 @@ describe('list store projection', () => {
       type: 'projection', sessionId: sid('s1'), key: 'title', value: 'Durable title', seq: 2,
     })
     await feedList(b, [
-      { id: 's1', cwd: '/home/u/proj-a/' },
+      { id: 's1', cwd: '/home/u/proj-a/', createdAt: 25 },
       { id: 's2', parentId: 's1', origin: 'subagent', running: true },
     ])
     const state = b.svc.list.getSnapshot()
     expect(state.ids).toEqual(['s1', 's2'])
-    expect(state.byId[sid('s1')]).toMatchObject({ title: 'Durable title', displayTitle: 'Durable title', cwd: '/home/u/proj-a/' })
+    expect(state.byId[sid('s1')]).toMatchObject({
+      title: 'Durable title', displayTitle: 'Durable title', cwd: '/home/u/proj-a/', createdAt: 25,
+    })
     expect(state.byId[sid('s2')]).toMatchObject({
       displayTitle: 's2', parentId: 's1', origin: 'subagent', running: true,
     })
@@ -114,7 +117,7 @@ describe('list store projection', () => {
     const b = bench()
     await feedList(b, [{ id: 's1' }])
     b.svc.handleSessionAdded({ agentAvailable: true,
-      sessionId: sid('s2'), updatedAt: 2, running: false, blank: true,
+      sessionId: sid('s2'), createdAt: 2, updatedAt: 2, running: false, blank: true,
     })
     await Promise.resolve()
     expect(b.svc.list.getSnapshot().ids).toContain('s2')
@@ -533,7 +536,7 @@ describe('Agent scope disposal lifecycle', () => {
     const readiness = b.ctx.plugin(() => undefined)
     await readiness
     b.svc.handleSessionAdded({ agentAvailable: true,
-      sessionId: sid('live'), updatedAt: 1, running: false, blank: true,
+      sessionId: sid('live'), createdAt: 1, updatedAt: 1, running: false, blank: true,
     })
     await Promise.resolve()
     using reference = b.svc.retainAgentScope(sid('live'))
@@ -997,7 +1000,7 @@ describe('fork', () => {
 describe('catalog arrival', () => {
   it('keeps a retained binding alive without a catalog row after Host removal', async ({ bench }) => {
     const b = bench()
-    b.svc.handleSessionAdded({ agentAvailable: true, sessionId: sid('s-new'), updatedAt: 1, running: false, blank: true })
+    b.svc.handleSessionAdded({ agentAvailable: true, sessionId: sid('s-new'), createdAt: 1, updatedAt: 1, running: false, blank: true })
     await Promise.resolve()
     expect(b.svc.binding(sid('s-new'))).toBeUndefined()
     const reference = b.svc.retain(sid('s-new'), { source: 'controllerOperation' })
@@ -1069,7 +1072,7 @@ describe('blank mirror', () => {
     const b = bench()
     await feedList(b, [])
     b.svc.handleSessionAdded({ agentAvailable: true,
-      sessionId: sid('s-new'), updatedAt: 2, running: false, blank: true, cwd: '/w/a',
+      sessionId: sid('s-new'), createdAt: 2, updatedAt: 2, running: false, blank: true, cwd: '/w/a',
     })
     await Promise.resolve()
     expect(b.svc.list.getSnapshot().byId[sid('s-new')]).toMatchObject({ blank: true })

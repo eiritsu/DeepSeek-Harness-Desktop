@@ -128,6 +128,7 @@ export class SessionCommandController {
     } catch (error) {
       this.rejectCreation(sessionId, error)
     }
+    this.agents.assertMutable(adopted)
     if (workspace !== undefined) {
       try {
         await workspace.attachSession(sessionId)
@@ -139,6 +140,7 @@ export class SessionCommandController {
         )
       }
     }
+    this.agents.assertMutable(adopted)
     const agentPreset = this.agents.presetForSession(adopted.session)
     return { sessionId, ...(agentPreset === undefined ? {} : { agentPreset }) }
   }
@@ -167,6 +169,7 @@ export class SessionCommandController {
             ? {}
             : { reasoningEffort: ReasoningEffortId(request.reasoningEffort) }),
         }
+        this.agents.assertMutable(agent)
         this.agents.selectForNextRequest(agent, selected)
         void this.ctx.agentDefaultModel.saveSelection(selected).catch((error: unknown) => {
           this.ctx.logger.warn(
@@ -267,7 +270,7 @@ export class SessionCommandController {
     const composition = await this.agents.composeAgent(this.agents.presetForObservation(source))
     try {
       const { provider, model } = this.ctx.agentDefaultModel.currentSelection()
-      await this.ctx.agents.create({
+      await this.agents.createOwned({
         sessionId: childId,
         seed,
         inheritedEventCount: SessionLogOffset(boundary + 1),
@@ -353,6 +356,7 @@ export class SessionCommandController {
         )
         const content = await this.ctx.attachments.admitPromptContent(admission.content)
         const message: UserMessage = createUserMessage({ content, source })
+        this.agents.assertMutable(agent)
         if (this.ctx.agents.get(agent.id) !== agent) {
           throw new RemoteError(
             'session/not-found',
@@ -474,6 +478,7 @@ export class SessionCommandController {
       throw new RemoteError('session/queue-item-not-found', 'queued item is no longer pending', { itemId: request.itemId })
     }
     const { target, message } = located
+    this.agents.assertMutable(agent)
     if (request.action.kind === 'steer' && (target !== 'next-turn' || agent.status !== 'running')) {
       throw new RemoteError('session/steer-unavailable', 'current turn no longer accepts steering', { itemId: request.itemId })
     }
