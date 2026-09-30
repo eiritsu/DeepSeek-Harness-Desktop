@@ -132,6 +132,7 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/extensions/ui-cordis': { kind: 'indirect', reason: 'The definition card drives the host dynamic run/stop verbs that the model\'s cordis_run/cordis_stop tools also reach; the runner owns any model-visible effect.' },
   'packages/client/ui-permission-presets': { kind: 'indirect', reason: 'The picker submits the host /permission command; the knob events it appends own the model-visible effect through the sandbox/approval consumers.' },
   'packages/client/ui-settings-plugins': { kind: 'none', reason: 'Browser-side settings surface; registers no model surface.' },
+  'packages/client/ui-settings-archived-sessions': { kind: 'none', reason: 'Browser-side settings surface; registers no model surface.' },
   'packages/client/ui-settings-shell': { kind: 'none', reason: 'Browser-side settings surface; registers no model surface.' },
   'packages/client/ui-settings-session-log': { kind: 'none', reason: 'Browser preference controls request metadata, not model input.' },
   'packages/client/ui-settings-agent-loop': { kind: 'none', reason: 'Browser-side settings surface; registers no model surface.' },

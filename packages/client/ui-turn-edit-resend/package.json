@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-client-ui-turn-edit-resend",
   "description": "The Web edit-and-resend surface: a per-message Edit & resend action on the latest user turn and the inline composer-style edit card, backed by the turnResend Host Remote",
-  "version": "0.2.0-rc.1",
+  "version": "0.2.0-rc.2",
   "publishConfig": {
     "access": "public"
   },

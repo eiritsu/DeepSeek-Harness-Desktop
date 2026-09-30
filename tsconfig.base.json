@@ -281,6 +281,7 @@
       "@deepseek-ai/dsh-client-ui-subagent": ["./packages/client/ui-subagent/src"],
       "@deepseek-ai/dsh-experimental-client-ui-agent-team": ["./packages/experimental/client-ui-agent-team/src"],
       "@deepseek-ai/dsh-client-ui-settings-plugins": ["./packages/client/ui-settings-plugins/src"],
+      "@deepseek-ai/dsh-client-ui-settings-archived-sessions": ["./packages/client/ui-settings-archived-sessions/src"],
       "@deepseek-ai/dsh-client-ui-settings-shell": ["./packages/client/ui-settings-shell/src"],
       "@deepseek-ai/dsh-client-ui-settings-agent-loop": ["./packages/client/ui-settings-agent-loop/src"],
       "@deepseek-ai/dsh-client-ui-settings-session-log": ["./packages/client/ui-settings-session-log/src"],

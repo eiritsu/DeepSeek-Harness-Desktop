@@ -408,6 +408,11 @@
     - id: ui-settings-shell
       name: '@deepseek-ai/dsh-client-ui-settings-shell'
 
+    # The Archived sessions settings section: the navigation entry and the
+    # page of archived Sessions, grouped by the Workspace that holds them.
+    - id: ui-settings-archived-sessions
+      name: '@deepseek-ai/dsh-client-ui-settings-archived-sessions'
+
     - id: ui-settings-agent-loop
       name: '@deepseek-ai/dsh-client-ui-settings-agent-loop'
 
