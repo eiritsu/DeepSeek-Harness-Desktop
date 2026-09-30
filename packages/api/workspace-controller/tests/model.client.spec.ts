@@ -9,6 +9,8 @@ import type {
   WorkspaceCreateValue,
   WorkspaceDeleteRequest,
   WorkspaceDeleteValue,
+  WorkspaceDeleteSessionRequest,
+  WorkspaceDeleteSessionValue,
   WorkspaceFollowFrame,
   WorkspaceInsertBeforeRequest,
   WorkspaceInsertSessionBeforeRequest,
@@ -77,6 +79,8 @@ class FakeWorkspaceRemote implements WorkspaceRemote {
     Promise.resolve(remoteOk({ workspace: { ...workspace(String(request.workspaceId)), title: request.title } }))
   onDelete: (_request: WorkspaceDeleteRequest) => Promise<RemoteResult<WorkspaceDeleteValue>> = () =>
     Promise.resolve(remoteOk({ deleted: true }))
+  onDeleteSession: (_request: WorkspaceDeleteSessionRequest) => Promise<RemoteResult<WorkspaceDeleteSessionValue>> = () =>
+    Promise.resolve(remoteOk({ deleted: true }))
   onInsertBefore: (
     request: WorkspaceInsertBeforeRequest,
   ) => Promise<RemoteResult<WorkspaceOrderValue>> = request =>
@@ -116,6 +120,11 @@ class FakeWorkspaceRemote implements WorkspaceRemote {
   delete(request: WorkspaceDeleteRequest): Promise<RemoteResult<WorkspaceDeleteValue>> {
     this.record('delete', request)
     return this.onDelete(request)
+  }
+
+  deleteSession(request: WorkspaceDeleteSessionRequest): Promise<RemoteResult<WorkspaceDeleteSessionValue>> {
+    this.record('deleteSession', request)
+    return this.onDeleteSession(request)
   }
 
   insertBefore(request: WorkspaceInsertBeforeRequest): Promise<RemoteResult<WorkspaceOrderValue>> {
@@ -189,6 +198,16 @@ describe('ClientWorkspaceModel', () => {
     ))
     await expect(model.initializeDefault()).resolves.toMatchObject({ ok: false })
     expect(model.getSnapshot()).toBe(before)
+  })
+
+  it('sends physical session deletion through the Host request without optimistic list edits', async () => {
+    const remote = new FakeWorkspaceRemote()
+    const model = modelFor(remote)
+    baseline(model, [workspace('one', [sid('session')])], [sid('session')], [])
+    await expect(model.deleteSession(sid('session'))).resolves.toMatchObject({ ok: true })
+    expect(remote.calls).toContainEqual({ method: 'deleteSession', request: { sessionId: 'session' } })
+    expect(model.getSnapshot().items[0]?.sessionIds).toEqual(['session'])
+    expect(model.getSnapshot().archivedSessionIds).toEqual(['session'])
   })
 
   it('replaces reconnect state and applies ordered increments', () => {

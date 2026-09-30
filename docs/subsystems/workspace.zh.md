@@ -363,6 +363,13 @@ Host service backing the generated `ctx.remote.workspace` namespace.
 @Remote('delete') delete(request: WorkspaceDeleteRequest): Promise<WorkspaceDeleteValue>
 
 /**
+ * Physically delete one Session's stored generations.
+ * @param request - Session identity to delete.
+ * @returns deletion confirmation after storage and Workspace references commit.
+ */
+@Remote('deleteSession') deleteSession(request: WorkspaceDeleteSessionRequest): Promise<WorkspaceDeleteSessionValue>
+
+/**
  * Move one Workspace within the registry display order.
  * @param request - moved Workspace and optional anchor.
  * @returns the complete resulting Workspace order.
@@ -592,6 +599,14 @@ pinSession(sessionId: SessionId): Promise<void>
 unpinSession(sessionId: SessionId): Promise<void>
 
 /**
+ * Physically delete one stored Session after rejecting active work, then
+ * clear its Workspace membership, archive, and pin references.
+ * @param sessionId - stored Session to delete.
+ * @returns resolution after storage and Workspace state have committed.
+ */
+deleteSession(sessionId: SessionId): Promise<void>
+
+/**
  * Resolve by canonical directory path without creating or mutating a
  * workspace. A missing path rejects during `realpath`; an existing unowned
  * directory returns `undefined`.
@@ -622,11 +637,47 @@ Ask the composed providers what still runs for a session before it is archived. 
  * the result of `next()`; the registry's innermost callback returns an
  * empty list, so a composition without providers archives freely. Any
  * non-empty result refuses the archive without a write.
- * @param request - the session about to be archived.
+ * @param request - the session about to be archived or deleted.
  * @param next - delegate to the remaining providers.
  * @mode waterfall
  */
 'workspace/session-activity'( request: SessionActivityRequest, next: () => Promise<readonly SessionActivity[]>, ): Promise<readonly SessionActivity[]>
+```
+
+Source: [`packages/workspace/workspace/src/index.ts`](../../packages/workspace/workspace/src/index.ts)
+
+<a id="workspacesession-delete-admission--waterfall"></a>
+
+#### `workspace/session-delete-admission` — waterfall
+
+Reserve deletion against new local Agent admission and return owner-scoped close capabilities.
+
+```ts cordis-catalog
+/**
+ * Reserve deletion against new local Agent admission and return owner-scoped close capabilities.
+ * @param request - the Session about to be deleted.
+ * @param next - delegate to remaining owners.
+ * @mode waterfall
+ */
+'workspace/session-delete-admission'( request: SessionActivityRequest, next: () => Promise<readonly SessionDeleteAdmission[]>, ): Promise<readonly SessionDeleteAdmission[]>
+```
+
+Source: [`packages/workspace/workspace/src/index.ts`](../../packages/workspace/workspace/src/index.ts)
+
+<a id="workspacesession-deleted--emit"></a>
+
+#### `workspace/session-deleted` — emit
+
+A Session and all committed generations were physically deleted and its Workspace references were cleared.
+
+```ts cordis-catalog
+/**
+ * A Session and all committed generations were physically deleted and its
+ * Workspace references were cleared.
+ * @param request - deleted Session identity.
+ * @mode emit
+ */
+'workspace/session-deleted'(request: SessionActivityRequest): void
 ```
 
 Source: [`packages/workspace/workspace/src/index.ts`](../../packages/workspace/workspace/src/index.ts)

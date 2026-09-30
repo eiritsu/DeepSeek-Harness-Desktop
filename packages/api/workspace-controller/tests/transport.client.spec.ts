@@ -14,6 +14,7 @@ import {
   ClientWorkspaceModel,
   createWorkspaceStateStream,
   WorkspaceArchiveError,
+  WorkspaceSessionDeleteError,
   WorkspaceController,
   WorkspaceCreateError,
   type WorkspaceFollowSink,
@@ -342,6 +343,7 @@ describe('WorkspaceController', () => {
     await expect(controller.pinSession(sid('session'))).resolves.toBeUndefined()
     await expect(controller.unpinSession(sid('session'))).resolves.toBeUndefined()
     await expect(controller.delete(wid('one'))).resolves.toBeUndefined()
+    await expect(controller.deleteSession(sid('session'))).resolves.toBeUndefined()
     // Each command crosses the wire as one positional request object.
     expect(mock.log.requests('workspace/create')).toEqual([{ path: '/work/created' }])
     expect(mock.log.requests('workspace/rename')).toEqual([{ workspaceId: 'one', title: 'renamed' }])
@@ -353,6 +355,7 @@ describe('WorkspaceController', () => {
     expect(mock.log.requests('workspace/pinSession')).toEqual([{ sessionId: 'session' }])
     expect(mock.log.requests('workspace/unpinSession')).toEqual([{ sessionId: 'session' }])
     expect(mock.log.requests('workspace/delete')).toEqual([{ workspaceId: 'one' }])
+    expect(mock.log.requests('workspace/deleteSession')).toEqual([{ sessionId: 'session' }])
   })
 
   it('maps generated business failures to the command facade errors', async ({ mock, start }) => {
@@ -373,6 +376,20 @@ describe('WorkspaceController', () => {
     await expect(controller.rename(wid('missing'), 'name')).rejects.toThrow('workspace rename failed: workspace/not-found: gone')
     mock.remote.workspace.delete.mockResolvedValueOnce(err(missingWorkspace))
     await expect(controller.delete(wid('missing'))).rejects.toThrow('workspace delete failed: workspace/not-found: gone')
+    const blockedDelete = new RemoteError('workspace/session-delete-blocked', 'writer active', {
+      sessionId: sid('session'), reason: 'writer',
+    })
+    mock.remote.workspace.deleteSession.mockResolvedValueOnce(err(blockedDelete))
+    await expect(controller.deleteSession(sid('session'))).rejects.toMatchObject({
+      name: 'WorkspaceSessionDeleteError',
+      rpcError: {
+        isDSHRemoteError: true,
+        name: 'RemoteError',
+        code: 'workspace/session-delete-blocked',
+        message: 'writer active',
+        details: { sessionId: sid('session'), reason: 'writer' },
+      },
+    } satisfies Partial<WorkspaceSessionDeleteError>)
     mock.remote.workspace.insertBefore.mockResolvedValueOnce(err(missingWorkspace))
     await expect(controller.insertBefore(wid('missing'))).rejects.toThrow('workspace reorder failed: workspace/not-found: gone')
     mock.remote.workspace.archiveSession.mockResolvedValueOnce(err(missingSession))

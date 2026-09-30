@@ -4,6 +4,7 @@ import { basename, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import { SessionAlreadyOwnedError, SessionPersistenceNotFoundError } from '@deepseek-ai/dsh-session-persistence'
 import Storage from '@deepseek-ai/dsh-storage'
 import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
@@ -61,7 +62,14 @@ async function harness(options: { systemDocuments?: boolean } = {}) {
   const storageDomain = new DomainFacility(ctx, { backend: 'memory', routes: {} })
   ctx.storage.mount('domain', storageDomain)
   ctx.provide('storageDomain', storageDomain)
-  ctx.provide('sessionPersistence', { list: () => Promise.resolve([]) } as never)
+  const deletedSessions = new Set<string>()
+  ctx.provide('sessionPersistence', {
+    list: () => Promise.resolve([]),
+    delete: vi.fn(async (id: SessionId) => {
+      if (deletedSessions.has(id)) throw new SessionPersistenceNotFoundError(id)
+      deletedSessions.add(id)
+    }),
+  } as never)
   await ctx.plugin(WorkspaceRegistry)
   const dispose = (): void => {}
   ctx.provide('typert', {
@@ -299,6 +307,110 @@ describe('WorkspaceController commands', () => {
     // Unpin is idempotent: an id that is not pinned is not an error.
     await expect(controller.unpinSession({ sessionId: session.id }))
       .resolves.toEqual({ pinnedSessionIds: [] })
+  })
+
+  it('deletes one session only after its activity check and removes durable references', async () => {
+    const { controller, ctx, root } = await harness()
+    const created = await controller.create({ path: stageDir(root, 'delete-session') })
+    const session = ctx.sessions.create(SessionId('delete-me'), { meta: { cwd: created.workspace.path } })
+    const child = ctx.sessions.create(SessionId('keep-child'), {
+      meta: { cwd: created.workspace.path, parentSession: session.id },
+    })
+    const workspace = ctx.workspaceRegistry.get(created.workspace.workspaceId)
+    if (workspace === undefined) throw new Error('fixture Workspace disappeared')
+    await workspace.attachSession(session.id)
+    await workspace.attachSession(child.id)
+    await controller.archiveSession({ sessionId: session.id })
+    const feed = new WorkspaceFeed(ctx)
+    const feedAbort = new AbortController()
+    const feedIterator = feed.follow(feedAbort.signal)[Symbol.asyncIterator]()
+    await expect(nextFrame(feedIterator)).resolves.toMatchObject({ type: 'baseline' })
+
+    const activity = [{ kind: 'probe' as const }]
+    const stopReporting = ctx.on('workspace/session-activity', async ({ sessionId }, next) =>
+      sessionId === session.id ? [...activity, ...(await next())] : next())
+    await expect(controller.deleteSession({ sessionId: session.id })).rejects.toMatchObject({
+      code: 'workspace/session-active',
+      details: { sessionId: session.id, activity },
+    })
+    stopReporting()
+
+    const removed: string[] = []
+    ctx.on('workspace/session-deleted', ({ sessionId }) => { removed.push(String(sessionId)) })
+    await expect(controller.deleteSession({ sessionId: session.id })).resolves.toEqual({ deleted: true })
+    expect(removed).toEqual([String(session.id)])
+    expect(workspace.sessionIds).toEqual([child.id])
+    await expect(nextFrame(feedIterator)).resolves.toMatchObject({
+      type: 'upsert', workspace: { workspaceId: workspace.id, sessionIds: [child.id] },
+    })
+    expect(ctx.workspaceRegistry.archivedSessionIds).toEqual([])
+    expect(ctx.workspaceRegistry.pinnedSessionIds).toEqual([])
+    expect(ctx.sessions.get(child.id)?.header.parentSession).toBe(session.id)
+    expect(ctx.sessionPersistence.delete).toHaveBeenCalledWith(session.id)
+    feedAbort.abort()
+    await expect(feedIterator.next()).resolves.toEqual({ done: true, value: undefined })
+  })
+
+  it('lets a retry finish Registry cleanup after the log was deleted', async () => {
+    const { controller, ctx, root } = await harness()
+    const created = await controller.create({ path: stageDir(root, 'delete-retry') })
+    const session = ctx.sessions.create(SessionId('delete-retry-session'), { meta: { cwd: created.workspace.path } })
+    const workspace = ctx.workspaceRegistry.get(created.workspace.workspaceId)
+    if (workspace === undefined) throw new Error('fixture Workspace disappeared')
+    await workspace.attachSession(session.id)
+    await controller.archiveSession({ sessionId: session.id })
+    const detach = vi.spyOn(workspace, 'detachSession').mockRejectedValueOnce(new Error('domain write failed'))
+    const removed: string[] = []
+    ctx.on('workspace/session-deleted', ({ sessionId }) => { removed.push(String(sessionId)) })
+
+    await expect(controller.deleteSession({ sessionId: session.id })).rejects.toThrow('domain write failed')
+    expect(removed).toEqual([])
+    expect(ctx.workspaceRegistry.archivedSessionIds).toEqual([session.id])
+
+    await expect(controller.deleteSession({ sessionId: session.id })).resolves.toEqual({ deleted: true })
+    expect(removed).toEqual([String(session.id)])
+    expect(workspace.sessionIds).toEqual([])
+    expect(ctx.workspaceRegistry.archivedSessionIds).toEqual([])
+    detach.mockRestore()
+  })
+
+  it('maps a cross-process persistence writer refusal without deleting references', async () => {
+    const { controller, ctx, root } = await harness()
+    const created = await controller.create({ path: stageDir(root, 'delete-busy') })
+    const session = ctx.sessions.create(SessionId('delete-busy-session'), { meta: { cwd: created.workspace.path } })
+    const workspace = ctx.workspaceRegistry.get(created.workspace.workspaceId)
+    if (workspace === undefined) throw new Error('fixture Workspace disappeared')
+    await workspace.attachSession(session.id)
+    vi.mocked(ctx.sessionPersistence.delete).mockRejectedValueOnce(new SessionAlreadyOwnedError(session.id))
+
+    await expect(controller.deleteSession({ sessionId: session.id })).rejects.toMatchObject({
+      code: 'workspace/session-delete-blocked',
+      details: { sessionId: session.id, reason: 'writer' },
+    })
+    expect(workspace.sessionIds).toEqual([session.id])
+  })
+
+  it('keeps a deleted Session retryable when the removal event listener fails', async () => {
+    const { controller, ctx, root } = await harness()
+    const created = await controller.create({ path: stageDir(root, 'delete-event-retry') })
+    const session = ctx.sessions.create(SessionId('delete-event-retry-session'), { meta: { cwd: created.workspace.path } })
+    const workspace = ctx.workspaceRegistry.get(created.workspace.workspaceId)
+    if (workspace === undefined) throw new Error('fixture Workspace disappeared')
+    await workspace.attachSession(session.id)
+    const delivered: string[] = []
+    let failOnce = true
+    ctx.on('workspace/session-deleted', ({ sessionId }) => {
+      if (failOnce) {
+        failOnce = false
+        throw new Error('removal listener failed')
+      }
+      delivered.push(String(sessionId))
+    })
+
+    await expect(controller.deleteSession({ sessionId: session.id })).rejects.toThrow('removal listener failed')
+    expect(workspace.sessionIds).toEqual([])
+    await expect(controller.deleteSession({ sessionId: session.id })).resolves.toEqual({ deleted: true })
+    expect(delivered).toEqual([String(session.id)])
   })
 })
 

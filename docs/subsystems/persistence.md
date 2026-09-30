@@ -408,6 +408,15 @@ abstract stat(id: SessionId, options?: SessionPersistenceStatOptions): Promise<S
  * @returns one snapshot per stored session.
  */
 abstract list(options?: SessionPersistenceListOptions): Promise<readonly SessionPersistenceSnapshot[]>
+
+/**
+ * Physically remove one stored Session and every committed format generation.
+ * @param id - stored Session to remove.
+ * @returns resolution after its generation files are absent.
+ * @throws {SessionPersistenceNotFoundError} when no stored Session exists.
+ * @throws {SessionAlreadyOwnedError} while a local or cross-process writer owns the session.
+ */
+abstract delete(id: SessionId): Promise<void>
 ```
 
 Types: [SessionId](core.md)

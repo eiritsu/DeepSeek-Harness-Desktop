@@ -2126,6 +2126,13 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'options', description: 'optional cancellation.' }],
         returns: 'one snapshot per stored session.',
       },
+      {
+        signature: 'abstract delete(id: SessionId): Promise<void>',
+        description: 'Physically remove one stored Session and every committed format generation.',
+        parameters: [{ name: 'id', description: 'stored Session to remove.' }],
+        returns: 'resolution after its generation files are absent.',
+        throws: ['{SessionPersistenceNotFoundError} when no stored Session exists.', '{SessionAlreadyOwnedError} while a local or cross-process writer owns the session.'],
+      },
     ],
   },
   {
@@ -3613,6 +3620,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'deletion confirmation.',
       },
       {
+        signature: '@Remote(\'deleteSession\') deleteSession(request: WorkspaceDeleteSessionRequest): Promise<WorkspaceDeleteSessionValue>',
+        description: 'Physically delete one Session\'s stored generations.',
+        parameters: [{ name: 'request', description: 'Session identity to delete.' }],
+        returns: 'deletion confirmation after storage and Workspace references commit.',
+      },
+      {
         signature: '@Remote(\'insertBefore\') insertBefore(request: WorkspaceInsertBeforeRequest): Promise<WorkspaceOrderValue>',
         description: 'Move one Workspace within the registry display order.',
         parameters: [{ name: 'request', description: 'moved Workspace and optional anchor.' }],
@@ -3758,6 +3771,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Unpin one session durably by dropping it from the registry-global pin set. Unpinning runs no session-existence check because removing an id cannot introduce an unknown one, so an entry whose session is gone still resolves. An id that is not pinned resolves without writing.',
         parameters: [{ name: 'sessionId', description: 'The session to unpin.' }],
         returns: 'resolution after durability.',
+      },
+      {
+        signature: 'deleteSession(sessionId: SessionId): Promise<void>',
+        description: 'Physically delete one stored Session after rejecting active work, then clear its Workspace membership, archive, and pin references.',
+        parameters: [{ name: 'sessionId', description: 'stored Session to delete.' }],
+        returns: 'resolution after storage and Workspace state have committed.',
       },
       {
         signature: 'async resolveByPath(path: string): Promise<Workspace | undefined>',
@@ -4409,7 +4428,23 @@ export const EVENT_API: readonly EventApiEntry[] = [
     signature: '\'workspace/session-activity\'( request: SessionActivityRequest, next: () => Promise<readonly SessionActivity[]>, ): Promise<readonly SessionActivity[]>',
     summary: 'Ask the composed providers what still runs for a session before it is archived.',
     description: 'Ask the composed providers what still runs for a session before it is archived. A listener prepends its own SessionActivity entries to the result of `next()`; the registry\'s innermost callback returns an empty list, so a composition without providers archives freely. Any non-empty result refuses the archive without a write.',
-    parameters: [{ name: 'request', description: 'the session about to be archived.' }, { name: 'next', description: 'delegate to the remaining providers.' }],
+    parameters: [{ name: 'request', description: 'the session about to be archived or deleted.' }, { name: 'next', description: 'delegate to the remaining providers.' }],
+  },
+  {
+    name: 'workspace/session-delete-admission',
+    mode: 'waterfall',
+    signature: '\'workspace/session-delete-admission\'( request: SessionActivityRequest, next: () => Promise<readonly SessionDeleteAdmission[]>, ): Promise<readonly SessionDeleteAdmission[]>',
+    summary: 'Reserve deletion against new local Agent admission and return owner-scoped close capabilities.',
+    description: 'Reserve deletion against new local Agent admission and return owner-scoped close capabilities.',
+    parameters: [{ name: 'request', description: 'the Session about to be deleted.' }, { name: 'next', description: 'delegate to remaining owners.' }],
+  },
+  {
+    name: 'workspace/session-deleted',
+    mode: 'emit',
+    signature: '\'workspace/session-deleted\'(request: SessionActivityRequest): void',
+    summary: 'A Session and all committed generations were physically deleted and its Workspace references were cleared.',
+    description: 'A Session and all committed generations were physically deleted and its Workspace references were cleared.',
+    parameters: [{ name: 'request', description: 'deleted Session identity.' }],
   },
   {
     name: 'workspace/session-stop',
@@ -6512,6 +6547,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SessionCreateValue {\n    readonly sessionId: SessionId;\n    readonly agentPreset?: string;\n}',
   },
   {
+    name: 'SessionDeleteAdmission',
+    declaration: 'export interface SessionDeleteAdmission {\n    close(): Promise<void>;\n    finish(deleted: boolean): void;\n}',
+  },
+  {
     name: 'SessionEvent',
     declaration: 'export type SessionEvent<T extends SessionEventType = SessionEventType> = {\n    [K in SessionEventType]: {\n        type: K;\n        seq: SessionSeq;\n        time: number;\n        data: SessionEventMap[K];\n        ignorable?: true;\n    } & (K extends SurfaceEventType ? SurfaceIntent<K> : {\n        surfaceOp?: never;\n        sourceEventSeqs?: never;\n    });\n}[T];',
   },
@@ -6877,7 +6916,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SessionSummary',
-    declaration: 'export interface SessionSummary {\n    readonly agentAvailable: boolean;\n    readonly sessionId: SessionId;\n    readonly updatedAt: number;\n    readonly running: boolean;\n    readonly blank: boolean;\n    readonly parentSessionId?: SessionId;\n    readonly origin?: \'subagent\';\n    readonly cwd?: string;\n    readonly projections?: SessionProjectionHints;\n}',
+    declaration: 'export interface SessionSummary {\n    readonly agentAvailable: boolean;\n    readonly sessionId: SessionId;\n    readonly createdAt: number;\n    readonly updatedAt: number;\n    readonly running: boolean;\n    readonly blank: boolean;\n    readonly parentSessionId?: SessionId;\n    readonly origin?: \'subagent\';\n    readonly cwd?: string;\n    readonly projections?: SessionProjectionHints;\n}',
   },
   {
     name: 'SessionSurface',
@@ -8066,6 +8105,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'WorkspaceDeleteRequest',
     declaration: 'export interface WorkspaceDeleteRequest {\n    readonly workspaceId: WorkspaceId;\n}',
+  },
+  {
+    name: 'WorkspaceDeleteSessionRequest',
+    declaration: 'export interface WorkspaceDeleteSessionRequest {\n    readonly sessionId: SessionId;\n}',
+  },
+  {
+    name: 'WorkspaceDeleteSessionValue',
+    declaration: 'export interface WorkspaceDeleteSessionValue {\n    readonly deleted: true;\n}',
   },
   {
     name: 'WorkspaceDeleteValue',

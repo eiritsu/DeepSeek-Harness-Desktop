@@ -37,13 +37,15 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'workspace/name-conflict': { readonly name: string }
     /**
      * The Session still has running work — its own turn, a subagent, a
-     * background job, or an active schedule — so archiving was refused
-     * without a write; `activity` names what must stop first.
+     * background job, or an active schedule — so archiving or deletion was
+     * refused without a write; `activity` names what must stop first.
      */
     'workspace/session-active': {
       readonly sessionId: SessionId
       readonly activity: readonly SessionActivity[]
     }
+    /** A local or cross-process writer still owns the Session. */
+    'workspace/session-delete-blocked': { readonly sessionId: SessionId; readonly reason: 'writer' }
     /** The Session or its anchor is not in the Workspace's manual order. */
     'workspace/move-invalid': {
       readonly workspaceId: WorkspaceId
@@ -122,6 +124,16 @@ export interface WorkspaceArchiveSessionRequest {
    * set is durable.
    */
   readonly stopActivity?: boolean
+}
+
+/** Session requested for physical deletion. */
+export interface WorkspaceDeleteSessionRequest {
+  readonly sessionId: SessionId
+}
+
+/** Receipt after Session generations and Workspace references have been deleted. */
+export interface WorkspaceDeleteSessionValue {
+  readonly deleted: true
 }
 
 /** Session requested for restoration from the archived Session list. */

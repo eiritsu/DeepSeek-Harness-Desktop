@@ -14,6 +14,8 @@ import type {
   WorkspaceCreateValue,
   WorkspaceDeleteRequest,
   WorkspaceDeleteValue,
+  WorkspaceDeleteSessionRequest,
+  WorkspaceDeleteSessionValue,
   WorkspaceFollowFrame,
   WorkspaceInsertBeforeRequest,
   WorkspaceInsertSessionBeforeRequest,
@@ -124,6 +126,16 @@ export class WorkspaceController extends TypertRemoteService {
   @Remote('delete')
   delete(request: WorkspaceDeleteRequest): Promise<WorkspaceDeleteValue> {
     return this.commands.delete(request)
+  }
+
+  /**
+   * Physically delete one Session's stored generations.
+   * @param request - Session identity to delete.
+   * @returns deletion confirmation after storage and Workspace references commit.
+   */
+  @Remote('deleteSession')
+  deleteSession(request: WorkspaceDeleteSessionRequest): Promise<WorkspaceDeleteSessionValue> {
+    return this.commands.deleteSession(request)
   }
 
   /**

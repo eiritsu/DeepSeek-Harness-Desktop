@@ -8,6 +8,7 @@ import {
   WorkspaceId,
   WorkspaceMoveInvalidError,
   WorkspaceOrderInvalidError,
+  WorkspaceSessionDeleteBusyError,
   WorkspaceUnknownSessionError,
 } from '@deepseek-ai/dsh-workspace'
 import { RemoteError, remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
@@ -19,6 +20,8 @@ import type {
   WorkspaceCreateValue,
   WorkspaceDeleteRequest,
   WorkspaceDeleteValue,
+  WorkspaceDeleteSessionRequest,
+  WorkspaceDeleteSessionValue,
   WorkspaceInsertBeforeRequest,
   WorkspaceInsertSessionBeforeRequest,
   WorkspaceOrderValue,
@@ -224,6 +227,39 @@ export class WorkspaceCommands {
   async unpinSession(request: WorkspaceUnpinSessionRequest): Promise<WorkspacePinValue> {
     await this.ctx.workspaceRegistry.unpinSession(request.sessionId)
     return { pinnedSessionIds: [...this.ctx.workspaceRegistry.pinnedSessionIds] }
+  }
+
+  /**
+   * Physically delete one Session and clear its Workspace references.
+   * @param request - Session identity to delete.
+   * @returns deletion confirmation after durable cleanup.
+   */
+  async deleteSession(request: WorkspaceDeleteSessionRequest): Promise<WorkspaceDeleteSessionValue> {
+    try {
+      await this.ctx.workspaceRegistry.deleteSession(request.sessionId)
+    } catch (error: unknown) {
+      if (error instanceof WorkspaceUnknownSessionError) {
+        throw new RemoteError('session/not-found', error.message, { sessionId: request.sessionId }, { cause: error })
+      }
+      if (error instanceof WorkspaceActiveSessionError) {
+        throw new RemoteError(
+          'workspace/session-active',
+          error.message,
+          { sessionId: request.sessionId, activity: error.activity },
+          { cause: error },
+        )
+      }
+      if (error instanceof WorkspaceSessionDeleteBusyError) {
+        throw new RemoteError(
+          'workspace/session-delete-blocked',
+          error.message,
+          { sessionId: request.sessionId, reason: 'writer' },
+          { cause: error },
+        )
+      }
+      throw error
+    }
+    return { deleted: true }
   }
 
   private requireWorkspace(workspaceId: WorkspaceId): Workspace {
