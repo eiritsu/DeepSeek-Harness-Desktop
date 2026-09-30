@@ -48,7 +48,7 @@ async function composed(workspaces: readonly Workspace[] = []): Promise<Context>
       Object.assign(agent, { id: session.id, session, status: 'idle', ctx: agentCtx })
       await options.setup?.(agentCtx, agent)
       await ctx.agents.register(agent)
-      return { agent, dispose: () => Promise.resolve() }
+      return { agent, disposeIfIdle: () => Promise.resolve(false), dispose: () => Promise.resolve() }
     },
     resume: () => Promise.reject(new Error('fork test sources are live')),
   })

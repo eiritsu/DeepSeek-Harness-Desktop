@@ -146,6 +146,7 @@ describe('ApiSession Agent lookup and recovery', () => {
     const resumed = unpublishedAgent(ctx, meta)
     const resume = vi.spyOn(ctx.agents, 'resume').mockResolvedValue({
       agent: resumed,
+      disposeIfIdle: () => Promise.resolve(false),
       dispose: () => Promise.resolve(),
     })
     const observed = {
@@ -340,7 +341,7 @@ describe('ApiSession create or adoption', () => {
     const gate = new Promise<void>((resolve) => { release = resolve })
     const create = vi.spyOn(ctx.agents, 'create').mockImplementation(async () => {
       await gate
-      return { agent: created, dispose: () => Promise.resolve() }
+      return { agent: created, disposeIfIdle: () => Promise.resolve(false), dispose: () => Promise.resolve() }
     })
 
     const first = agents.ensureSession(meta.id, cwd, false)
@@ -390,6 +391,7 @@ describe('ApiSession create or adoption', () => {
     const childAgent = unpublishedAgent(child.ctx, childMeta)
     vi.spyOn(child.ctx.agents, 'create').mockResolvedValue({
       agent: childAgent,
+      disposeIfIdle: () => Promise.resolve(false),
       dispose: () => Promise.resolve(),
     })
     await expect(child.agents.ensureSession(childMeta.id, childCwd, false))
@@ -401,6 +403,7 @@ describe('ApiSession create or adoption', () => {
     const wrongAgent = unpublishedAgent(wrong.ctx, header('wrong-returned-cwd', '/other'))
     vi.spyOn(wrong.ctx.agents, 'create').mockResolvedValue({
       agent: wrongAgent,
+      disposeIfIdle: () => Promise.resolve(false),
       dispose: () => Promise.resolve(),
     })
     await expect(wrong.agents.ensureSession(wrongAgent.id, requestedCwd, false))
@@ -438,6 +441,7 @@ describe('ApiSession create or adoption', () => {
     } as unknown as Agent
     const resume = vi.spyOn(ctx.agents, 'resume').mockResolvedValue({
       agent: resumed,
+      disposeIfIdle: () => Promise.resolve(false),
       dispose: () => Promise.resolve(),
     })
 

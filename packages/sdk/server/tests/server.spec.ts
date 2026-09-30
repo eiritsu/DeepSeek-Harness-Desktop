@@ -1095,8 +1095,8 @@ describe('HarnessSdkJsonRpcServer', () => {
   it('coalesces concurrent session creation and retries a failed creation', async () => {
     let resolveShared: ((handle: AgentHandle) => void) | undefined
     const sharedCreation = new Promise<AgentHandle>((resolve) => { resolveShared = resolve })
-    const sharedHandle = { agent: {} as Agent, dispose: vi.fn(() => Promise.resolve()) }
-    const retryHandle = { agent: {} as Agent, dispose: vi.fn(() => Promise.resolve()) }
+    const sharedHandle = { agent: {} as Agent, disposeIfIdle: () => Promise.resolve(false), dispose: vi.fn(() => Promise.resolve()) }
+    const retryHandle = { agent: {} as Agent, disposeIfIdle: () => Promise.resolve(false), dispose: vi.fn(() => Promise.resolve()) }
     const create = vi.fn<(options: unknown) => Promise<AgentHandle>>()
       .mockReturnValueOnce(sharedCreation)
       .mockRejectedValueOnce(new Error('creation failed'))
@@ -1130,7 +1130,7 @@ describe('HarnessSdkJsonRpcServer', () => {
 
   it('resolves a relative cwd before creating the session', async () => {
     const create = vi.fn<(options: unknown) => Promise<AgentHandle>>()
-      .mockResolvedValue({ agent: {} as Agent, dispose: () => Promise.resolve() })
+      .mockResolvedValue({ agent: {} as Agent, disposeIfIdle: () => Promise.resolve(false), dispose: () => Promise.resolve() })
     const resolveCallConfig = vi.fn(async (config: unknown) => config)
     const ctx = {
       on: vi.fn(() => () => undefined),
@@ -1176,8 +1176,8 @@ describe('HarnessSdkJsonRpcServer', () => {
       sessions: Map<string, { handle: AgentHandle; lastTurnEnd: undefined; activePrompt: boolean }>
       shutdown(): Promise<Record<string, never>>
     }
-    server.sessions.set('first', { handle: { agent: {} as Agent, dispose: firstDispose }, lastTurnEnd: undefined, activePrompt: false })
-    server.sessions.set('second', { handle: { agent: {} as Agent, dispose: secondDispose }, lastTurnEnd: undefined, activePrompt: false })
+    server.sessions.set('first', { handle: { agent: {} as Agent, disposeIfIdle: () => Promise.resolve(false), dispose: firstDispose }, lastTurnEnd: undefined, activePrompt: false })
+    server.sessions.set('second', { handle: { agent: {} as Agent, disposeIfIdle: () => Promise.resolve(false), dispose: secondDispose }, lastTurnEnd: undefined, activePrompt: false })
 
     await expect(server.shutdown()).rejects.toThrow('SDK server teardown failed')
     expect(firstDispose).toHaveBeenCalledOnce()

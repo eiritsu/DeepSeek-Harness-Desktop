@@ -4489,7 +4489,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AgentHandle',
-    declaration: 'export interface AgentHandle {\n    agent: Agent;\n    dispose(): Promise<void>;\n}',
+    declaration: 'export interface AgentHandle {\n    agent: Agent;\n    disposeIfIdle(): Promise<boolean>;\n    dispose(): Promise<void>;\n}',
   },
   {
     name: 'AgentOptions',

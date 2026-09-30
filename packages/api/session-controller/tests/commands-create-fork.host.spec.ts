@@ -175,6 +175,7 @@ function completedSession(
 function resolvedHandle(ctx: Context, sessionId: SessionId): AgentHandle {
   return {
     agent: { id: sessionId, status: 'idle', ctx } as Agent,
+    disposeIfIdle: () => Promise.resolve(false),
     dispose: () => Promise.resolve(),
   }
 }

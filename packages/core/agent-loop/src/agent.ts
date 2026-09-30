@@ -102,6 +102,7 @@ function abortedCancelCause(signal: AbortSignal): AgentCancelCause | undefined {
 export class ReactLoopAgent implements Agent {
   readonly inbox: ReactLoopInbox
   private phase: Phase
+  private acceptingInput = true
   private activityDone: Promise<void> = Promise.resolve()
 
   /** The agent-scoped registration boundary; the lifecycle owner unwinds it after the driver exits. */
@@ -156,12 +157,20 @@ export class ReactLoopAgent implements Agent {
   }
 
   send(message: UserMessage, target: InboxTarget, wakeup: boolean): void {
+    if (!this.acceptingInput) throw new Error(`agent "${this.id}" is closing`)
     // Waking input cannot join an aborted activity, so it starts the next turn.
     // Captured before the insertion so a reentrant cancel from a splice observer cannot reclassify it.
     const wakingAfterAbort = wakeup && this.phase.kind !== 'idle' && this.phase.abort.signal.aborted
     const resolvedTarget = wakingAfterAbort ? 'next-turn' : target
     this.inbox.splice(resolvedTarget, Infinity, 0, [message])
     if (wakeup) this.wakeDriver(wakingAfterAbort)
+  }
+
+  /** Atomically reject future input only when no active or queued work exists. */
+  sealIfIdle(): boolean {
+    if (!this.acceptingInput || this.phase.kind !== 'idle' || this.inbox.hasPending) return false
+    this.acceptingInput = false
+    return true
   }
 
   followup(input: UserMessage, replacement?: SurfaceReplacement): void {

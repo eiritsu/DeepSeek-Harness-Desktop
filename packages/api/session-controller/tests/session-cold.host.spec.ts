@@ -376,7 +376,7 @@ describe('Remote Agent and Session lookup policy', () => {
     const release = Promise.withResolvers<undefined>()
     const resume = vi.spyOn(ctx.agents, 'resume').mockImplementation(async () => {
       await release.promise
-      return { agent: resumedAgent, dispose: () => Promise.resolve() }
+      return { agent: resumedAgent, disposeIfIdle: () => Promise.resolve(false), dispose: () => Promise.resolve() }
     })
     const defaultAgentLookup = ctx.typert.lookups.get('agent')
     const defaultSessionLookup = ctx.typert.lookups.get('session')
@@ -461,7 +461,7 @@ describe('Remote Agent and Session lookup policy', () => {
       })
       const published = { id: session.id, session, status: 'idle', ctx } as Agent
       await ctx.agents.register(published)
-      return { agent: published, dispose: () => Promise.resolve() }
+      return { agent: published, disposeIfIdle: () => Promise.resolve(false), dispose: () => Promise.resolve() }
     })
     const defaultLookup = ctx.typert.lookups.get('agent')
     createSessionTestRemote(ctx, {
