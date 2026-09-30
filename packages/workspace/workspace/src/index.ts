@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, stat } from 'node:fs/promises'
 import { Context, Service } from '@deepseek-ai/cordis'
 import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
-import type {} from '@deepseek-ai/dsh-session-persistence'
+import { SessionAlreadyOwnedError, SessionPersistenceNotFoundError } from '@deepseek-ai/dsh-session-persistence'
 import type { DomainGlobal, KvTable } from '@deepseek-ai/dsh-storage-domain'
 import { WorkspaceEntity } from './entity.ts'
 import type { WorkspaceEntityHost } from './entity.ts'
@@ -27,6 +27,14 @@ export { workspaceDomainState, workspaceRecord, workspaceDomainSpec } from './sp
 export type { WorkspaceDomainState, WorkspaceRecord } from './spec.ts'
 export { realpathNormalize } from './paths.ts'
 
+/** Session owner capability that closes an idle local Agent before physical deletion. */
+export interface SessionDeleteAdmission {
+  /** Close the exact idle Agent owned by this provider, or reject without stopping work. */
+  close(): Promise<void>
+  /** Release the admission gate, retaining a tombstone after physical deletion. */
+  finish(deleted: boolean): void
+}
+
 /** Identifies one workspace record (see `src/types.ts` for the brand rationale). */
 export type WorkspaceId = WorkspaceIdBrand
 
@@ -40,7 +48,7 @@ export function WorkspaceId(id: string): WorkspaceId {
 }
 
 /**
- * An archiveSession or pinSession request named a session neither live nor in
+ * An archiveSession, pinSession, or deleteSession request named a session neither live nor in
  * session persistence — a definite miss only; storage faults propagate as
  * themselves.
  */
@@ -49,24 +57,37 @@ export class WorkspaceUnknownSessionError extends Error {
    * @param sessionId - The unknown session id.
    * @param verb - The registry operation that named the session.
    */
-  constructor(readonly sessionId: SessionId, verb: 'archive' | 'pin') {
+  constructor(readonly sessionId: SessionId, verb: 'archive' | 'pin' | 'delete') {
     super(`cannot ${verb} session '${sessionId}': live sessions and session persistence hold no such session`)
     this.name = 'WorkspaceUnknownSessionError'
   }
 }
 
+/** A Session could not be deleted because an active writer owns it. */
+export class WorkspaceSessionDeleteBusyError extends Error {
+  /** @param sessionId - Session blocked by a live writer. */
+  constructor(readonly sessionId: SessionId) {
+    super(`cannot delete session '${sessionId}': an active writer owns its write lock`)
+    this.name = 'WorkspaceSessionDeleteBusyError'
+  }
+}
+
 /**
- * An archiveSession request named a session that at least one
- * `workspace/session-activity` listener reported active. Nothing was written;
- * `activity` names what must stop before the session can be archived.
+ * An archiveSession or deleteSession activity check found work through at
+ * least one `workspace/session-activity` listener; `activity` names the work.
  */
 export class WorkspaceActiveSessionError extends Error {
   /**
    * @param sessionId - The active session id.
    * @param activity - The reported activity, in listener order.
+   * @param operation - Registry operation refused by the activity check.
    */
-  constructor(readonly sessionId: SessionId, readonly activity: readonly SessionActivity[]) {
-    super(`cannot archive session '${sessionId}': the session is active (${activity.map(entry => entry.kind).join(', ')})`)
+  constructor(
+    readonly sessionId: SessionId,
+    readonly activity: readonly SessionActivity[],
+    operation: 'archive' | 'delete',
+  ) {
+    super(`cannot ${operation} session '${sessionId}': the session is active (${activity.map(entry => entry.kind).join(', ')})`)
     this.name = 'WorkspaceActiveSessionError'
   }
 }
@@ -94,7 +115,7 @@ export class WorkspaceOrderInvalidError extends Error {
 }
 
 
-/** The session an archive request is about to write into the archive set. */
+/** The session an archive or deletion activity check is about. */
 export interface SessionActivityRequest {
   readonly sessionId: SessionId
 }
@@ -122,7 +143,7 @@ declare module '@deepseek-ai/cordis' {
      * the result of `next()`; the registry's innermost callback returns an
      * empty list, so a composition without providers archives freely. Any
      * non-empty result refuses the archive without a write.
-     * @param request - the session about to be archived.
+     * @param request - the session about to be archived or deleted.
      * @param next - delegate to the remaining providers.
      * @mode waterfall
      */
@@ -130,6 +151,16 @@ declare module '@deepseek-ai/cordis' {
       request: SessionActivityRequest,
       next: () => Promise<readonly SessionActivity[]>,
     ): Promise<readonly SessionActivity[]>
+    /**
+     * Reserve deletion against new local Agent admission and return owner-scoped close capabilities.
+     * @param request - the Session about to be deleted.
+     * @param next - delegate to remaining owners.
+     * @mode waterfall
+     */
+    'workspace/session-delete-admission'(
+      request: SessionActivityRequest,
+      next: () => Promise<readonly SessionDeleteAdmission[]>,
+    ): Promise<readonly SessionDeleteAdmission[]>
     /**
      * Stop a session's running work because the caller archived it with
      * `stopActivity`; the archive set is durable when this dispatches. Each
@@ -145,6 +176,13 @@ declare module '@deepseek-ai/cordis' {
      * @mode parallel
      */
     'workspace/session-stop'(request: SessionActivityRequest): Promise<void> | void
+    /**
+     * A Session and all committed generations were physically deleted and its
+     * Workspace references were cleared.
+     * @param request - deleted Session identity.
+     * @mode emit
+     */
+    'workspace/session-deleted'(request: SessionActivityRequest): void
   }
 }
 
@@ -372,7 +410,7 @@ export class WorkspaceRegistry extends Service {
         const activity = await this.ctx.waterfall(
           'workspace/session-activity', { sessionId }, () => Promise.resolve([]),
         )
-        if (activity.length > 0) throw new WorkspaceActiveSessionError(sessionId, activity)
+        if (activity.length > 0) throw new WorkspaceActiveSessionError(sessionId, activity, 'archive')
       }
       const state = this.requireState()
       await this.setState({
@@ -460,6 +498,62 @@ export class WorkspaceRegistry extends Service {
         ...state,
         pinnedSessionIds: state.pinnedSessionIds.filter(id => id !== sessionId),
       })
+    })
+  }
+
+  /**
+   * Physically delete one stored Session after rejecting active work, then
+   * clear its Workspace membership, archive, and pin references.
+   * @param sessionId - stored Session to delete.
+   * @returns resolution after storage and Workspace state have committed.
+   */
+  deleteSession(sessionId: SessionId): Promise<void> {
+    return this.enqueueOperation(async () => {
+      if (!(await this.sessionKnown(sessionId))) throw new WorkspaceUnknownSessionError(sessionId, 'delete')
+      const admissions = await this.ctx.waterfall(
+        'workspace/session-delete-admission', { sessionId }, () => Promise.resolve([]),
+      )
+      let deleted = false
+      try {
+        const activity = await this.ctx.waterfall(
+          'workspace/session-activity', { sessionId }, () => Promise.resolve([]),
+        )
+        if (activity.length > 0) throw new WorkspaceActiveSessionError(sessionId, activity, 'delete')
+        for (const admission of admissions) await admission.close()
+        try {
+          await this.ctx.sessionPersistence.delete(sessionId)
+          deleted = true
+        } catch (error: unknown) {
+          if (error instanceof SessionAlreadyOwnedError) throw new WorkspaceSessionDeleteBusyError(sessionId)
+          if (error instanceof SessionPersistenceNotFoundError) {
+            // sessionKnown resolved above, so a header was indexed for this id
+            // and only this operation can clear it; the check stays as the
+            // fail-closed arm for a storage backend that reports a miss for a
+            // session the registry never indexed.
+            /* v8 ignore next -- sessionKnown indexes every id it admits, so headers always holds it here */
+            if (!this.headers.has(sessionId)) throw new WorkspaceUnknownSessionError(sessionId, 'delete')
+            // A prior attempt may have removed files before Workspace metadata committed.
+            deleted = true
+          } else {
+            throw error
+          }
+        }
+
+        for (const workspace of this.list()) await workspace.detachSession(sessionId)
+        const state = this.requireState()
+        const archivedSessionIds = state.archivedSessionIds.filter(id => id !== sessionId)
+        const pinnedSessionIds = state.pinnedSessionIds.filter(id => id !== sessionId)
+        if (archivedSessionIds.length !== state.archivedSessionIds.length
+          || pinnedSessionIds.length !== state.pinnedSessionIds.length) {
+          await this.setState({ ...state, archivedSessionIds, pinnedSessionIds })
+        }
+        this.ctx.emit('workspace/session-deleted', { sessionId })
+        this.headers.delete(sessionId)
+        this.sessionPaths.delete(sessionId)
+        this.invalidSessionPaths.delete(sessionId)
+      } finally {
+        for (const admission of admissions) admission.finish(deleted)
+      }
     })
   }
 

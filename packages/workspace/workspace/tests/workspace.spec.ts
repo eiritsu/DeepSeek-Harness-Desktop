@@ -10,7 +10,7 @@ import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
 import type { DomainChanged } from '@deepseek-ai/dsh-storage-domain'
 import SessionStore, { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
 import type { SessionHeader } from '@deepseek-ai/dsh-session'
-import { SessionPersistenceRevision } from '@deepseek-ai/dsh-session-persistence'
+import { SessionAlreadyOwnedError, SessionPersistenceNotFoundError, SessionPersistenceRevision } from '@deepseek-ai/dsh-session-persistence'
 import type { SessionPersistenceSnapshot } from '@deepseek-ai/dsh-session-persistence'
 import { MemoryMediaPool, MemoryStorageBackend } from '../../../storage/storage-domain/tests/helpers/memory-backend.ts'
 import WorkspaceRegistry, {
@@ -50,12 +50,16 @@ async function harness(options: HarnessOptions = {}) {
   ctx.storage.mount('domain', facility)
   ctx.provide('storageDomain', facility)
 
-  let listed = options.sessions ?? []
+  const durable = new Map<SessionId, SessionHeader>((options.sessions ?? []).map(header => [header.id, header]))
   const list = vi.fn(async (): Promise<SessionPersistenceSnapshot[]> =>
-    listed.map(header => ({ header, revision: SessionPersistenceRevision(`rev-${header.id}`) })))
+    [...durable.values()].map(header => ({ header, revision: SessionPersistenceRevision(`rev-${header.id}`) })))
   const open = vi.fn(() => { throw new Error('event bodies must not be opened') })
   const stat = vi.fn(() => { throw new Error('per-session stat must not be needed') })
-  ctx.provide('sessionPersistence', { list, open, stat } as never)
+  const del = vi.fn(async (id: SessionId): Promise<void> => {
+    if (durable.delete(id)) return
+    throw new SessionPersistenceNotFoundError(id)
+  })
+  ctx.provide('sessionPersistence', { list, open, stat, delete: del } as never)
 
   if (options.sessionStore === true) {
     await ctx.plugin(SessionStore)
@@ -82,7 +86,11 @@ async function harness(options: HarnessOptions = {}) {
     list,
     open,
     stat,
-    setSessions: (headers: SessionHeader[]) => { listed = headers },
+    del,
+    setSessions: (headers: SessionHeader[]) => {
+      durable.clear()
+      for (const header of headers) durable.set(header.id, header)
+    },
   }
 }
 
@@ -1034,6 +1042,133 @@ describe('registry-global session archive', () => {
     await result.registry.archiveSession(SessionId('known'))
     expect(asked).toEqual(['known'])
     expect(result.registry.archivedSessionIds).toEqual(['known'])
+  })
+
+  it('closes every admission owner before the delete and finishes the gate with the outcome', async () => {
+    const dir = await makeDir('delete-admission')
+    const result = await harness({ sessions: [header('gone', dir, 100)] })
+    const order: string[] = []
+    result.ctx.on('workspace/session-delete-admission', async ({ sessionId }, next) => {
+      order.push(`admit:${sessionId}`)
+      return [
+        { close: async () => { order.push('close:a') }, finish: (deleted: boolean) => { order.push(`finish:a:${String(deleted)}`) } },
+        { close: async () => { order.push('close:b') }, finish: (deleted: boolean) => { order.push(`finish:b:${String(deleted)}`) } },
+        ...await next(),
+      ]
+    })
+
+    const deleted: string[] = []
+    result.ctx.on('workspace/session-deleted', ({ sessionId }) => { deleted.push(sessionId) })
+
+    await result.registry.deleteSession(SessionId('gone'))
+
+    // Every owner closes before the gate reports the outcome, so no owner
+    // observes a finished admission while its Agent is still running.
+    expect(order).toEqual(['admit:gone', 'close:a', 'close:b', 'finish:a:true', 'finish:b:true'])
+    expect(deleted).toEqual(['gone'])
+    expect(result.del).toHaveBeenCalledWith(SessionId('gone'))
+    // The header and its stored path are gone, so the registry no longer knows it.
+    await expect(result.registry.archiveSession(SessionId('gone')))
+      .rejects.toThrow(/cannot archive session 'gone'/)
+  })
+
+  it('finishes the admission gate with false and deletes nothing when an owner is active', async () => {
+    const dir = await makeDir('delete-active')
+    const result = await harness({ sessions: [header('busy', dir, 100)] })
+    const finishes: boolean[] = []
+    result.ctx.on('workspace/session-delete-admission', () => Promise.resolve([
+      { close: async () => {}, finish: (deleted: boolean) => { finishes.push(deleted) } },
+    ]))
+    result.ctx.on('workspace/session-activity', async () => [{ kind: 'probe' }])
+
+    await expect(result.registry.deleteSession(SessionId('busy'))).rejects.toMatchObject({
+      name: 'WorkspaceActiveSessionError',
+      sessionId: 'busy',
+    })
+    expect(finishes).toEqual([false])
+    expect(result.del).not.toHaveBeenCalled()
+  })
+
+  it('reports a busy session when persistence still holds a writer lease', async () => {
+    const dir = await makeDir('delete-busy')
+    const result = await harness({ sessions: [header('leased', dir, 100)] })
+    result.del.mockRejectedValueOnce(new SessionAlreadyOwnedError(SessionId('leased')))
+
+    await expect(result.registry.deleteSession(SessionId('leased'))).rejects.toMatchObject({
+      name: 'WorkspaceSessionDeleteBusyError',
+      sessionId: 'leased',
+    })
+  })
+
+  it('propagates a storage fault other than a missing or leased session', async () => {
+    const dir = await makeDir('delete-fault')
+    const result = await harness({ sessions: [header('faulty', dir, 100)] })
+    const finishes: boolean[] = []
+    result.ctx.on('workspace/session-delete-admission', () => Promise.resolve([
+      { close: async () => {}, finish: (deleted: boolean) => { finishes.push(deleted) } },
+    ]))
+    result.del.mockRejectedValueOnce(new Error('session log unreadable'))
+
+    await expect(result.registry.deleteSession(SessionId('faulty'))).rejects.toThrow(/session log unreadable/)
+    expect(finishes).toEqual([false])
+  })
+
+  it('keeps a session whose files vanished before Workspace metadata committed', async () => {
+    const dir = await makeDir('delete-tombstone')
+    const result = await harness({ sessions: [header('half', dir, 100)] })
+    const finishes: boolean[] = []
+    result.ctx.on('workspace/session-delete-admission', () => Promise.resolve([
+      { close: async () => {}, finish: (deleted: boolean) => { finishes.push(deleted) } },
+    ]))
+    // The generations are already gone but the registry still holds the header,
+    // so a retry must finish the gate as deleted rather than report a miss.
+    result.del.mockRejectedValueOnce(new SessionPersistenceNotFoundError(SessionId('half')))
+
+    const deleted: string[] = []
+    result.ctx.on('workspace/session-deleted', ({ sessionId }) => { deleted.push(sessionId) })
+
+    await result.registry.deleteSession(SessionId('half'))
+
+    expect(finishes).toEqual([true])
+    expect(deleted).toEqual(['half'])
+    expect(result.del).toHaveBeenCalledWith(SessionId('half'))
+  })
+
+  it('refuses an unknown session before asking any admission owner', async () => {
+    const result = await harness({ sessions: [] })
+    const asked: SessionId[] = []
+    result.ctx.on('workspace/session-delete-admission', ({ sessionId }, next) => {
+      asked.push(sessionId)
+      return next()
+    })
+
+    await expect(result.registry.deleteSession(SessionId('ghost')))
+      .rejects.toThrow(/cannot delete session 'ghost'/)
+    expect(asked).toEqual([])
+    expect(result.del).not.toHaveBeenCalled()
+  })
+
+  it('clears the archive and pin references of a deleted session', async () => {
+    const dir = await makeDir('delete-references')
+    const archived = await harness({ sessions: [header('arch', dir, 100), header('kept', dir, 200)] })
+    await archived.registry.archiveSession(SessionId('arch'))
+    await archived.registry.archiveSession(SessionId('kept'))
+
+    await archived.registry.deleteSession(SessionId('arch'))
+
+    expect(archived.registry.archivedSessionIds).toEqual(['kept'])
+    expect(storedState(archived.pool).archivedSessionIds).toEqual(['kept'])
+
+    // A pin is a separate durable set; deletion clears it on its own.
+    const pinned = await harness({ sessions: [header('pin', dir, 100), header('other', dir, 200)] })
+    await pinned.registry.pinSession(SessionId('pin'))
+    await pinned.registry.pinSession(SessionId('other'))
+    expect(pinned.registry.pinnedSessionIds).toEqual(['other', 'pin'])
+
+    await pinned.registry.deleteSession(SessionId('pin'))
+
+    expect(pinned.registry.pinnedSessionIds).toEqual(['other'])
+    expect(storedState(pinned.pool).pinnedSessionIds).toEqual(['other'])
   })
 
   it('restores the archive set across restarts and defaults it for pre-field media', async () => {
