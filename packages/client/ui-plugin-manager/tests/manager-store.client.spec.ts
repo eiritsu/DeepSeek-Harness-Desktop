@@ -577,6 +577,41 @@ describe('PluginManagerController', () => {
     await vi.waitFor(() => { expect(state().notice).toEqual({ kind: 'failed', action: 'rowEnable', code: 'unaddressable', reason: '', packageName: ROW_ENTRY, seq: 1 }) })
   })
 
+  it('prefills a supplied spec while the no-argument action remains the official add button', async () => {
+    const { face, state, track } = bench()
+    face.openInstall('  @acme/dsh-example  ')
+    expect(state().install).toMatchObject({ open: true, spec: '@acme/dsh-example', phase: 'idle' })
+    expect(state().install.requestId).toBeUndefined()
+    expect(track).not.toHaveBeenCalled()
+
+    face.closeInstall()
+    face.openInstall()
+    expect(state().install).toMatchObject({ open: true, spec: '' })
+    expect(track).toHaveBeenCalledExactlyOnceWith('plugin_add_button_click', {})
+  })
+
+  it('replaces an idle open dialog with a supplied spec', async () => {
+    const { face, state } = bench()
+    face.openInstall()
+    face.editInstallSpec('user-typed-something')
+    face.openInstall('@acme/dsh-from-catalog')
+    expect(state().install).toMatchObject({ open: true, spec: '@acme/dsh-from-catalog', phase: 'idle' })
+  })
+
+  it('keeps a running installation when another spec is supplied', async () => {
+    const gate = deferred<ReturnType<typeof ok<ChangeResult>>>()
+    const { plugins, face, state, controller, started } = bench({ installBundle: vi.fn().mockReturnValueOnce(gate.promise) })
+    await controller.load()
+    face.openInstall('dsh-new')
+    face.runInstall()
+    const requestId = await started()
+
+    face.openInstall('@acme/dsh-other')
+    expect(state().install).toMatchObject({ open: true, spec: 'dsh-new', requestId })
+    expect(plugins.installBundle).toHaveBeenCalledOnce()
+    gate.resolve(ok({ ...APPLIED, bundle: 'dsh-new' }))
+  })
+
   it('checks the spec, hands the run to the Host, and folds the chunks that carry its request id', async () => {
     const gate = deferred<ReturnType<typeof ok<ChangeResult>>>()
     const { plugins, face, state, controller, started } = bench({ installBundle: vi.fn().mockReturnValueOnce(gate.promise) })

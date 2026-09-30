@@ -39,6 +39,12 @@ declare module '@deepseek-ai/cordis' {
        * @param packageName - npm package name of the bundle.
        */
       openBundle(packageName: string): void
+      /**
+       * Open the install dialog with a package spec prefilled.
+       * An active installation keeps its spec and progress.
+       * @param spec - package spec accepted by the Host.
+       */
+      openInstall(spec: string): void
     }
   }
 }
@@ -132,6 +138,11 @@ export function apply(ctx: ClientContext): void {
       openBundle: (packageName: string) => {
         ctx.layout.selectPanel(PANEL_ID)
         instance.actions.setView({ kind: 'package', name: packageName })
+      },
+      openInstall: (spec: string) => {
+        ctx.layout.selectPanel(PANEL_ID)
+        instance.actions.setView({ kind: 'list' })
+        face.openInstall(spec)
       },
     })
     yield () => { void disposeNavigation() }

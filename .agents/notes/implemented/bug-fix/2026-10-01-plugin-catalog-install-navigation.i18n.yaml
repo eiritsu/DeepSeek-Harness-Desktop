@@ -1,0 +1,22 @@
+# Bilingual-pair consistency record for 2026-10-01-plugin-catalog-install-navigation.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-10-01-plugin-catalog-install-navigation.md
+/agent-note-plugin-catalog-install-navigation:
+  en: e33ebc3c16727dea
+  zh: ce20000bbeaa3ba1
+/agent-note-plugin-catalog-install-navigation/problem:
+  en: 0b0489728ede8384
+  zh: e49c7632e5b78608
+/agent-note-plugin-catalog-install-navigation/decision:
+  en: eede3ce698f4698b
+  zh: 349ed919f9d150eb
+/agent-note-plugin-catalog-install-navigation/alternatives-considered:
+  en: e4d4234b1f4a528e
+  zh: 4a2351f524d81ff2
+/agent-note-plugin-catalog-install-navigation/consequences:
+  en: 1c415b4b47c5c1b3
+  zh: d52c795d258c10b4
+/agent-note-plugin-catalog-install-navigation/testing:
+  en: e8dfeb9d5302a851
+  zh: 153776bec5dbe637

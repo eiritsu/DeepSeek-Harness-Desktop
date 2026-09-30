@@ -309,7 +309,7 @@ export interface PluginManagerFace {
   ensure: () => void
   /** Read the Host again. */
   refresh: () => void
-  openInstall: () => void
+  openInstall: (spec?: string) => void
   /** Hide immediately, abort a check, or request cancellation while retaining the Host-owned installation. */
   closeInstall: () => void
   editInstallSpec: (text: string) => void
@@ -559,12 +559,18 @@ export class PluginManagerController {
       configForm: id => this.ctx.configForms.get(id),
       ensure: () => { if (this.getSnapshot().status === 'idle') void this.load() },
       refresh: () => { void this.refresh() },
-      openInstall: () => {
-        this.ctx.get('productAnalytics')?.track('plugin_add_button_click', {})
+      openInstall: (spec) => {
+        if (spec === undefined) this.ctx.get('productAnalytics')?.track('plugin_add_button_click', {})
         const install = this.getSnapshot().install
-        if (install.requestId === undefined) {
+        const retainInstall = isInstallPending(install.phase) || (spec === undefined && (install.open || install.phase !== 'idle'))
+        if (!retainInstall) {
           // A new dialog starts from the registry last used here and reads what the Host offers; a hidden install reopens as it is.
-          this.patch({ install: { ...IDLE_INSTALL, open: true, registry: this.registryMemory.getSnapshot() ?? OFFICIAL_REGISTRY } })
+          this.patch({ install: {
+            ...IDLE_INSTALL,
+            open: true,
+            ...(spec === undefined ? {} : { spec: spec.trim() }),
+            registry: this.registryMemory.getSnapshot() ?? OFFICIAL_REGISTRY,
+          } })
           const read: RegistryRead = { choice: this.getSnapshot().install.registry }
           this.registryRead = read
           read.done = this.readRegistries(read).finally(() => { delete read.done })
