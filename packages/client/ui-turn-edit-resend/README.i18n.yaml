@@ -3,26 +3,26 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/client/ui-turn-edit-resend/README.md
 /:
-  en: 3bd06ed72820d56c
-  zh: 5c037820eba457e7
+  en: 833186bfa1069115
+  zh: 81204b16b58d675d
 /deepseek-ai-dsh-client-ui-turn-edit-resend:
   en: e5dcf2d2ae5cce9e
   zh: 44ca2785d5232fd4
 /deepseek-ai-dsh-client-ui-turn-edit-resend/summary:
-  en: 91bd2a0c4510d5d0
-  zh: 96d526a14b1ee5fe
+  en: d50b5f38e7099993
+  zh: f8bf45dca4f29e7a
 /deepseek-ai-dsh-client-ui-turn-edit-resend/table-of-contents:
   en: 122f0d41696980b1
   zh: ce6bc6fe7045d4c2
 /deepseek-ai-dsh-client-ui-turn-edit-resend/use-this-package:
-  en: 28fae12c971ec37d
-  zh: fc9105eee026df8d
+  en: 39cfe36f97b6af05
+  zh: 8db284313928b89e
 /deepseek-ai-dsh-client-ui-turn-edit-resend/understand-the-implementation:
   en: ee4615a04fa6503d
   zh: ee2c5fb2204a43cf
-/deepseek-ai-dsh-client-ui-turn-edit-resend/understand-the-implementation/entry-and-card:
-  en: 0762c3ff74368073
-  zh: 3c1e6f356af46c5e
+/deepseek-ai-dsh-client-ui-turn-edit-resend/understand-the-implementation/entry-and-in-place-editor:
+  en: 460f0bc8ca832885
+  zh: d99891e66698cc07
 /deepseek-ai-dsh-client-ui-turn-edit-resend/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -30,17 +30,17 @@
   en: e862ea410e6f605d
   zh: 69558c60171254ab
 /deepseek-ai-dsh-client-ui-turn-edit-resend/model-experience/edit-and-resend-entry/what-the-model-sees:
-  en: 4b7f3782aefe9356
-  zh: 26dfd1925d082641
+  en: 7aca9ee9bf9e7d14
+  zh: 1f7e683e3c886069
 /deepseek-ai-dsh-client-ui-turn-edit-resend/model-experience/edit-and-resend-entry/token-effect:
-  en: 0c4ce32a120836c7
-  zh: 96ea9b66b5ddaea9
+  en: c2e0a32725d72534
+  zh: 9a17d2e9755cf991
 /deepseek-ai-dsh-client-ui-turn-edit-resend/model-experience/edit-and-resend-entry/kv-cache-effect:
   en: 961eddf0ec4e1042
-  zh: 6364d37031d3b203
+  zh: 4790a67df28d6921
 /deepseek-ai-dsh-client-ui-turn-edit-resend/known-limitations-and-deferred-work:
-  en: 139b80b945f18a80
-  zh: 553f3a51abea1fbd
+  en: 7a168cc6d8d56cf5
+  zh: 7f46ae34dc525222
 /deepseek-ai-dsh-client-ui-turn-edit-resend/known-limitations-and-deferred-work/dev-note:
-  en: 2af82c824fdefe03
-  zh: e862ca03c442e5c1
+  en: 5b1240a5fea22778
+  zh: 8f45c9f80e7f11ef
