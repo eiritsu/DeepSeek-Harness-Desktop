@@ -147,7 +147,7 @@ jobs:
 
   publish:
     name: Publish to npm
-    if: inputs.publish
+    if: inputs.publish && github.repository == 'deepseek-ai/deepseek-harness'
     needs: pack
     runs-on: ubuntu-24.04
     environment: npm-publish

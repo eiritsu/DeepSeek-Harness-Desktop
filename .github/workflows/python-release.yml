@@ -109,6 +109,7 @@ jobs:
           PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
           PUBLIC_PYPI_RELEASE_ENABLED: ${{ vars.PUBLIC_PYPI_RELEASE_ENABLED }}
           PYPI_PUBLISHER_REPOSITORY: ${{ vars.PYPI_PUBLISHER_REPOSITORY }}
+          OFFICIAL_REPOSITORY: deepseek-ai/deepseek-harness
           REPOSITORY: ${{ github.repository }}
           REF_NAME: ${{ github.ref_name }}
           REF_TYPE: ${{ github.ref_type }}
@@ -116,6 +117,10 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$PUBLISH" = true ]; then
+            [ "$REPOSITORY" = "$OFFICIAL_REPOSITORY" ] || {
+              echo "::error::Public PyPI publication is restricted to $OFFICIAL_REPOSITORY."
+              exit 1
+            }
             [ -n "$PYPI_PUBLISHER_REPOSITORY" ] || {
               echo "::error::Set the repository variable PYPI_PUBLISHER_REPOSITORY before publication."
               exit 1

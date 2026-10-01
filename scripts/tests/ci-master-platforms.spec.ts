@@ -37,15 +37,24 @@ function commands(job: Job): string[] {
 
 // These boolean/string cases share Actions and JavaScript semantics. GitHub
 // supplies status functions; this probe is not a general Actions interpreter.
-function evaluateCondition(expression: string, cancelled: boolean, results: string[], event = 'pull_request'): boolean {
+function evaluateCondition(
+  expression: string,
+  cancelled: boolean,
+  results: string[],
+  event = 'pull_request',
+  repository = 'deepseek-ai/deepseek-harness',
+): boolean {
   const source = expression.trim().replace(/^[$][{][{]|[}][}]$/g, '')
     .replaceAll('needs.*.result', 'results')
+  const jobIds = ['node-24', 'node-24-coverage', 'node-24-bench', 'node-24-consumers', 'node-compat', 'python-sdk', 'python-runtime', 'windows-build', 'windows-native-tests']
+  const needs = Object.fromEntries(jobIds.map((jobId, index) => [jobId, { result: results[index] }]))
   return runInNewContext(source, {
     cancelled: () => cancelled,
     always: () => true,
     contains: (values: string[], value: string) => values.includes(value),
     results,
-    github: { event_name: event },
+    needs,
+    github: { event_name: event, repository },
   }, { timeout: 1000 }) as boolean
 }
 
@@ -67,6 +76,17 @@ describe('master-only platform scheduling', () => {
     },
   )
 
+  it('allows only the expected Python runtime skip on personal main pushes', () => {
+    const aggregate = workflow('ci.yml').jobs['all-checks-passed']!
+    const failureStep = aggregate.steps!.find(step => step.name === 'Fail if any needed job did not succeed')!
+    const results = aggregate.needs!.map(() => 'success')
+    results[6] = 'skipped'
+    expect(evaluateCondition(failureStep.if!, false, results, 'push', 'eiritsu/DeepSeek-Harness-Desktop')).toBe(false)
+
+    results[0] = 'skipped'
+    expect(evaluateCondition(failureStep.if!, false, results, 'push', 'eiritsu/DeepSeek-Harness-Desktop')).toBe(true)
+  })
+
   it('distinguishes the obsolete always verdict from the cancellable status guard', () => {
     expect(evaluateCondition("always() && github.event_name == 'pull_request'", true, ['success'])).toBe(true)
     expect(evaluateCondition(workflow('ci.yml').jobs['all-checks-passed']!.if as string, true, ['success'])).toBe(false)
@@ -74,9 +94,10 @@ describe('master-only platform scheduling', () => {
 
   it('keeps only Linux and Windows x64 runtimes in required PR CI', () => {
     const pr = workflow('ci.yml')
-    expect(Object.keys(pr.on)).toEqual(['pull_request'])
+    expect(Object.keys(pr.on)).toEqual(['pull_request', 'push'])
+    expect(pr.on.push).toEqual({ branches: ['main'] })
     expect(pr.jobs['python-runtime']).toMatchObject({
-      if: "github.event_name == 'pull_request'",
+      if: "github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'deepseek-ai/deepseek-harness')",
       uses: runtimeBuilder,
       with: { ci: true, targets: 'node24-linux-x64,node24-win-x64' },
     })
@@ -86,10 +107,12 @@ describe('master-only platform scheduling', () => {
     expect(aggregate.needs).toContain('python-runtime')
     expect(aggregate.needs).not.toContain('windows')
     expect(aggregate.needs!.every(id => id in pr.jobs)).toBe(true)
-    expect(aggregate.if).toBe("${{ !cancelled() && github.event_name == 'pull_request' }}")
-    expect(aggregate.steps).toContainEqual(expect.objectContaining({
-      if: "contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')",
-    }))
+    expect(aggregate.if).toContain('!cancelled()')
+    expect(aggregate.if).toContain("github.ref == 'refs/heads/main'")
+    const failureStep = aggregate.steps!.find(step => step.name === 'Fail if any needed job did not succeed')!
+    expect(failureStep.if).toContain("contains(needs.*.result, 'failure')")
+    expect(failureStep.if).toContain("contains(needs.*.result, 'skipped')")
+    expect(failureStep.if).toContain("needs['python-runtime'].result == 'skipped'")
   })
 
   it('runs all three deferred carriers on master pushes with fail-loud API credentials', () => {

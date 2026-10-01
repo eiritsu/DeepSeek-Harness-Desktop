@@ -6,7 +6,10 @@ import { describe, expect, it } from 'vitest'
 
 function evaluateRunsOn(selector: unknown, context: Record<string, unknown>): unknown {
   if (typeof selector !== 'string') throw new TypeError('Runner selector must be a string')
-  return runInNewContext(selector.trim().slice(3, -2), context, { timeout: 1000 })
+  return runInNewContext(selector.trim().slice(3, -2), {
+    ...context,
+    github: { repository: 'deepseek-ai/deepseek-harness', ...context.github as object },
+  }, { timeout: 1000 })
 }
 
 const root = resolve(import.meta.dirname, '..')
@@ -45,9 +48,20 @@ describe('CI workflow', () => {
 
   it('does not cancel protected publication or deployment transactions', () => {
     for (const name of ['release-publish.yml', 'release-vendor-publish.yml']) {
-      const publish = workflowJob(loadWorkflow('.github/workflows/' + name), 'publish')
+      const release = loadWorkflow('.github/workflows/' + name)
+      const pack = workflowJob(release, 'pack')
+      const publish = workflowJob(release, 'publish')
+      expect(pack.if).toBe("github.repository == 'deepseek-ai/deepseek-harness'")
+      expect(publish.if).toBe("github.repository == 'deepseek-ai/deepseek-harness'")
       expect(publish.concurrency).toMatchObject({ 'cancel-in-progress': false })
     }
+    expect(workflowJob(loadWorkflow('.github/workflows/node-addon-system-release.yml'), 'publish').if)
+      .toBe("inputs.publish && github.repository == 'deepseek-ai/deepseek-harness'")
+    const docs = loadWorkflow('.github/workflows/docs-pages.yml')
+    expect(workflowJob(docs, 'build').if).toBe("github.repository == 'deepseek-ai/deepseek-harness'")
+    expect(workflowJob(docs, 'deploy').if).toBe("github.repository == 'deepseek-ai/deepseek-harness'")
+    expect(workflowJob(loadWorkflow('.github/workflows/build-preview-cloudflare.yml'), 'preview').if)
+      .toBe("github.repository == 'deepseek-ai/deepseek-harness'")
     for (const name of ['python-release.yml', 'node-addon-system-release.yml', 'docs-pages.yml']) {
       expect(loadWorkflow('.github/workflows/' + name).concurrency).toMatchObject({ 'cancel-in-progress': false })
     }
@@ -190,7 +204,7 @@ describe('CI workflow', () => {
       const cores = jobName === 'windows-native-tests' ? 2 : 16
       expect(evaluateRunsOn(job['runs-on'], { vars: { DSH_CI_FAILOVER_WINDOWS: 'blacksmith' } }))
         .toBe(`blacksmith-${cores}vcpu-windows-2025`)
-      expect(job.if).toBe("github.event_name == 'pull_request'")
+      expect(job.if).toContain("github.event_name == 'pull_request'")
     }
 
     // windows-build runs the blocking build/site pair.
@@ -460,7 +474,7 @@ describe('CI workflow', () => {
     const aggregate = workflowJob(workflow, 'all-checks-passed')
 
     expect(benchmark['runs-on']).toBe('ubuntu-24.04')
-    expect(benchmark.if).toBe("github.event_name == 'pull_request'")
+    expect(benchmark.if).toContain("github.event_name == 'pull_request'")
     expect(benchmark.needs).toBeUndefined()
     expect(benchmark['continue-on-error']).toBeUndefined()
     expect(benchmark.env).toBeUndefined()
@@ -519,13 +533,14 @@ describe('CI workflow', () => {
 
     // The exact event sets are what keep master-only jobs out of the PR check
     // panel: ci-master triggers only on push(master) + workflow_dispatch and
-    // never on pull_request; ci.yml is exactly pull_request-only. Assert the
+    // never on pull_request; ci.yml handles pull requests and main pushes. Assert the
     // full sets so losing the wrong event, or gaining an extra one, fails.
     if (!isRecord(workflow.on) || !isRecord(prWorkflow.on)) {
       throw new TypeError('both CI workflows must define on')
     }
     expect(Object.keys(workflow.on).sort()).toEqual(['push', 'workflow_dispatch'])
-    expect(Object.keys(prWorkflow.on)).toEqual(['pull_request'])
+    expect(Object.keys(prWorkflow.on)).toEqual(['pull_request', 'push'])
+    expect(prWorkflow.on.push).toEqual({ branches: ['main'] })
 
     // Drills share the parent run’s supersession policy.
     for (const name of ['serial-linux-selfhosted', 'serial-windows']) {
@@ -611,7 +626,7 @@ describe('CI workflow', () => {
     }
 
     expect(pythonRuntime).toMatchObject({
-      if: "github.event_name == 'pull_request'",
+      if: "github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'deepseek-ai/deepseek-harness')",
       name: 'python runtime / release-shaped matrix',
       uses: './.github/workflows/build-exe-for-python-sdk.yml',
       with: {
@@ -769,6 +784,7 @@ describe('Python release workflows', () => {
       },
     })
     expect(authorize.run).toContain('[ "$REPOSITORY" = "$PYPI_PUBLISHER_REPOSITORY" ]')
+    expect(authorize.run).toContain('[ "$REPOSITORY" = "$OFFICIAL_REPOSITORY" ]')
     expect(validateSteps).toContain('100000000')
     expect(publishRuntime).toMatchObject({
       if: "github.event_name == 'workflow_dispatch' && inputs.publish",

@@ -2,6 +2,8 @@ name: CI
 
 on:
   pull_request:
+  push:
+    branches: [main]
 permissions:
   contents: read
 
@@ -38,15 +40,18 @@ jobs:
   # in-house pool's readiness is re-proven on every master push by the
   # serial-linux-selfhosted standby lane in ci-master.yml. The Windows failover
   # switch is the separate DSH_CI_FAILOVER_WINDOWS variable on the windows-native
-  # job below.
+  # job below. Main pushes run this matrix too. The official repository uses
+  # its configured pools; other repositories use GitHub-hosted runners, and the
+  # API-backed Python runtime lane remains upstream-only.
   node-24:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: >-
-      ${{ vars.DSH_CI_FAILOVER_LINUX == 'blacksmith' && 'blacksmith-8vcpu-ubuntu-2404'
-          || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted'
+      ${{ github.repository == 'deepseek-ai/deepseek-harness' && vars.DSH_CI_FAILOVER_LINUX == 'blacksmith' && 'blacksmith-8vcpu-ubuntu-2404'
+          || github.repository == 'deepseek-ai/deepseek-harness' && vars.DSH_CI_FAILOVER_LINUX == 'selfhosted'
           && github.event.pull_request.user.login != 'dependabot[bot]'
           && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]')
-          || 'dsh-ubuntu-24-04-16core' }}
+          || github.repository == 'deepseek-ai/deepseek-harness' && 'dsh-ubuntu-24-04-16core'
+          || 'ubuntu-latest' }}
     name: node 24 / static
     env:
       # Shared hosts expose host CPUs, not an isolated allocation.
@@ -108,13 +113,14 @@ jobs:
         run: pnpm run check:ci:static
 
   node-24-coverage:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: >-
-      ${{ vars.DSH_CI_FAILOVER_LINUX == 'blacksmith' && 'blacksmith-16vcpu-ubuntu-2404'
-          || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted'
+      ${{ github.repository == 'deepseek-ai/deepseek-harness' && vars.DSH_CI_FAILOVER_LINUX == 'blacksmith' && 'blacksmith-16vcpu-ubuntu-2404'
+          || github.repository == 'deepseek-ai/deepseek-harness' && vars.DSH_CI_FAILOVER_LINUX == 'selfhosted'
           && github.event.pull_request.user.login != 'dependabot[bot]'
           && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]')
-          || 'dsh-ubuntu-24-04-16core' }}
+          || github.repository == 'deepseek-ai/deepseek-harness' && 'dsh-ubuntu-24-04-16core'
+          || 'ubuntu-latest' }}
     name: node 24 / coverage
     env:
       # Shared hosts expose host CPUs, not an isolated allocation.
@@ -191,7 +197,7 @@ jobs:
         run: pnpm run check:ci:coverage
 
   node-24-bench:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-24.04
     name: node 24 / benchmarks
     # Wall-clock budgets need an otherwise idle runner, so this job runs the
@@ -237,13 +243,14 @@ jobs:
         run: pnpm run check:ci:bench
 
   node-24-consumers:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: >-
-      ${{ vars.DSH_CI_FAILOVER_LINUX == 'blacksmith' && 'blacksmith-16vcpu-ubuntu-2404'
-          || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted'
+      ${{ github.repository == 'deepseek-ai/deepseek-harness' && vars.DSH_CI_FAILOVER_LINUX == 'blacksmith' && 'blacksmith-16vcpu-ubuntu-2404'
+          || github.repository == 'deepseek-ai/deepseek-harness' && vars.DSH_CI_FAILOVER_LINUX == 'selfhosted'
           && github.event.pull_request.user.login != 'dependabot[bot]'
           && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]')
-          || 'dsh-ubuntu-24-04-16core' }}
+          || github.repository == 'deepseek-ai/deepseek-harness' && 'dsh-ubuntu-24-04-16core'
+          || 'ubuntu-latest' }}
     name: node 24 / snapshots and artifacts
     env:
       # Shared hosts expose host CPUs, not an isolated allocation.
@@ -365,13 +372,13 @@ jobs:
 
 
   node-compat:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     # Under the selfhosted leg this job admits only repository-owned PR code
     # to the persistent shared VM; the blacksmith branch targets ephemeral
     # runners and carries none of those predicates.
     runs-on: >-
-      ${{ vars.DSH_CI_FAILOVER_LINUX == 'blacksmith' && 'blacksmith-4vcpu-ubuntu-2404'
-          || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted'
+      ${{ github.repository == 'deepseek-ai/deepseek-harness' && vars.DSH_CI_FAILOVER_LINUX == 'blacksmith' && 'blacksmith-4vcpu-ubuntu-2404'
+          || github.repository == 'deepseek-ai/deepseek-harness' && vars.DSH_CI_FAILOVER_LINUX == 'selfhosted'
           && github.event.pull_request.head.repo.full_name == github.repository
           && github.event.pull_request.head.repo.fork == false
           && github.event.pull_request.user.login != 'dependabot[bot]'
@@ -457,7 +464,7 @@ jobs:
         run: pnpm exec vitest run packages/boot/app-boot/tests/loader-shape.compat.spec.ts
 
   python-sdk:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     name: python 3.10 / keyless SDK
     steps:
@@ -485,7 +492,7 @@ jobs:
   # keyless black-box, and trusted real-API path. Linux/Windows x64 block PRs;
   # Linux ARM64 and both macOS architectures run in ci-master.yml.
   python-runtime:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'deepseek-ai/deepseek-harness')
     name: python runtime / release-shaped matrix
     uses: ./.github/workflows/build-exe-for-python-sdk.yml
     with:
@@ -501,13 +508,14 @@ jobs:
   # Blacksmith uses 2 vCPU for file-serial native tests and 16 for coverage
   # and the shared build/observational workspace.
   windows-build:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: >-
-      ${{ vars.DSH_CI_FAILOVER_WINDOWS == 'blacksmith' && 'blacksmith-16vcpu-windows-2025'
-          || vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted'
+      ${{ github.repository == 'deepseek-ai/deepseek-harness' && vars.DSH_CI_FAILOVER_WINDOWS == 'blacksmith' && 'blacksmith-16vcpu-windows-2025'
+          || github.repository == 'deepseek-ai/deepseek-harness' && vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted'
           && github.event.pull_request.user.login != 'dependabot[bot]'
           && fromJSON('["self-hosted", "dsh-win-ci", "windows"]')
-          || 'dsh-windows-2025-16core' }}
+          || github.repository == 'deepseek-ai/deepseek-harness' && 'dsh-windows-2025-16core'
+          || 'windows-latest' }}
     name: windows node 24 / build & observational
     timeout-minutes: 60
     env:
@@ -563,13 +571,14 @@ jobs:
           $message | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 
   windows-coverage:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: >-
-      ${{ vars.DSH_CI_FAILOVER_WINDOWS == 'blacksmith' && 'blacksmith-16vcpu-windows-2025'
-          || vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted'
+      ${{ github.repository == 'deepseek-ai/deepseek-harness' && vars.DSH_CI_FAILOVER_WINDOWS == 'blacksmith' && 'blacksmith-16vcpu-windows-2025'
+          || github.repository == 'deepseek-ai/deepseek-harness' && vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted'
           && github.event.pull_request.user.login != 'dependabot[bot]'
           && fromJSON('["self-hosted", "dsh-win-ci", "windows"]')
-          || 'dsh-windows-2025-16core' }}
+          || github.repository == 'deepseek-ai/deepseek-harness' && 'dsh-windows-2025-16core'
+          || 'windows-latest' }}
     name: windows node 24 / coverage
     timeout-minutes: 120
     env:
@@ -641,13 +650,14 @@ jobs:
           key: coverage-times-${{ github.run_id }}
 
   windows-native-tests:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: >-
-      ${{ vars.DSH_CI_FAILOVER_WINDOWS == 'blacksmith' && 'blacksmith-2vcpu-windows-2025'
-          || vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted'
+      ${{ github.repository == 'deepseek-ai/deepseek-harness' && vars.DSH_CI_FAILOVER_WINDOWS == 'blacksmith' && 'blacksmith-2vcpu-windows-2025'
+          || github.repository == 'deepseek-ai/deepseek-harness' && vars.DSH_CI_FAILOVER_WINDOWS == 'selfhosted'
           && github.event.pull_request.user.login != 'dependabot[bot]'
           && fromJSON('["self-hosted", "dsh-win-ci", "windows"]')
-          || 'dsh-windows-2025-16core' }}
+          || github.repository == 'deepseek-ai/deepseek-harness' && 'dsh-windows-2025-16core'
+          || 'windows-latest' }}
     name: windows node 24 / native tests
     timeout-minutes: 60
     steps:
@@ -709,16 +719,29 @@ jobs:
     # through the same selector, so a Blacksmith outage strands both together —
     # the accepted consequence of the explicit opt-in switch.
     runs-on: >-
-      ${{ vars.DSH_CI_FAILOVER_LINUX == 'blacksmith' && 'blacksmith-4vcpu-ubuntu-2404'
-          || vars.DSH_CI_FAILOVER_LINUX == 'selfhosted'
+      ${{ github.repository == 'deepseek-ai/deepseek-harness' && vars.DSH_CI_FAILOVER_LINUX == 'blacksmith' && 'blacksmith-4vcpu-ubuntu-2404'
+          || github.repository == 'deepseek-ai/deepseek-harness' && vars.DSH_CI_FAILOVER_LINUX == 'selfhosted'
           && github.event.pull_request.user.login != 'dependabot[bot]'
           && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]')
           || 'ubuntu-latest' }}
     needs: [node-24, node-24-coverage, node-24-bench, node-24-consumers, node-compat, python-sdk, python-runtime, windows-build, windows-native-tests]
-    if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+    if: ${{ !cancelled() && (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
     steps:
       - name: Fail if any needed job did not succeed
-        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped')
+        if: >-
+          contains(needs.*.result, 'failure')
+          || contains(needs.*.result, 'cancelled')
+          || (contains(needs.*.result, 'skipped') && !(github.event_name == 'push'
+            && github.repository != 'deepseek-ai/deepseek-harness'
+            && needs['python-runtime'].result == 'skipped'
+            && needs['node-24'].result == 'success'
+            && needs['node-24-coverage'].result == 'success'
+            && needs['node-24-bench'].result == 'success'
+            && needs['node-24-consumers'].result == 'success'
+            && needs['node-compat'].result == 'success'
+            && needs['python-sdk'].result == 'success'
+            && needs['windows-build'].result == 'success'
+            && needs['windows-native-tests'].result == 'success'))
         run: |
           echo "::error::Needed job results: ${{ join(needs.*.result, ', ') }}"
           exit 1

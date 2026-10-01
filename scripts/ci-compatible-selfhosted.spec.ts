@@ -42,11 +42,11 @@ function route(options: { mode?: string; author?: string; repository?: string; f
   return evaluate(job['runs-on'], {
     vars: { DSH_CI_FAILOVER_LINUX: options.mode ?? 'selfhosted' },
     github: {
-      repository: 'deepseek-harness/deepseek-harness',
+      repository: options.repository ?? 'deepseek-ai/deepseek-harness',
       actor: options.actor ?? 'maintainer',
       event: { pull_request: {
         user: { login: options.author ?? 'maintainer' },
-        head: { repo: { full_name: options.repository ?? 'deepseek-harness/deepseek-harness', fork: options.fork ?? false } },
+        head: { repo: { full_name: options.repository ?? 'deepseek-ai/deepseek-harness', fork: options.fork ?? false } },
       } },
     },
     matrix: { runner: 'ubuntu-latest' },
@@ -65,10 +65,11 @@ describe('Node compatibility self-hosted routing', () => {
     expect(route({ repository: 'outsider/fork', fork: false })).toBe('ubuntu-latest')
     expect(route({ fork: true })).toBe('ubuntu-latest')
     expect(route({ repository: '' })).toBe('ubuntu-latest')
+    expect(route({ repository: 'eiritsu/DeepSeek-Harness-Desktop' })).toBe('ubuntu-latest')
   })
 
   it('preserves all three required version jobs and their concurrency', () => {
-    expect(job.if).toBe("github.event_name == 'pull_request'")
+    expect(job.if).toContain("github.event_name == 'pull_request'")
     expect(job.strategy['fail-fast']).toBe(false)
     expect(job.strategy.matrix.include).toEqual([
       { node: '22.19', name: 'node 22.19', runner: 'ubuntu-latest', gate_concurrency: '1' },
