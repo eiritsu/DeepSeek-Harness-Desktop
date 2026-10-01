@@ -6,6 +6,7 @@ import type { PendingSubmission } from '@deepseek-ai/dsh-api-session-controller/
 import type { MessageImageSource } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { fileExtension, FileTypeIcon, fileSizeText, JsonBlock, projectUserText, StateDot, TextShimmer } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { MessageBodyClaimSet } from '../message-claims.ts'
+import type { ChatNodeDataMap } from '../contract/chat-nodes.ts'
 import type { ChatNodeOwnerProps, ChatNodeViewProps, ChatViewSlotProps } from '../contract/slots.ts'
 import type { ModelRetryNode, TurnErrorNode, UserMessageNode } from '../contract/snapshot.ts'
 import { CompactionItem } from './CompactionItem.tsx'
@@ -237,6 +238,44 @@ function UserStyleBubble({
 }
 
 /**
+ * Right-aligned transcript bubble shared by the user and steering renderers.
+ * @param props - Message payload and render seats; `extraActions` is supplied
+ *   only by the user row.
+ * @returns the bubble element.
+ */
+function MessageBubble({
+  data, renderMessageImages, openFile, openSkill, t, extraActions,
+}: {
+  data: ChatNodeDataMap['user'] | ChatNodeDataMap['steering']
+  renderMessageImages: ChatNodeOwnerProps['renderMessageImages']
+  openFile: ChatNodeOwnerProps['openFile']
+  openSkill: ChatNodeOwnerProps['openSkill']
+  t: ChatViewSlotProps['t']
+  extraActions?: ReactNode
+}): ReactNode {
+  return (
+    <UserStyleBubble
+      content={data.content}
+      references={{ openFile, openSkill }}
+      renderMessageImages={renderMessageImages}
+      {...data.referenceLabels === undefined ? {} : { referenceLabels: data.referenceLabels }}
+      {...data.skillNames === undefined ? {} : { skillNames: data.skillNames }}
+      t={t}
+      actions={text => (
+        <MessageIconActions
+          text={text}
+          time={data.time}
+          clock="start"
+          className={css.actions}
+          {...extraActions === undefined ? {} : { extraActions }}
+          t={t}
+        />
+      )}
+    />
+  )
+}
+
+/**
  * Render one Host-authoritative pending steering item with the same visual
  * language as its eventual durable transcript node.
  * @param props - Pending message content and conversation translator.
@@ -338,25 +377,15 @@ export const UserMessageNodeView = memo(function UserMessageNodeView({
   // claim is released.
   const claimed = useMessageClaims(claims => claims.has(data.seq))
   const bubble = (
-    <UserStyleBubble
-      content={data.content}
-      references={{ openFile, openSkill }}
+    <MessageBubble
+      data={data}
       renderMessageImages={renderMessageImages}
-      {...data.referenceLabels === undefined ? {} : { referenceLabels: data.referenceLabels }}
-      {...data.skillNames === undefined ? {} : { skillNames: data.skillNames }}
+      openFile={openFile}
+      openSkill={openSkill}
       t={t}
-      actions={text => (
-        <MessageIconActions
-          text={text}
-          time={data.time}
-          clock="start"
-          className={css.actions}
-          extraActions={renderSlot === undefined
-            ? null
-            : renderSlot('conversation.chat.user-actions', { seq: data.seq, turn })}
-          t={t}
-        />
-      )}
+      extraActions={renderSlot === undefined
+        ? null
+        : renderSlot('conversation.chat.user-actions', { seq: data.seq, turn })}
     />
   )
   if (renderSlotChain === undefined) return bubble
@@ -373,22 +402,12 @@ export const SteeringMessageNodeView = memo(function SteeringMessageNodeView({
 }: ChatNodeViewProps<'steering'>) {
   const data = node.data
   return (
-    <UserStyleBubble
-      content={data.content}
-      references={{ openFile, openSkill }}
+    <MessageBubble
+      data={data}
       renderMessageImages={renderMessageImages}
-      {...data.referenceLabels === undefined ? {} : { referenceLabels: data.referenceLabels }}
-      {...data.skillNames === undefined ? {} : { skillNames: data.skillNames }}
+      openFile={openFile}
+      openSkill={openSkill}
       t={t}
-      actions={text => (
-        <MessageIconActions
-          text={text}
-          time={data.time}
-          clock="start"
-          className={css.actions}
-          t={t}
-        />
-      )}
     />
   )
 })

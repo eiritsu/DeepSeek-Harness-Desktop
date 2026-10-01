@@ -25,8 +25,15 @@ interface MainSelection {
   readonly subagentAddress?: SubagentAddress
 }
 
-/** Workspace archive and directory operations consumed by Client UI domains. */
-export interface UiWorkspace {
+/**
+ * Workspace archive and directory operations consumed by Client UI domains.
+ * The Session grouping verbs reuse the Workspace Controller's declarations;
+ * this face adds only the navigation and directory policy around them.
+ */
+export interface UiWorkspace extends Pick<
+  IWorkspaces,
+  'archiveSession' | 'unarchiveSession' | 'pinSession' | 'unpinSession' | 'deleteSession'
+> {
   /**
    * Select a Session and show its Conversation as one UI navigation action.
    * @param target - known Session identity or durable direct-parent subagent address to display.
@@ -61,36 +68,6 @@ export interface UiWorkspace {
    * @param workspaceId - explicit target; absent inherits the current or most recent Workspace.
    */
   startSession(workspaceId?: WorkspaceId): void
-  /**
-   * Archive a Session and clear it when it is the current selection.
-   * @param sessionId - Session to archive.
-   * @param options - `stopActivity` asks the Host to stop the Session's running work instead of refusing.
-   */
-  archiveSession(sessionId: SessionId, options?: { readonly stopActivity?: boolean }): Promise<void>
-  /**
-   * Unarchive a Session, restoring it to its recorded Workspace position.
-   * @param sessionId - Session to unarchive.
-   */
-  unarchiveSession(sessionId: SessionId): Promise<void>
-  /**
-   * Pin a Session on the Host, then lead it in its accounts' saved orders
-   * (its Workspace group or Ungrouped, and the flat list). The order write
-   * reads the memberships current at completion, so reorders that landed
-   * while the Host call was pending keep their positions.
-   * @param sessionId - Session to pin.
-   */
-  pinSession(sessionId: SessionId): Promise<void>
-  /**
-   * Unpin a Session on the Host; saved positions stay as they are.
-   * @param sessionId - Session to unpin.
-   */
-  unpinSession(sessionId: SessionId): Promise<void>
-  /**
-   * Permanently delete a Session and clear the empty selection when the
-   * deleted Session is still the main selection.
-   * @param sessionId - Session to delete.
-   */
-  deleteSession(sessionId: SessionId): Promise<void>
   /**
    * Open the Host-native directory picker.
    * @returns the selected directory, or null when cancelled.

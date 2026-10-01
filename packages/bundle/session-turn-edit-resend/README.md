@@ -72,6 +72,8 @@ The unchanged prefix before the replaced range can reuse its cache. The replacem
 
 <a id="known-limitations-and-deferred-work"></a>
 
+No runtime invariant companion is published because turn eligibility and operation status are projections of the same append-only Session log; another fold would duplicate the registered projections instead of comparing independent observations.
+
 - **External side effects may repeat.** A tool turn is editable, so a resend can re-run tools whose effects are outside the Harness. The browser entry discloses the tool names and asks for confirmation; the Harness does not rewind files, processes, or any other external state.
 - **No cross-process coordination.** The idle-phase claim is process-local. Two Hosts sharing one Session store are not serialized.
 - **Uncertain outcomes are terminal.** A recorded request that never admitted is never retried, even if the caller repeats the same `operationId`; the caller must submit a new identity to try again.

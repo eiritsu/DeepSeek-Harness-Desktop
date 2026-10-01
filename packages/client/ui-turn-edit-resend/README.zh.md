@@ -60,6 +60,8 @@ kind: "package-reference"
 
 <a id="known-limitations-and-deferred-work"></a>
 
+本插件不发布 runtime invariant companion，因为它不产生独立事件流：slot registry 管理各项贡献的生命周期，而按 Session 键控的草稿与消息体占用由交互测试直接检查。
+
 - **工具披露仅为告知。** 编辑器列出重发可能重跑的工具，但无法证明该重复安全；该决定由用户承担。
 - **入口只出现在最近一条回合上。** `check` 选择最近一条可替换回合，因此较早的提示不显示编辑入口；Host 在其空闲声明下重新选择，并拒绝过期目标。
 - **打开的尝试只存在于进程内。** 编辑器及其草稿保存在客户端内存中，刷新即丢弃该尝试；Session 日志已保存全部持久记录。
