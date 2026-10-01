@@ -86,7 +86,7 @@ This section explains how the package realizes the behavior above; the observabl
 
 ### Design concept
 
-The package is the one concrete implementation of the public `Agent` contract. It registers itself as the `AgentFactory` on `ctx.agents`, so consumers never import this package; ownership of each created agent lives with the caller fiber and the loop provider, converging on one memoized quiescence boundary. Every observable effect happens through session events and the `agent/*` taxonomy — package internals are never part of the public surface.
+The package is the one concrete implementation of the public `Agent` contract. It registers itself as the `AgentFactory` on `ctx.agents`, so consumers never import this package; ownership of each created agent lives with the caller fiber and the loop provider, converging on one memoized quiescence boundary. Every observable effect happens through session events and the `agent/*` taxonomy — package internals are never part of the public surface. The loop also recognizes the scheduler of a profile-local `dsh-tools` copy that predates the global `Symbol.for` key, which registers it under a private `Symbol` carrying the same description, so tool calls still schedule when the tools service comes from an old profile copy.
 
 ### Request headers and adapter defaults
 

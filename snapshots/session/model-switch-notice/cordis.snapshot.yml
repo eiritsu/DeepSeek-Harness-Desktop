@@ -28,3 +28,6 @@
 
     - id: model-switch-driver
       name: './model-switch-driver.mjs'
+
+    - id: legacy-tools-scheduler-compat
+      name: './legacy-tools-scheduler.mjs'

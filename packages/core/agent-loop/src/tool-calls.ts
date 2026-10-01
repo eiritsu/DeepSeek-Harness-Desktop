@@ -14,7 +14,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { createToolResultMessage, type ToolCallBlock } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionSeq, UserMessage } from '@deepseek-ai/dsh-session'
-import { TOOL_ABORTED_BEFORE_DISPATCH, TOOL_RUNTIME_SCHEDULER, type ToolExecutionInput, type ToolExecutionMode, type ToolExecutionResult, type ToolRunContext } from '@deepseek-ai/dsh-tools'
+import { TOOL_ABORTED_BEFORE_DISPATCH, TOOL_RUNTIME_SCHEDULER, type ToolExecutionInput, type ToolExecutionMode, type ToolExecutionResult, type ToolRunContext, type ToolRuntimeScheduler } from '@deepseek-ai/dsh-tools'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 
 /** One tool call after argument parsing, ready to schedule. */
@@ -67,6 +67,7 @@ export async function executeToolCalls(
 ): Promise<{ concluded: boolean }> {
   const agent = ctx.agents.requireInitiator()
   const { session } = agent
+  const scheduler = schedulerFor(ctx)
 
   // Inputs are distinct because tools/execute wrappers may replace `exec.signal`.
   const planned: PlannedCall[] = toolCalls.map(block => ({
@@ -89,7 +90,7 @@ export async function executeToolCalls(
     const mode = ctx.tools.executionMode(first.exec).kind
     const group = mode === 'parallel' ? planned.slice(next) : [first]
     const outcome = await runGroup(
-      ctx, turn, step, group, mode, signal, acceptContext,
+      ctx, scheduler, turn, step, group, mode, signal, acceptContext,
     )
     next += outcome.consumed
     concluded ||= outcome.concluded
@@ -111,6 +112,37 @@ function parseArguments(raw: string): unknown {
 }
 
 /**
+ * Resolve the tools service's staged scheduler view. A loaded Tools copy that
+ * registered it under a private `Symbol` with the shared description rather
+ * than the global `Symbol.for` key is found by scanning own symbol keys.
+ *
+ * @param ctx - loop context that owns the tool registry.
+ * @returns the scheduler view exposed by the active tools service.
+ * @throws when the tools service exposes no scheduler object.
+ */
+function schedulerFor(ctx: Context): ToolRuntimeScheduler {
+  const direct = ctx.tools[TOOL_RUNTIME_SCHEDULER]
+  if (isScheduler(direct)) return direct
+  const legacy = Object.getOwnPropertySymbols(ctx.tools)
+    .find(symbol => symbol.description === TOOL_RUNTIME_SCHEDULER.description)
+  const candidate: unknown = legacy === undefined ? undefined : Reflect.get(ctx.tools, legacy)
+  if (!isScheduler(candidate)) {
+    throw new Error('tool-call scheduler: the tools service exposes no runtime scheduler')
+  }
+  return candidate
+}
+
+/** Whether `value` is a non-null object exposing every scheduler stage method. */
+function isScheduler(value: unknown): value is ToolRuntimeScheduler {
+  if (typeof value !== 'object' || value === null) return false
+  const candidate = value as Record<string, unknown>
+  return typeof candidate.prepare === 'function'
+    && typeof candidate.dispatch === 'function'
+    && typeof candidate.finalize === 'function'
+    && typeof candidate.finish === 'function'
+}
+
+/**
  * Run one exclusive barrier or parallel pool. Later calls are reclassified
  * before start; an exclusive reclassification waits for the current pool to
  * drain and remains for the caller's next barrier. Results and contexts commit
@@ -121,6 +153,7 @@ function parseArguments(raw: string): unknown {
  */
 async function runGroup(
   ctx: Context,
+  scheduler: ToolRuntimeScheduler,
   turn: number,
   step: number,
   group: PlannedCall[],
@@ -150,8 +183,8 @@ async function runGroup(
       if (slot === undefined) break
       const call = group[committed]
       const result = slot.needsPost
-        ? await ctx.tools[TOOL_RUNTIME_SCHEDULER].finalize(slot.exec, slot.result)
-        : ctx.tools[TOOL_RUNTIME_SCHEDULER].finish(slot.exec, slot.result)
+        ? await scheduler.finalize(slot.exec, slot.result)
+        : scheduler.finish(slot.exec, slot.result)
       // oxlint-disable-next-line typescript/no-non-null-assertion -- bounded index
       appendToolResult(session, turn, step, call!.block, result, callSeqs[committed]!)
       for (const context of result.additionalContexts ?? []) acceptContext(context)
@@ -167,11 +200,11 @@ async function runGroup(
     const call = group[index]!
     callSeqs[index] = appendToolCall(session, turn, step, call.block)
     started++
-    const prepared = await ctx.tools[TOOL_RUNTIME_SCHEDULER].prepare(call.exec)
+    const prepared = await scheduler.prepare(call.exec)
     throwSchedulerFailure()
     switch (prepared.kind) {
       case 'dispatch': {
-        const promise = ctx.tools[TOOL_RUNTIME_SCHEDULER].dispatch(prepared.exec).then(
+        const promise = scheduler.dispatch(prepared.exec).then(
           (outcome) => {
             slots[index] = { exec: prepared.exec, result: outcome.result, needsPost: outcome.kind === 'post-result' }
             return index

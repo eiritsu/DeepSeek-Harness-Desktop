@@ -105,6 +105,87 @@ async function until(predicate: () => boolean): Promise<void> {
   if (!predicate()) throw new Error('until: condition never held')
 }
 
+/** Failure text the loop raises when the loaded tools service exposes no scheduler. */
+const unavailable = 'tool-call scheduler: the tools service exposes no runtime scheduler'
+
+describe('TOOL_RUNTIME_SCHEDULER global identity', () => {
+  it('shares one key across duplicate runtime copies', async () => {
+    const specifier = '../../tools/src/index.ts' + '?duplicate'
+    const duplicate = await import(specifier) as typeof import('@deepseek-ai/dsh-tools')
+    expect(duplicate.TOOL_RUNTIME_SCHEDULER).toBe(TOOL_RUNTIME_SCHEDULER)
+  })
+
+  it('falls back to a legacy private scheduler symbol on the tools service', async () => {
+    const adapter = new MockAdapter([
+      multiCall([{ id: 'c1', name: 'bump', args: {} }]),
+      textResponse('done'),
+    ])
+    const ctx = await harness(adapter)
+    onTestFinished(() => ctx.fiber.dispose())
+    // An older profile-local `dsh-tools` registered the view under a private
+    // `Symbol` carrying the shared description, so the global key misses it.
+    const scheduler = ctx.tools[TOOL_RUNTIME_SCHEDULER]
+    Reflect.deleteProperty(ctx.tools, TOOL_RUNTIME_SCHEDULER)
+    Object.defineProperty(ctx.tools, Symbol('@deepseek-ai/dsh-tools.scheduler'), { value: scheduler })
+    expect(ctx.tools[TOOL_RUNTIME_SCHEDULER]).toBeUndefined()
+    let count = 0
+    ctx.tools.register(defineContentToolFixture({
+      name: 'bump',
+      description: 'increment the counter',
+      parameters: {},
+      async execute() {
+        count++
+        return [{ type: 'text', text: 'bumped' }]
+      },
+    }))
+    const agent = await ctx.agentLoop.create(SessionId('legacy-scheduler'), { provider: 'mock', model: 'mock' })
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
+    await waitForIdle(ctx, agent)
+
+    expect(count).toBe(1)
+    const results = events(agent).filter(event => event.type === 'tool/result')
+    expect(results).toHaveLength(1)
+    expect(results[0]?.data.message).toMatchObject({
+      role: 'tool', toolCallId: ToolCallId('c1'), isError: false, content: [{ type: 'text', text: 'bumped' }],
+    })
+  })
+
+  it('fails the turn when the tools service exposes no scheduler at all', async () => {
+    const adapter = new MockAdapter([
+      multiCall([{ id: 'c1', name: 'bump', args: {} }]),
+      textResponse('should never be requested'),
+    ])
+    const ctx = await harness(adapter)
+    onTestFinished(() => ctx.fiber.dispose())
+    const errors: unknown[] = []
+    ctx.on('agent/error', ({ error }) => { errors.push(error) })
+    const executed: string[] = []
+    ctx.tools.register(defineContentToolFixture({
+      name: 'bump',
+      description: 'increment the counter',
+      parameters: {},
+      async execute() { executed.push('bump'); return [{ type: 'text', text: 'bumped' }] },
+    }))
+    Reflect.deleteProperty(ctx.tools, TOOL_RUNTIME_SCHEDULER)
+    const agent = await ctx.agentLoop.create(SessionId('no-scheduler'), { provider: 'mock', model: 'mock' })
+
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
+    await waitForIdle(ctx, agent)
+
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toMatchObject({ message: unavailable })
+    expect(events(agent).findLast(event => event.type === 'turn/end')).toMatchObject({
+      data: { reason: { kind: 'error', error: { message: unavailable, code: 'UNKNOWN' } } },
+    })
+    expect(executed).toEqual([])
+    // The owning step pairs the request it never dispatched with the same
+    // conservative result a mid-scheduling failure produces.
+    expect(events(agent).filter(event => event.type === 'tool/result').map(event => [
+      event.data.message.toolCallId, event.data.error?.code,
+    ])).toEqual([[ToolCallId('c1'), TOOL_NOT_STARTED]])
+  })
+})
+
 describe('tool-call scheduler: grouping and barriers', () => {
   it('runs parallel-safe siblings concurrently (all start before any completes)', async () => {
     const adapter = new MockAdapter([

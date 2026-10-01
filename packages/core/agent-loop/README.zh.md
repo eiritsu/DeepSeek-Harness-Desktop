@@ -86,7 +86,7 @@ const handle = await ctx.agents.create({
 
 ### 设计理念
 
-该包是公开 `Agent` 约定的唯一具象实现。它在 `ctx.agents` 上把自身注册为 `AgentFactory`，因此消费方从不导入本包；每个创建 agent 的所有权归属于调用方 fiber 与循环提供方，并汇合到同一个记忆化的完全停稳边界。每个可观察效果都通过会话事件与 `agent/*` 分类体系发生——包内部实现绝不属于公开接口。
+该包是公开 `Agent` 约定的唯一具象实现。它在 `ctx.agents` 上把自身注册为 `AgentFactory`，因此消费方从不导入本包；每个创建 agent 的所有权归属于调用方 fiber 与循环提供方，并汇合到同一个记忆化的完全停稳边界。每个可观察效果都通过会话事件与 `agent/*` 分类体系发生——包内部实现绝不属于公开接口。循环还会识别早于全局 `Symbol.for` 键的 profile 本地 `dsh-tools` 副本的调度器：它挂在一个描述相同的私有 `Symbol` 下，因此 tools 服务来自旧 profile 副本时，工具调用照常调度。
 
 ### 请求 header 与适配器默认值
 

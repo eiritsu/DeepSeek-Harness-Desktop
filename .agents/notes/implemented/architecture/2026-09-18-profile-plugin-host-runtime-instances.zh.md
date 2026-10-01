@@ -14,6 +14,8 @@ Issue #4573 就是这个问题在生产里的形态。当本包经 `dependencies
 
 Out-of-tree 插件包，凡是跨实例同一性要紧的宿主运行时，一律写成匹配的 `peerDependencies` 与 `devDependencies`，绝不写进 `dependencies`。Profile 的 pnpm 配置是 `nodeLinker: hoisted` 加 `autoInstallPeers: false`，这类 peer 不会装进 profile；导入走到 `$DSH_HOME/profiles/node_modules` 时，由运行时解析（runtime resolution）的拦截层提供安装里的那一份实例（[解析顺序](2026-09-19-profile-resolution-lookup-order.zh.md)）。
 
+随包发布的 `AgentLoop` 有一处旧布局是特意兼容的：`TOOL_RUNTIME_SCHEDULER` 还是普通 `Symbol` 键时，profile 本地那份 `dsh-tools` 把自己的调度器挂在私有的 `Symbol('@deepseek-ai/dsh-tools.scheduler')` 下，全局键匹配不到它。循环遍历 tools 服务的自有符号键、按 description 找到这个值，并且只在它具备 `prepare`、`dispatch`、`finalize`、`finish` 四个方法时才接受它。这一步只覆盖旧 profile 本地 tools 副本与随包发布的循环之间的调度器属性同一性，不覆盖那份副本里的其他模块级状态。
+
 `@deepseek-ai/dsh-scope` 的同一性既在读取者 `scopeOf`、`carrierKeyOf`、`scopeTarget` 上，也在写入者 `createScope` 上：标记由写入者铸造，再由读取者比较。`@deepseek-ai/dsh-mcp-client` 同属这一类，因为它在线的 `serverName` 保留表是模块级的，第二份副本会为同一命名空间保留第二张表。因此 `@deepseek-ai/dsh-experimental-browser-use-runtime` 把两者声明为 peer（并补匹配的 dev 条目），只把不携带实例内状态的 `@deepseek-ai/schemastery` 留在运行时依赖里。
 
 `tests/shared-host-runtimes.spec.ts` 钉住这个包的分区。`tests/host-runtime-duplication.spec.ts` 复现这条规则拦下的问题：两份包各多一份副本时，每个 Agent 的 MCP 工具都落进全局层，第二个 Agent 的创建被拒；而实际发布的单实例布局下全局层为空，两个 Agent 各拿到自己的客户端。
@@ -28,9 +30,11 @@ Out-of-tree 插件包，凡是跨实例同一性要紧的宿主运行时，一�
 
 **把 profile 的包版本对齐到 Host。** 版本相同，两个目录依旧加载出两份模块实例，问题照旧。
 
+**让 base bundle 的插件行走安装运行时解析。** 这会改变与本故障无关的 profile 插件解析，也合并不了任意重复的模块实例，因此 peer 规则仍是「每个宿主运行时一份实例」的唯一保证。
+
 ## Consequences
 
-- 修复要生效，需要升级并重装 profile 里的插件依赖。在此之前，已装好的 profile 一直带着那份副本，Host 侧无法补救。
+- 修复要生效，需要升级并重装 profile 里的插件依赖。已装好的 profile 中其他同一性要紧的依赖在此之前一直存在，Host 侧无法补救。随包发布的 `AgentLoop` 只为调度器属性接受旧 profile 本地 `dsh-tools` 副本——它按旧键读取该值——无法修复那份副本的其他模块级状态。
 - 这条规则让插件依赖「安装确实带了这个 peer」。两个包都是 `@deepseek-ai/dsh` 安装的依赖，运行时解析能提供它们；若某插件不在安装闭包内，它会直接加载失败，而不是带着第二份副本启动。
 - `docs/module-graph.md` 把这些边画进 peer 区，图与分区表达的是同一条所有权边界。
 - 另有三个实验提供方（`browser-use-stagehand-native`、`computer-use-cua-driver-mcp`、`computer-use-cua-driver-native`）把 `@deepseek-ai/dsh-mcp-client` 写成依赖。它们不按 Agent 挂 MCP 客户端，因此自身不会触发本决策要防的故障。若一个 profile 把其中之一与本包一起安装，hoisted 会把那份依赖平铺到 profile 自己的 `node_modules`，位置高于拦截层，于是本包的 peer 解析到那份副本：两份 `dsh-mcp-client` 各存一张 `serverName` 保留表，一份上保留的名字在另一份上不再被检测。作用域标记的分裂不会回来，因为它们都没有把 `@deepseek-ai/dsh-scope` 写成依赖。Issue #4628 记录把这三处声明改为 peer 并各自验证的后续工作。
