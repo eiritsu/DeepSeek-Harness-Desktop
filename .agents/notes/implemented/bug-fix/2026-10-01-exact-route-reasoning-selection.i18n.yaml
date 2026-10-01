@@ -1,0 +1,22 @@
+# Bilingual-pair consistency record for 2026-10-01-exact-route-reasoning-selection.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-10-01-exact-route-reasoning-selection.md
+/agent-note-exact-route-reasoning-selection:
+  en: 06d2516468a4f952
+  zh: 39a04c356bffd77f
+/agent-note-exact-route-reasoning-selection/problem:
+  en: f30ff6b92abb3127
+  zh: 49d708e8bf04cd49
+/agent-note-exact-route-reasoning-selection/decision:
+  en: 96554d07c732056e
+  zh: 9ec01f44d53c35e6
+/agent-note-exact-route-reasoning-selection/alternatives-considered:
+  en: fff3aef581bb5be9
+  zh: 636887efe90a2973
+/agent-note-exact-route-reasoning-selection/consequences:
+  en: 12b8d727121c747f
+  zh: b593fdb8dcac351c
+/agent-note-exact-route-reasoning-selection/testing:
+  en: 635b18440ec6d4f9
+  zh: 2ac6e94cf46c3db8

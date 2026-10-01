@@ -102,7 +102,7 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 <a id="model-experience"></a>
 ## Model Experience
 
-None, as invoked Agent commands own any model-visible effect.
+None, as model-facing inputs and prompts are owned by the Agent and LLM packages.
 
 #### KV Cache effect
 

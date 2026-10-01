@@ -66,7 +66,7 @@ for await (const chunk of ctx.llm.stream({
 - **注册提供方适配器**——一个适配器拥有一个或多个提供方路由，其注册会捕获该路由的重试策略；重复注册同一路由会以 `DUPLICATE_ADAPTER` 失败。
 - **通过配置暴露并激活提供方**——适配器声明可配置提供方路由与 settings namespace，配置界面因此可以激活休眠提供方并编辑连接信息，无需重启。`LlmConfigurableProvider.error` 报告供修复的配置诊断；未受影响的模型仍可提供服务。
 - **发现与解析模型**——列出适配器公布的模型、询问端点它提供哪些模型（候选携带可选的 `inputModalities`；缺省表示未知），并解析某个精确模型的上下文窗口、输出默认值、推理（reasoning）强度、输入模态与系统提示词更新模式：当模型把任意位置最新的 `system` 消息读作有效系统提示词时，`LlmResolvedModelInfo.systemPromptUpdate` 为 `'in-history'`；只读取开头 system 消息时该字段缺失；`normalizeModelInfo` 以 `INVALID_MODEL_INFO` 拒绝任何其他值。
-- **提供固定的推理等级阶梯**——`MODEL_REASONING_EFFORTS` 给出每个模型选择器都显示的等级（`minimal`、`low`、`medium`、`high`、`xhigh`、`max`），`modelReasoningEfforts()` 物化对应的行；选择器为每个模型渲染它们，而不是该路由自己的列表，因此人所看到的阶梯不随服务该模型的提供方或渠道而变。"Default"不是一个等级：它表示不发送任何强度。
+- **提供每条路由声明的推理强度**——选择器只列出确切解析后的路由与模型所报告的 `efforts`，并保持适配器顺序；该元数据缺失时不渲染推理控件，因此人不会选到下一个请求无法携带的等级。`MODEL_REASONING_EFFORTS` 与 `modelReasoningEfforts()` 定义提供方中立的等级词汇，而不是选择器显示的行。"Default"不是一个等级：它表示不发送任何强度。
 - **校验调用配置**——显式或配置的推理强度会在任何提供方 I/O 之前对照精确模型校验；请求省略输出上限时，会填入适配器配置的输出上限。该路由无法编码的等级会以 `UNSUPPORTED_REASONING_EFFORT` 失败，绝不会被夹取到相邻等级。
 - **不展开即读取内嵌 Assistant 流**——`assistantStreamFirstTokenTime`（首 token）、`assistantStreamHasVisibleContent`（任一可见内容）与 `assistantStreamHasVisibleText`（任一可见文本）通过可提前退出的扫描直接从紧凑记录得出结果；`lastAssistantStreamChunk` 反向扫描到某一类型的最后一个原始 chunk，`assistantStreamChunks` 与 `joinAssistantStreamText` 扫描整个流，`assembleAssistantStream` 向 `BlockAssembler` 每个 run 喂一段拼接 delta，blocks／usage／replayState 与逐成员展开相同。`runFirstTokenTime` 与 `runFirstVisibleTime` 对单个打包 run 做提前退出扫描，`isTokenDelta`、`isVisibleChunk` 与 `chunkHasVisibleText` 定义单个 chunk 的 token 与可见性规则。`expandAssistantStream` 仍是持久边界读取记录的校验路径；它不被记忆化，因为保留的展开在事件生命周期内约花费紧凑流的十倍内存。
 
@@ -173,7 +173,7 @@ for await (const chunk of ctx.llm.stream({
 #### 开放事项
 
 - `GenerateOptions.sessionId` 是本地声明的品牌类型，因为导入 dsh-session 的 `SessionId` 会造成依赖循环；未来拥有 id 的包可以消除该权宜之计。
-- 推理强度标识符仍是由适配器定义的不透明字符串；固定的 `MODEL_REASONING_EFFORTS` 阶梯是选择器提供的词汇，而不是线路字母表，因此路由仍可接受其中的 id，`LlmRuntime` 会针对该路由自己公布的集合解析每个请求。
+- 推理强度标识符仍是由适配器定义的不透明字符串；`MODEL_REASONING_EFFORTS` 是提供方中立的等级词汇，既不是线路字母表，也不是选择器渲染的行，因此路由仍可接受其中的 id，`LlmRuntime` 会针对该路由自己公布的集合解析每个请求。
 - `llm/adapters-updated` 事件按设计不携带载荷；消费方重新读取注册表，而不是在事件中接收新拓扑。
 
 </details>

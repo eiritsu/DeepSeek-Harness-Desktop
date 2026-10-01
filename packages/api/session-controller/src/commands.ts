@@ -148,12 +148,14 @@ export class SessionCommandController {
   /**
    * Validate and install one Session-local model selection; save the default in the background.
    *
-   * The selection is stored as the intent a person expressed: every level of
-   * the fixed ladder is selectable whatever the serving route can encode, and
-   * the request that carries the intent is where a level this route cannot
-   * encode is refused as `UNSUPPORTED_REASONING_EFFORT`. Choosing the Default
-   * row therefore stores no effort at all, and the model's own default is
-   * materialized at request time rather than being written back as a choice.
+   * The model catalog offers exactly the efforts the selected route and model
+   * resolve, in adapter order, and omits the reasoning control when that
+   * resolution declares none. The selection is stored as the intent a person
+   * expressed, so the runtime refuses a manually supplied value the route
+   * cannot encode — one passed directly or stored before the route changed — as
+   * `UNSUPPORTED_REASONING_EFFORT`. Choosing the Default row therefore stores
+   * no effort at all, and the model's own default is materialized at request
+   * time rather than being written back as a choice.
    * @param request - Session identity and requested model selection.
    * @returns the normalized selection installed for the Session, without waiting for default persistence.
    */

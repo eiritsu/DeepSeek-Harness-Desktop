@@ -23,8 +23,8 @@
               - id: deepseek-v4-pro
                 contextWindow: 1000000
                 defaultMaxTokens: 256000
-                reasoningEfforts: ['off', 'low', 'high', 'max']
-                defaultReasoningEffort: max
+                reasoningEfforts: ['low', 'high']
+                defaultReasoningEffort: high
 
     - id: model-switch-driver
       name: './model-switch-driver.mjs'

@@ -2,7 +2,7 @@
 
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 
-const SELECTED = { provider: 'deepseek-official', model: 'deepseek-v4-pro' }
+const SELECTED = { provider: 'deepseek-official', model: 'deepseek-v4-pro', reasoningEffort: 'low' }
 const selections = new WeakMap()
 
 export const name = 'model-switch-driver'

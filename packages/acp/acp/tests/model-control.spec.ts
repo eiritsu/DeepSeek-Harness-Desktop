@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { LlmError, ReasoningEffortId, type LlmRuntime } from '@deepseek-ai/dsh-llm'
+import { ReasoningEffortId, type LlmRuntime } from '@deepseek-ai/dsh-llm'
 import { AcpModelControl } from '../src/model-control.ts'
 
 /** Minimal LLM catalog/runtime double for pure standard-option tests. */
@@ -43,7 +43,7 @@ describe('ACP model configuration control', () => {
     expect(control.selection.current).toEqual({ provider: 'mock', model: 'mock' })
   })
 
-  it('synthesizes an unlisted current route and offers the fixed reasoning ladder', async () => {
+  it('synthesizes an unlisted current route and offers exactly its declared efforts', async () => {
     const control = new AcpModelControl(llmRuntime({ listProviders: () => [] }), {
       provider: 'private',
       model: 'unlisted',
@@ -58,20 +58,16 @@ describe('ACP model configuration control', () => {
       currentValue: '["private","unlisted"]',
       options: [{ group: 'private', name: 'private', options: [{ name: 'unlisted' }] }],
     })
-    // Every model offers the same seven rows, whatever this route encodes.
-    // The current value is the stored intent, so a route that materializes its
-    // own default does not report one the person never picked.
+    // The rows are exactly this route's declared efforts (low/high), not a
+    // fixed ladder. The current value is the stored intent, so a route that
+    // materializes its own default does not report one the person never picked.
     expect(reasoning).toMatchObject({
       type: 'select',
       currentValue: '',
       options: [
         { value: '', name: 'Default' },
-        { value: 'minimal', name: 'Minimal' },
         { value: 'low', name: 'Low' },
-        { value: 'medium', name: 'Medium' },
         { value: 'high', name: 'High' },
-        { value: 'xhigh', name: 'Extra high' },
-        { value: 'max', name: 'Max' },
       ],
     })
 
@@ -96,7 +92,7 @@ describe('ACP model configuration control', () => {
     })
   })
 
-  it('rejects a level outside the canonical vocabulary and accepts a later valid change', async () => {
+  it('rejects a level the route does not declare and accepts a later declared change', async () => {
     const control = new AcpModelControl(llmRuntime(), { provider: 'mock', model: 'mock' })
 
     await expect(control.set('reasoning_effort', 'extreme')).rejects.toThrow(/unknown reasoning effort/)
@@ -105,44 +101,20 @@ describe('ACP model configuration control', () => {
     expect(options.find(option => option.id === 'reasoning_effort')).toMatchObject({ currentValue: 'low' })
   })
 
-  it('stores a canonical level the route cannot encode and refuses it at request time', async () => {
-    // The route encodes low/high only, so both runtime entries refuse `max` the
-    // way `LlmRuntime` does. `max` is still a real harness level, and a person
-    // may pick it for a route that cannot send it: the selection keeps it, and
-    // the request that carries the intent answers UNSUPPORTED_REASONING_EFFORT
-    // rather than dropping the level or failing the choice.
-    const runtime = llmRuntime({
-      resolveCallConfig: (selection: { provider?: string; model?: string; reasoningEffort?: string }) =>
-        selection.reasoningEffort === 'max'
-          ? Promise.reject(new LlmError('mock cannot send max', 'UNSUPPORTED_REASONING_EFFORT'))
-          : Promise.resolve({
-            provider: selection.provider ?? 'mock',
-            model: selection.model ?? 'mock',
-            ...selection.reasoningEffort === undefined
-              ? { reasoningEffort: ReasoningEffortId('high') }
-              : { reasoningEffort: ReasoningEffortId(selection.reasoningEffort) },
-          }),
-      // The request that carries `max` is where the route's refusal appears;
-      // the control never asks the runtime to prepare another level here.
-      prepareCall: () => Promise.reject(
-        new LlmError('mock cannot send max', 'UNSUPPORTED_REASONING_EFFORT'),
-      ),
-    })
-    const control = new AcpModelControl(runtime, {
-      provider: 'mock', model: 'mock',
-    })
+  it('rejects an unsupported level and leaves the previous selection unchanged', async () => {
+    // The route declares low/high only, so `max` has no row to pick. The control
+    // refuses the mutation instead of storing an intent the next request could
+    // never carry.
+    const control = new AcpModelControl(llmRuntime(), { provider: 'mock', model: 'mock' })
+    await control.set('reasoning_effort', 'low')
 
-    const options = await control.set('reasoning_effort', 'max')
+    await expect(control.set('reasoning_effort', 'max')).rejects.toThrow(/unknown reasoning effort/)
 
-    // Selection stores the intent as expressed; the option state reports it, and
-    // the next request carries exactly what the person chose.
-    expect(options.find(option => option.id === 'reasoning_effort')).toMatchObject({ currentValue: 'max' })
     expect(control.selection.current).toEqual({
-      provider: 'mock', model: 'mock', reasoningEffort: 'max',
+      provider: 'mock', model: 'mock', reasoningEffort: 'low',
     })
-    await expect(runtime.prepareCall(control.selection.current!)).rejects.toMatchObject({
-      code: 'UNSUPPORTED_REASONING_EFFORT',
-    })
+    const options = await control.options()
+    expect(options.find(option => option.id === 'reasoning_effort')).toMatchObject({ currentValue: 'low' })
   })
 
   it('keeps the Default row and reports the stored intent beside a materialized default', async () => {
@@ -173,18 +145,115 @@ describe('ACP model configuration control', () => {
       currentValue: '',
       options: [
         { value: '', name: 'Default' },
-        { value: 'minimal', name: 'Minimal' },
         { value: 'low', name: 'Low' },
-        { value: 'medium', name: 'Medium' },
         { value: 'high', name: 'High' },
-        { value: 'xhigh', name: 'Extra high' },
-        { value: 'max', name: 'Max' },
       ],
     })
     await control.set('reasoning_effort', 'low')
     const restored = await control.set('reasoning_effort', '')
 
     expect(restored.find(option => option.id === 'reasoning_effort')).toMatchObject({ currentValue: '' })
+    expect(control.selection.current).toEqual({ provider: 'mock', model: 'mock' })
+  })
+
+  it('omits the reasoning option when the route declares no reasoning metadata', async () => {
+    const runtime = llmRuntime({
+      resolveModelInfo: (provider: string, model: string) => Promise.resolve({
+        provider,
+        id: model,
+        name: model,
+      }),
+    })
+    const control = new AcpModelControl(runtime, { provider: 'mock', model: 'mock' })
+
+    const options = await control.options()
+
+    expect(options.map(option => option.id)).toEqual(['model'])
+    expect(options.find(option => option.id === 'reasoning_effort')).toBeUndefined()
+    // No row is advertised, so no effort is settable on this route either.
+    await expect(control.set('reasoning_effort', 'low')).rejects.toThrow(/unknown reasoning effort/)
+    expect(control.selection.current).toEqual({ provider: 'mock', model: 'mock' })
+  })
+
+  it('omits the reasoning option when the route declares an empty effort list', async () => {
+    const runtime = llmRuntime({
+      resolveModelInfo: (provider: string, model: string) => Promise.resolve({
+        provider,
+        id: model,
+        name: model,
+        reasoning: { efforts: [] },
+      }),
+    })
+    const control = new AcpModelControl(runtime, { provider: 'mock', model: 'mock' })
+
+    const options = await control.options()
+
+    expect(options.map(option => option.id)).toEqual(['model'])
+  })
+
+  it('keeps a stored effort the route no longer declares as an Unsupported current choice', async () => {
+    const control = new AcpModelControl(llmRuntime(), {
+      provider: 'mock',
+      model: 'mock',
+      reasoningEffort: ReasoningEffortId('max'),
+    })
+
+    const options = await control.options()
+
+    // The route declares low/high only, so `max` has no supported row. It stays
+    // visible as the current choice instead of silently reporting Default, and
+    // rendering leaves the stored intent untouched.
+    expect(options.find(option => option.id === 'reasoning_effort')).toMatchObject({
+      type: 'select',
+      currentValue: 'max',
+      options: [
+        { value: '', name: 'Default' },
+        { value: 'low', name: 'Low' },
+        { value: 'high', name: 'High' },
+        { value: 'max', name: 'Unsupported: max' },
+      ],
+    })
+    expect(control.selection.current).toEqual({
+      provider: 'mock', model: 'mock', reasoningEffort: 'max',
+    })
+
+    // The unsupported row cannot be chosen; Default clears the stale intent.
+    await expect(control.set('reasoning_effort', 'max')).rejects.toThrow(/unknown reasoning effort/)
+    const cleared = await control.set('reasoning_effort', '')
+    expect(cleared.find(option => option.id === 'reasoning_effort')).toMatchObject({ currentValue: '' })
+    expect(control.selection.current).toEqual({ provider: 'mock', model: 'mock' })
+  })
+
+  it('keeps a stored effort visible and clearable when the route declares no reasoning metadata', async () => {
+    const runtime = llmRuntime({
+      resolveModelInfo: (provider: string, model: string) => Promise.resolve({
+        provider,
+        id: model,
+        name: model,
+      }),
+    })
+    const control = new AcpModelControl(runtime, {
+      provider: 'mock',
+      model: 'mock',
+      reasoningEffort: ReasoningEffortId('low'),
+    })
+
+    const options = await control.options()
+
+    expect(options.find(option => option.id === 'reasoning_effort')).toMatchObject({
+      type: 'select',
+      currentValue: 'low',
+      options: [
+        { value: '', name: 'Default' },
+        { value: 'low', name: 'Unsupported: low' },
+      ],
+    })
+
+    await expect(control.set('reasoning_effort', 'low')).rejects.toThrow(/unknown reasoning effort/)
+    const cleared = await control.set('reasoning_effort', '')
+    // With the stale intent cleared and no declared efforts, the route offers
+    // no effort control at all.
+    expect(cleared.find(option => option.id === 'reasoning_effort')).toBeUndefined()
     expect(control.selection.current).toEqual({ provider: 'mock', model: 'mock' })
   })
 })

@@ -22,16 +22,12 @@ const t: ComponentProps<typeof ModelSelect>['t'] = (key, params) => {
     : template.replace(/\{(\w+)\}/g, (match, name: string) => name in params ? String(params[name]) : match)
 }
 
-// The Host projects the same fixed ladder for every model, whatever the
-// serving route can encode; `defaultEffort` is the only per-route fact here,
-// and it never removes the Default row.
+// The Host projects the levels the serving route encodes for that exact model,
+// so a route advertises a subset of the harness vocabulary; `defaultEffort` is
+// the other per-route fact here, and it never removes the Default row.
 const reasoning = {
   efforts: [
-    { id: 'minimal', name: 'Minimal' },
-    { id: 'low', name: 'Low' },
-    { id: 'medium', name: 'Medium' },
     { id: 'high', name: 'High' },
-    { id: 'xhigh', name: 'Extra high' },
     { id: 'max', name: 'Max' },
   ],
   defaultEffort: 'high',
@@ -83,7 +79,7 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('ModelSelect reasoning effort', () => {
-  it('offers the fixed ladder for every model and submits the effort as part of the session selection', async () => {
+  it('offers the levels the route advertises and submits the effort as part of the session selection', async () => {
     const directory = createSnapshotStore<ModelDirectoryState>(state())
     const select = vi.fn(async (selection: ModelSelection) => {
       directory.set(state({ current: selection }))
@@ -103,10 +99,10 @@ describe('ModelSelect reasoning effort', () => {
     })
     fireEvent.click(trigger)
     fireEvent.click(screen.getByRole('menuitem', { name: /推理等级/ }))
-    // Default first, then the six canonical levels — the same rows whichever
-    // route serves the model, and the level a route cannot encode stays here.
+    // Default first, then exactly the two levels this route advertises; a level
+    // the route cannot encode is never offered as a row.
     expect(screen.getAllByRole('menuitemradio').map(item => item.textContent))
-      .toEqual(['Default', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
+      .toEqual(['Default', 'high', 'max'])
 
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'max' }))
     await waitFor(() => {
@@ -150,8 +146,88 @@ describe('ModelSelect reasoning effort', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: /推理等级/ }))
     const rows = screen.getAllByRole('menuitemradio')
     expect(rows.map(item => item.textContent))
-      .toEqual(['Default', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
+      .toEqual(['Default', 'high', 'max'])
     expect(rows[0]!.getAttribute('aria-checked')).toBe('true')
+  })
+
+  it('names a stored effort the exact route no longer lists as unsupported and recovers through Default', async () => {
+    const retained = { provider: 'deepseek-official', model: 'deepseek-v4-flash', reasoningEffort: 'low' }
+    const directory = createSnapshotStore<ModelDirectoryState>(state({ current: retained }))
+    const select = vi.fn(async (selection: ModelSelection) => {
+      directory.set(state({ current: selection }))
+      return { ok: true as const, value: undefined }
+    })
+    render(<ModelSelect
+      locked={false}
+      available
+      directory={directory}
+      load={vi.fn()}
+      select={select}
+      t={t}
+    />)
+
+    const trigger = screen.getByRole('button', {
+      name: '选择模型，当前 DeepSeek-V4-Flash，推理等级 不受支持的推理等级：low',
+    })
+    expect(trigger.textContent).toContain('不受支持的推理等级：low')
+    fireEvent.click(trigger)
+    // The root effort row stays reachable so the Default recovery action exists.
+    fireEvent.click(screen.getByRole('menuitem', { name: /推理等级/ }))
+    // Only the route's own levels are listed; the stale effort is never a row
+    // and no row claims to be the active one.
+    const rows = screen.getAllByRole('menuitemradio')
+    expect(rows.map(item => item.textContent)).toEqual(['Default', 'high', 'max'])
+    expect(rows.every(row => row.getAttribute('aria-checked') === 'false')).toBe(true)
+    // Opening and rendering never rewrote the durable intent.
+    expect(select).not.toHaveBeenCalled()
+    expect(directory.getSnapshot().current).toEqual(retained)
+
+    fireEvent.click(rows[0]!)
+    await waitFor(() => {
+      expect(select).toHaveBeenCalledWith({ provider: 'deepseek-official', model: 'deepseek-v4-flash' })
+      expect(directory.getSnapshot().current).toEqual({ provider: 'deepseek-official', model: 'deepseek-v4-flash' })
+    })
+    expect(screen.getByRole('button', {
+      name: '选择模型，当前 DeepSeek-V4-Flash，推理等级 Default',
+    })).toBeTruthy()
+  })
+
+  it('keeps the Default recovery action when the route reports no reasoning metadata', async () => {
+    const groups = [{ id: 'deepseek-official', name: 'DeepSeek', models: [{ id: 'deepseek-v4-flash', name: 'DeepSeek-V4-Flash' }] }]
+    const retained = { provider: 'deepseek-official', model: 'deepseek-v4-flash', reasoningEffort: 'high' }
+    const directory = createSnapshotStore<ModelDirectoryState>(state({ groups, current: retained }))
+    const select = vi.fn(async (selection: ModelSelection) => {
+      directory.set(state({ groups, current: selection }))
+      return { ok: true as const, value: undefined }
+    })
+    render(<ModelSelect
+      locked={false}
+      available
+      directory={directory}
+      load={vi.fn()}
+      select={select}
+      t={t}
+    />)
+
+    const trigger = screen.getByRole('button', {
+      name: '选择模型，当前 DeepSeek-V4-Flash，推理等级 不受支持的推理等级：high',
+    })
+    expect(trigger.textContent).toContain('不受支持的推理等级：high')
+    fireEvent.click(trigger)
+    fireEvent.click(screen.getByRole('menuitem', { name: /推理等级/ }))
+    // No route levels to list, but the stale effort still has its Default action.
+    const rows = screen.getAllByRole('menuitemradio')
+    expect(rows.map(item => item.textContent)).toEqual(['Default'])
+    expect(rows[0]!.getAttribute('aria-checked')).toBe('false')
+    expect(select).not.toHaveBeenCalled()
+    expect(directory.getSnapshot().current).toEqual(retained)
+
+    fireEvent.click(rows[0]!)
+    await waitFor(() => {
+      expect(select).toHaveBeenCalledWith({ provider: 'deepseek-official', model: 'deepseek-v4-flash' })
+      expect(directory.getSnapshot().current).toEqual({ provider: 'deepseek-official', model: 'deepseek-v4-flash' })
+    })
+    expect(screen.getByRole('button', { name: '选择模型，当前 DeepSeek-V4-Flash' })).toBeTruthy()
   })
 
   it('shows the durable model id when the catalog has no matching display name', () => {
@@ -413,7 +489,7 @@ describe('ModelSelect keyboard walk', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: /推理等级/ }))
     const rows = screen.getAllByRole('menuitemradio')
     expect(rows.map(row => row.textContent))
-      .toEqual(['Default', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
+      .toEqual(['Default', 'high', 'max'])
     // The pane opens on its checked row, so walking starts from Default. Each
     // step is keyed on the row that holds focus, which is what the walk reads.
     fireEvent.keyDown(rows[0]!, { key: 'ArrowDown' })
@@ -421,8 +497,8 @@ describe('ModelSelect keyboard walk', () => {
     fireEvent.keyDown(rows[1]!, { key: 'ArrowUp' })
     expect(document.activeElement).toBe(rows[0])
     fireEvent.keyDown(rows[0]!, { key: 'ArrowUp' }) // wraps to the bottom
-    expect(document.activeElement).toBe(rows[6])
-    fireEvent.keyDown(rows[6]!, { key: 'ArrowDown' }) // wraps to the top
+    expect(document.activeElement).toBe(rows[2])
+    fireEvent.keyDown(rows[2]!, { key: 'ArrowDown' }) // wraps to the top
     expect(document.activeElement).toBe(rows[0])
     expect(screen.getByRole('menu')).toBeTruthy()
   })
@@ -431,10 +507,10 @@ describe('ModelSelect keyboard walk', () => {
     const select = mountOpen()
     fireEvent.click(screen.getByRole('menuitem', { name: /推理等级/ }))
     const rows = screen.getAllByRole('menuitemradio')
-    fireEvent.keyDown(rows[0]!, { key: 'ArrowDown' }) // Default → minimal
+    fireEvent.keyDown(rows[0]!, { key: 'ArrowDown' }) // Default → high
     expect(fireEvent.keyDown(rows[1]!, { key: 'Tab' })).toBe(false)
     expect(select).toHaveBeenCalledWith({
-      provider: 'deepseek-official', model: 'deepseek-v4-flash', reasoningEffort: 'minimal',
+      provider: 'deepseek-official', model: 'deepseek-v4-flash', reasoningEffort: 'high',
     })
     await waitFor(() => { expect(screen.queryByRole('menu')).toBeNull() })
   })
@@ -927,7 +1003,7 @@ it('restores the account model name after login without changing the saved route
   expect(screen.getByRole('button', { name: /选择模型，当前/ }).textContent).toBe('DeepSeek Flashhigh')
   act(() => { directory.update((snapshot) => { snapshot.groups = []; snapshot.routable = false }) })
   expect(screen.getByRole('button', { name: /选择模型，当前/ }).textContent)
-    .toMatchInlineSnapshot('"deepseek-account/deepseek-flashhigh"')
+    .toMatchInlineSnapshot('"deepseek-account/deepseek-flash不受支持的推理等级：high"')
   act(() => { directory.update((snapshot) => { snapshot.groups = groups; snapshot.routable = true }) })
   expect(screen.getByRole('button', { name: /选择模型，当前/ }).textContent).toBe('DeepSeek Flashhigh')
   expect(directory.getSnapshot().current).toEqual(selected)

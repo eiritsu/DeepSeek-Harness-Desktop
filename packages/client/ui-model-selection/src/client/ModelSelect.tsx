@@ -18,7 +18,10 @@
  * hands focus back to the cell that opened it. Data and submission ride the
  * same per-session ModelDirectory as the /model popup; exact-model reasoning
  * metadata and the selected effort come from the Host rather than a
- * client-owned vocabulary. A rejected selection announces through the shared
+ * client-owned vocabulary. A stored effort the exact route no longer lists is
+ * named unsupported, and the effort pane keeps a Default action that clears it
+ * without rewriting the stored selection on its own. A rejected selection
+ * announces through the shared
  * transient Toast anchored to the composer card; the in-menu strip with
  * Retry remains the catalog-load surface. While the directory's pending
  * selection is unsettled, the trigger shows a spinner in place of its
@@ -54,8 +57,9 @@ interface EffortChoice {
 }
 
 /**
- * Localized captions for the fixed reasoning ladder, keyed by canonical level
- * id. The Host catalog sends the same six ids for every model, so this is a
+ * Localized captions for the canonical reasoning ids the Host's exact-model
+ * metadata is known to name, keyed by that id. Each model advertises the
+ * levels its route encodes, so this table covers the known ids without being a
  * closed set; an id outside it keeps the catalog's own caption.
  */
 const EFFORT_LABEL_KEYS: Readonly<Record<string, ModelKey | undefined>> = {
@@ -131,24 +135,39 @@ export function ModelSelect(
   // configures its own default fills one into the request, and the row a
   // person picked is still Default.
   const effectiveEffort = state.current?.reasoningEffort
+  // A stored explicit effort the exact route no longer lists — including a
+  // route that now reports no reasoning metadata at all — is stale: it stays
+  // stored until a person picks Default, and the surface names it unsupported
+  // rather than presenting it as the level in use.
+  const unsupportedEffort = effectiveEffort !== undefined
+    && (reasoning === undefined || !reasoning.efforts.some(level => level.id === effectiveEffort))
   const effortName = (id: string, catalogName?: string): string => {
     const key = EFFORT_LABEL_KEYS[id]
     if (key !== undefined) return t(key)
     return catalogName ?? id
   }
-  const effortLabel = reasoning === undefined
-    ? (state.retainedEffort === undefined ? undefined : effortName(state.retainedEffort))
-    : effectiveEffort === undefined ? t('effort.default') : effortName(effectiveEffort)
-  const effortChoices = useMemo<readonly EffortChoice[]>(() => reasoning === undefined
-    ? []
-    : [
+  const effortLabel = effectiveEffort !== undefined && unsupportedEffort
+    ? t('effort.unsupported', { effort: effortName(effectiveEffort) })
+    : reasoning === undefined
+      ? (state.retainedEffort === undefined ? undefined : effortName(state.retainedEffort))
+      : effectiveEffort === undefined ? t('effort.default') : effortName(effectiveEffort)
+  const effortChoices = useMemo<readonly EffortChoice[]>(() => {
+    if (reasoning === undefined) {
+      // No route metadata to list, but a stale stored effort still needs the
+      // Default action that clears it.
+      return unsupportedEffort
+        ? [{ key: 'default', effort: undefined, label: t('effort.default') }]
+        : []
+    }
+    return [
       { key: 'default', effort: undefined, label: t('effort.default') },
       ...reasoning.efforts.map(effort => ({
         key: `effort:${effort.id}`,
         effort: effort.id,
         label: effortName(effort.id, effort.name),
       })),
-    ], [reasoning, t])
+    ]
+  }, [reasoning, t, unsupportedEffort])
   const { pending } = state
   const busy = pending !== null
 
@@ -505,7 +524,7 @@ export function ModelSelect(
                 <span className={css.cellValue}>{modelLabel}</span>
                 <IconChevronRightOutlineRegular className={css.cellChevron} />
               </button>
-              {reasoning !== undefined && (
+              {(reasoning !== undefined || unsupportedEffort) && (
                 <button ref={itemRef()} type="button" role="menuitem" className={css.cell} onClick={() => { drill('effort') }}>
                   <span className={css.cellLabel}>{t('menu.effort')}</span>
                   <span className={css.cellValue}>{effortLabel}</span>

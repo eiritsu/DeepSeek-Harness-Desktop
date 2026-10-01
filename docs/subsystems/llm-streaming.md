@@ -554,10 +554,13 @@ interface LlmModelReasoningInfo {
   /**
    * Efforts this exact route can encode on the wire, in adapter-preferred order.
    *
-   * This is the route's capability, not the selector's rows: a surface offers
-   * every level {@link MODEL_REASONING_EFFORTS} names and refuses the rest at
-   * request time with `UNSUPPORTED_REASONING_EFFORT`. Absence means the route
-   * encodes no effort at all, so any explicit one is refused.
+   * This is both the route's capability and the selector's rows: a surface
+   * offers exactly these efforts and omits the reasoning control when the route
+   * declares none. A value outside this set — supplied directly or stored
+   * before the route changed — is refused by the runtime with
+   * `UNSUPPORTED_REASONING_EFFORT`, never substituted by a neighboring level.
+   * Absence of the enclosing reasoning metadata means the route encodes no
+   * effort at all, so any explicit one is refused.
    */
   efforts: readonly LlmReasoningEffortInfo[]
   /**

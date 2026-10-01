@@ -10,7 +10,7 @@ import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry, { agentEvents } from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import AttachmentStore from '@deepseek-ai/dsh-attachment'
-import LlmRuntime, { LlmAdapter, modelReasoningEfforts, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { LlmAdapter, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type {
   GenerateOptions, LlmCallConfig, LlmCallConfigAdapterDefaults, LlmModelInfo,
   LlmModelReasoningInfo, LlmProviderInfo, LlmResolvedModelInfo, StreamChunk,
@@ -83,14 +83,19 @@ const REASONING: LlmModelReasoningInfo = {
   defaultEffort: ReasoningEffortId('high'),
 }
 
+const DESCRIBED_REASONING: LlmModelReasoningInfo = {
+  efforts: [{ id: ReasoningEffortId('high'), name: 'High', description: 'More thinking' }],
+}
+
 /**
- * What a selector receives: the fixed ladder for every model, plus the one
- * per-route fact the entry may need — what "Default" materializes into.
+ * What a selector receives: the exact route's own effort rows in adapter
+ * order, plus the one fact a request naming no effort materializes with.
  */
-function selectorReasoning(defaultEffort?: ReasoningEffortId): ModelReasoning {
+function selectorReasoning(reasoning?: LlmModelReasoningInfo): ModelReasoning | undefined {
+  if (reasoning === undefined) return undefined
   return {
-    efforts: modelReasoningEfforts().map(effort => ({ id: effort.id, name: effort.name })),
-    ...defaultEffort === undefined ? {} : { defaultEffort },
+    efforts: reasoning.efforts.map(effort => ({ id: effort.id, name: effort.name })),
+    ...reasoning.defaultEffort === undefined ? {} : { defaultEffort: reasoning.defaultEffort },
   }
 }
 
@@ -434,12 +439,12 @@ describe('Web session model selection', () => {
       id: 'deepseek-official',
       name: 'DeepSeek',
       models: [
-        { id: 'deepseek-chat', name: 'DeepSeek Chat', reasoning: selectorReasoning(ReasoningEffortId('high')) },
+        { id: 'deepseek-chat', name: 'DeepSeek Chat', reasoning: selectorReasoning(REASONING) },
         {
           id: 'deepseek-reasoner',
           name: 'DeepSeek Reasoner',
           description: 'Reasoning model',
-          reasoning: selectorReasoning(ReasoningEffortId('high')),
+          reasoning: selectorReasoning(REASONING),
         },
       ],
     }])
@@ -462,9 +467,7 @@ describe('Web session model selection', () => {
     ]))
     ctx.llm.registerAdapter(['described-reasoning'], new CatalogAdapter('Described Reasoning', [
       { provider: 'described-reasoning', id: 'reasoning-model', name: 'Reasoning Model' },
-    ], {
-      efforts: [{ id: ReasoningEffortId('high'), name: 'High', description: 'More thinking' }],
-    }))
+    ], DESCRIBED_REASONING))
     ctx.llm.registerAdapter(['string-failure'], new class extends CatalogAdapter {
       override listModels(): Promise<readonly LlmModelInfo[]> {
         // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- non-Error provider normalization is the scenario.
@@ -481,10 +484,7 @@ describe('Web session model selection', () => {
       {
         id: 'plain',
         name: 'Plain',
-        // This route declares no reasoning at all, and the selector still
-        // offers the ladder: picking a level here fails the request with
-        // UNSUPPORTED_REASONING_EFFORT instead of hiding the row.
-        models: [{ id: 'plain-model', name: 'Plain Model', reasoning: selectorReasoning() }],
+        models: [{ id: 'plain-model', name: 'Plain Model' }],
       },
       {
         id: 'described-reasoning',
@@ -492,15 +492,45 @@ describe('Web session model selection', () => {
         models: [{
           id: 'reasoning-model',
           name: 'Reasoning Model',
-          // One encodable level, one fixed ladder, and no default to name.
-          reasoning: selectorReasoning(),
+          // The one level this route encodes, without its untranslated
+          // description, and no default to name.
+          reasoning: selectorReasoning(DESCRIBED_REASONING),
         }],
       },
     ]))
+    // A route that declares no reasoning advertises no effort rows at all, so
+    // the entry carries no reasoning field rather than an empty one.
+    expect(catalog.groups.find(group => group.id === 'plain')?.models)
+      .toStrictEqual([{ id: 'plain-model', name: 'Plain Model' }])
     expect(catalog.failures).toContainEqual({
       id: 'string-failure', name: 'String Failure', message: 'string catalog failure',
     })
     await ctx.fiber.dispose()
+  })
+
+  it('omits the reasoning field for a route whose effort list is empty', async () => {
+    const { ctx } = await harness()
+    ctx.llm.registerAdapter(['empty-efforts'], new CatalogAdapter('Empty Efforts', [
+      { provider: 'empty-efforts', id: 'no-efforts', name: 'No Efforts' },
+    ]))
+    const resolveModelInfo = ctx.llm.resolveModelInfo.bind(ctx.llm)
+    // The runtime rejects an adapter's empty effort list as invalid metadata, so
+    // the resolution is injected directly to exercise the catalog's own guard.
+    const read = vi.spyOn(ctx.llm, 'resolveModelInfo').mockImplementation(async (provider, model) => {
+      const info = await resolveModelInfo(provider, model)
+      return provider === 'empty-efforts' ? { ...info, reasoning: { efforts: [] } } : info
+    })
+    try {
+      const catalog = await buildModelCatalog(ctx, { provider: 'deepseek-official', model: 'deepseek-chat' })
+
+      // An empty effort list advertises no rows, exactly like absent reasoning
+      // metadata, so the entry carries no reasoning field rather than an empty one.
+      expect(catalog.groups.find(group => group.id === 'empty-efforts')?.models)
+        .toStrictEqual([{ id: 'no-efforts', name: 'No Efforts' }])
+    } finally {
+      read.mockRestore()
+      await ctx.fiber.dispose()
+    }
   })
 
   it('rejects unlisted models and switches available models only after the next assembly', async () => {
@@ -567,11 +597,12 @@ describe('Web session model selection', () => {
     await ctx.fiber.dispose()
   })
 
-  it('keeps every ladder level selectable and refuses an unencodable one at request time', async () => {
-    // DeepSeek Reasoner encodes off, high, and max. Medium is a real harness
-    // level this route cannot send, so the selection keeps it and the request
-    // that carries it answers UNSUPPORTED_REASONING_EFFORT — never a downgrade
-    // to a neighboring level, and never a refused selection.
+  it('offers the levels the route encodes and refuses an unencodable one at request time', async () => {
+    // DeepSeek Reasoner encodes off, high, and max, and the catalog offers
+    // exactly those. Medium is a real harness level this route cannot send, so
+    // a selection naming it is still kept and the request that carries it
+    // answers UNSUPPORTED_REASONING_EFFORT — never a downgrade to a
+    // neighboring level, and never a refused selection.
     const { ctx, agent, sessionId } = await harness()
     const remote = createSessionTestRemote(ctx, {
       defaultModelSelection: () => ({ provider: 'deepseek-official', model: 'deepseek-chat' }),
@@ -583,7 +614,7 @@ describe('Web session model selection', () => {
     const catalog = expectValue(await remote.modelCatalog())
     const offered = catalog.groups.find(group => group.id === 'deepseek-official')
       ?.models.find(model => model.id === 'deepseek-reasoner')?.reasoning?.efforts.map(effort => effort.id)
-    expect(offered).toEqual(modelReasoningEfforts().map(effort => effort.id))
+    expect(offered).toEqual(REASONING.efforts.map(effort => effort.id))
 
     const selected = expectValue(await remote.selectModel(request({
       sessionId, provider: 'deepseek-official', model: 'deepseek-reasoner', reasoningEffort: 'medium',

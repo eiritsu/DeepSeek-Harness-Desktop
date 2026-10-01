@@ -240,6 +240,45 @@ describe('PiAiAdapter provider routing', () => {
     expect(server.paths).toEqual(['/v1/responses'])
   })
 
+  it('encodes explicitly declared MiniMax M3.1 Responses efforts', async () => {
+    const efforts = ['low', 'medium', 'high', 'xhigh', 'max'] as const
+    const server = await mockServer(efforts.map(() => ({
+      status: 401,
+      body: JSON.stringify({ error: { message: 'fixture' } }),
+    })))
+    const ctx = new Context()
+    await ctx.plugin(LlmRuntime)
+    await ctx.plugin(LlmPiAi, {
+      providers: {
+        'minimax-cn-1': {
+          apiKeyEnv: 'PI_TEST_KEY',
+          api: 'openai-responses',
+          baseURL: `${server.url}/v1`,
+          models: [{
+            id: 'MiniMax-M3.1-Flash-Preview',
+            reasoningEfforts: { low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max' },
+          }],
+        },
+      },
+    })
+
+    const info = await ctx.llm.resolveModelInfo('minimax-cn-1', 'MiniMax-M3.1-Flash-Preview')
+    expect(info.reasoning?.efforts.map(effort => effort.id)).toEqual(efforts)
+
+    for (const effort of efforts) {
+      await assemble(ctx, {
+        provider: 'minimax-cn-1',
+        model: 'MiniMax-M3.1-Flash-Preview',
+        reasoningEffort: ReasoningEffortId(effort),
+        messages: [],
+      })
+    }
+
+    expect(server.paths).toEqual(efforts.map(() => '/v1/responses'))
+    expect((server.requests as { reasoning?: { effort?: string } }[])
+      .map(request => request.reasoning?.effort)).toEqual(efforts)
+  })
+
   it('resolves attachment and filesystem services mounted after the adapter when dispatching an image', async () => {
     const server = await mockServer([{ status: 401, body: JSON.stringify({ error: { message: 'expected mock failure' } }) }])
     const attachmentId = AttachmentId(`sha256:${'a'.repeat(64)}`)

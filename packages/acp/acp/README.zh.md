@@ -73,7 +73,7 @@ kind: "package-reference"
 | `session/update` | 已提交 assistant 消息与 thought、通用工具生命周期、配置变化与上下文用量，按会话串行交付。 |
 | `session/request_permission` | 带一次性允许／拒绝选项的权限提示；你的客户端可以自动回答。 |
 
-会话配置从实时 LLM（大语言模型）服务目录提供不透明的提供方／模型选项，并为每个模型提供带固定阶梯——`Default`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`——的 `reasoning_effort` 选择器。所选等级是控制器表达的意图，因此 `set` 无论路由能否发送都会保存它，并由 `currentValue` 原样报告；携带该路由无法编码之等级的提示词会以 `UNSUPPORTED_REASONING_EFFORT` 拒绝，并拒绝返回给客户端。提示词会在异步图片准入前快照该选择，并在该轮次的每个模型步骤中固定它；并发选项变更从下一轮次开始生效。ACP 客户端是受信控制器：stdio MCP 条目授权其绝对命令与环境，HTTP 条目授权其绝对 HTTP(S) URL 与 header；初始连接或发现失败会回滚尚未发布的 Agent。不支持的界面会被省略或拒绝：`session/load`、删除、fork、附加目录、SSE（Server-Sent Events）或 ACP 传输 MCP、mode、命令、计划、终端、客户端文件系统操作与 elicitation。
+会话配置从实时 LLM（大语言模型）服务目录提供不透明的提供方／模型选项，并提供 `reasoning_effort` 选择器：其中包含 `Default` 以及所选路由与模型声明且按适配器顺序排列的确切等级；声明无等级的路由不提供推理控件。`set` 只接受已公布的等级：路由未声明的等级会在任何状态变更前被拒绝，且不会产生提供方请求。所选等级是控制器表达的意图，因此当该路由公布该等级时 `currentValue` 报告存储的等级，否则报告 Default；而路由无法编码的已存储等级仍会在携带它的提示词处以 `UNSUPPORTED_REASONING_EFFORT` 被拒绝。提示词会在异步图片准入前快照该选择，并在该轮次的每个模型步骤中固定它；并发选项变更从下一轮次开始生效。ACP 客户端是受信控制器：stdio MCP 条目授权其绝对命令与环境，HTTP 条目授权其绝对 HTTP(S) URL 与 header；初始连接或发现失败会回滚尚未发布的 Agent。不支持的界面会被省略或拒绝：`session/load`、删除、fork、附加目录、SSE（Server-Sent Events）或 ACP 传输 MCP、mode、命令、计划、终端、客户端文件系统操作与 elicitation。
 
 -----
 
