@@ -15,6 +15,7 @@ import {
   type TranslationPairingRecord,
 } from './translation-pairing-record.ts'
 import {
+  isInsideNestedGitRepository,
   isTranslationPairingManifestExcluded,
   isTranslationScopeFile,
   languageSwitcherTargets,
@@ -302,6 +303,25 @@ describe('translation pairing records', () => {
 })
 
 describe('translation scope discovery', () => {
+  it.each(['directory', 'worktree file'] as const)('identifies a nested Git repository by its .git %s marker', (markerType) => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-translation-scope-'))
+    try {
+      mkdirSync(join(root, '.git'))
+      mkdirSync(join(root, 'docs'))
+      writeFileSync(join(root, 'docs/root.md'), '# Root document\n')
+      mkdirSync(join(root, 'docs/checkout/docs'), { recursive: true })
+      const marker = join(root, 'docs/checkout/.git')
+      if (markerType === 'directory') mkdirSync(marker)
+      else writeFileSync(marker, 'gitdir: ../.git/worktrees/checkout\n')
+      writeFileSync(join(root, 'docs/checkout/docs/guide.md'), '# Nested document\n')
+
+      expect(isInsideNestedGitRepository(root, 'docs/root.md')).toBe(false)
+      expect(isInsideNestedGitRepository(root, 'docs/checkout/docs/guide.md')).toBe(true)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it.each([
     'README.md',
     'CONTRIBUTING.md',

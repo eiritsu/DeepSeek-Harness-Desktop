@@ -26,6 +26,7 @@ import {
   parseTranslationPairingCliArgs,
   parseTranslationPairingManifest,
   generatedRegions,
+  isInsideNestedGitRepository,
   requiresSourceLanguageSwitcher,
   isTranslationPairingManifestExcluded,
   isTranslationScopeFile,
@@ -118,7 +119,7 @@ if (request.scope === 'pairs') {
   for (const pattern of SCOPE_PATTERNS) {
     for (const match of globSync(pattern, { cwd: root, exclude: TRANSLATION_SCOPE_GLOB_EXCLUDES })) {
       const normalized = match.split(sep).join('/')
-      if (isTranslationScopeFile(normalized)) files.add(normalized)
+      if (!isInsideNestedGitRepository(root, normalized) && isTranslationScopeFile(normalized)) files.add(normalized)
     }
   }
 }

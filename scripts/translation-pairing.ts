@@ -6,7 +6,8 @@
  * gate and the region-injecting generators.
  */
 
-import { basename } from 'node:path'
+import { existsSync, statSync } from 'node:fs'
+import { basename, join } from 'node:path'
 import { fromMarkdown } from 'mdast-util-from-markdown'
 import { gfmFromMarkdown } from 'mdast-util-gfm'
 import { gfm } from 'micromark-extension-gfm'
@@ -146,6 +147,24 @@ export const TRANSLATION_SCOPE_GLOB_EXCLUDES = [
   'python/sdk-runtime/src/deepseek_harness_runtime/runtime/**',
   'vendor/**',
 ]
+
+/**
+ * Whether a repository-relative file is below a nested Git repository.
+ * @param repoRoot Path to the repository root.
+ * @param file Repository-relative file path.
+ * @returns Whether an ancestor directory below `repoRoot` contains a `.git` file or directory.
+ */
+export function isInsideNestedGitRepository(repoRoot: string, file: string): boolean {
+  const directories = file.split('/').slice(0, -1)
+  for (let depth = 1; depth <= directories.length; depth++) {
+    const marker = join(repoRoot, ...directories.slice(0, depth), '.git')
+    if (existsSync(marker)) {
+      const markerStat = statSync(marker)
+      if (markerStat.isDirectory() || markerStat.isFile()) return true
+    }
+  }
+  return false
+}
 
 /** Whether a repository-relative path belongs to a dependency or generated tree. */
 function isTranslationSourceExcluded(file: string): boolean {
