@@ -1,11 +1,11 @@
 /**
- * Render the Windows tray icon with an enlarged whale from `resources/icon-windows.svg`.
+ * Render the Windows tray icon and multi-size application ICO from `resources/icon-windows.svg`.
  *
  * The tray shows the icon at 16 logical pixels, so Windows picks one of the
  * bundled bitmaps by display scale. Each size is rasterized from the vector
  * source separately instead of downscaling one large bitmap, which keeps edges
- * crisp at every scale. The committed `resources/tray-windows.ico` is the output;
- * rerun `pnpm run render:tray-icon` in `apps/desktop` after changing the vector source.
+ * crisp at every scale. Run `pnpm run render:tray-icon` for the tray ICO or
+ * `pnpm run render:application-icon` for the application ICO after changing the vector source.
  */
 
 import { readFile, writeFile } from 'node:fs/promises'
@@ -16,10 +16,19 @@ import sharp from 'sharp'
 /** Bitmap edge lengths bundled in the tray icon: 16 px at 100 % through 400 % display scale. */
 export const TRAY_ICON_SIZES = [16, 20, 24, 32, 40, 48, 64] as const
 
+/** Bitmap edge lengths bundled in the application icon, including Windows' 256 px large-icon representation. */
+export const APPLICATION_ICON_SIZES = [16, 20, 24, 32, 40, 48, 64, 128, 256] as const
+
 /** Vector source and committed output of the tray icon. */
 export const TRAY_ICON_PATHS = {
   source: fileURLToPath(new URL('../resources/icon-windows.svg', import.meta.url)),
   output: fileURLToPath(new URL('../resources/tray-windows.ico', import.meta.url)),
+} as const
+
+/** Vector source and committed output of the Windows application icon. */
+export const APPLICATION_ICON_PATHS = {
+  source: fileURLToPath(new URL('../resources/icon-windows.svg', import.meta.url)),
+  output: fileURLToPath(new URL('../resources/icon-windows.ico', import.meta.url)),
 } as const
 
 /** Coordinate space of the vector source; sharp's SVG density is scaled against it. */
@@ -109,6 +118,19 @@ export async function renderTrayIconEntries(svg: Buffer, sizes: readonly number[
   })))
 }
 
+/**
+ * Rasterize the application icon from the unmodified Windows artwork at each size.
+ * @param svg - SVG document with a 1024-unit square viewBox.
+ * @param sizes - Bitmap edges to render.
+ * @returns PNG entries in the given order.
+ */
+export async function renderApplicationIconEntries(svg: Buffer, sizes: readonly number[] = APPLICATION_ICON_SIZES): Promise<IcoEntry[]> {
+  return Promise.all(sizes.map(async size => ({
+    size,
+    png: await sharp(svg, { density: SOURCE_DENSITY * size / SOURCE_EDGE }).resize(size, size).png().toBuffer(),
+  })))
+}
+
 function pngDimensions(png: Buffer): { width: number; height: number } {
   if (png.length < 24 || !png.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) throw new Error('tray icon: bitmap is not a PNG stream')
   return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) }
@@ -120,4 +142,13 @@ async function main(): Promise<void> {
   console.info(`tray icon: wrote ${TRAY_ICON_PATHS.output} with ${entries.map(entry => String(entry.size)).join(', ')} px bitmaps`)
 }
 
-if (process.argv[1] !== undefined && import.meta.filename === resolve(process.argv[1])) await main()
+async function renderApplicationIcon(): Promise<void> {
+  const entries = await renderApplicationIconEntries(await readFile(APPLICATION_ICON_PATHS.source))
+  await writeFile(APPLICATION_ICON_PATHS.output, packIco(entries))
+  console.info(`application icon: wrote ${APPLICATION_ICON_PATHS.output} with ${entries.map(entry => String(entry.size)).join(', ')} px bitmaps`)
+}
+
+if (process.argv[1] !== undefined && import.meta.filename === resolve(process.argv[1])) {
+  if (process.argv[2] === 'application') await renderApplicationIcon()
+  else await main()
+}

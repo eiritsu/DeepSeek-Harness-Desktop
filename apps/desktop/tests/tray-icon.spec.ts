@@ -1,6 +1,14 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { packIco, TRAY_ICON_PATHS, TRAY_ICON_SIZES, unpackIco, type IcoEntry } from '../scripts/render-tray-icon.ts'
+import {
+  APPLICATION_ICON_PATHS,
+  APPLICATION_ICON_SIZES,
+  packIco,
+  TRAY_ICON_PATHS,
+  TRAY_ICON_SIZES,
+  unpackIco,
+  type IcoEntry,
+} from '../scripts/render-tray-icon.ts'
 
 /** Smallest valid-looking PNG stream: signature plus an IHDR chunk declaring the given edge. */
 function pngStub(width: number, height = width): Buffer {
@@ -38,6 +46,14 @@ describe('tray icon packaging', () => {
   it('ships one crisp bitmap per supported display scale in the committed tray icon', () => {
     const entries = unpackIco(readFileSync(TRAY_ICON_PATHS.output))
     expect(entries.map(entry => entry.size)).toEqual([...TRAY_ICON_SIZES])
+    for (const entry of entries) expect(entry.png.length).toBeGreaterThan(100)
+  })
+})
+
+describe('Windows application icon packaging', () => {
+  it('ships the application artwork in every configured ICO size, including 256 px', () => {
+    const entries = unpackIco(readFileSync(APPLICATION_ICON_PATHS.output))
+    expect(entries.map(entry => entry.size)).toEqual([...APPLICATION_ICON_SIZES])
     for (const entry of entries) expect(entry.png.length).toBeGreaterThan(100)
   })
 })

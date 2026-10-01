@@ -1,5 +1,6 @@
 import { tmpdir } from 'node:os'
 import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { Arch, Platform } from 'electron-builder'
 import { Packager } from 'app-builder-lib'
 import { describe, expect, it, vi } from 'vitest'
@@ -37,6 +38,9 @@ describe('installer preparation preserves application dependencies', () => {
     try {
       const { createElectronBuilderConfig } = await import('../electron-builder.config.mjs')
       const config = createElectronBuilderConfig(env, platform, 'x64')
+      if (platform === 'win32') {
+        expect(config.win.icon).toBe(fileURLToPath(new URL('../resources/icon-windows.ico', import.meta.url)))
+      }
       const aboutIcon = config.extraResources.find(resource => resource.to === 'icon.png')
       expect(aboutIcon).toBeDefined()
       expect(readFileSync(aboutIcon!.from)).toEqual(readFileSync(new URL('../resources/icon-windows.png', import.meta.url)))
