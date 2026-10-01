@@ -1269,7 +1269,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 }
 ```
 
-来源：[`packages/bundle/session-turn-edit-resend/src/types.ts:140`](../packages/bundle/session-turn-edit-resend/src/types.ts)
+来源：[`packages/bundle/session-turn-edit-resend/src/types.ts:179`](../packages/bundle/session-turn-edit-resend/src/types.ts)
 
 <a id="turn-resendrequested--log-only"></a>
 
@@ -1289,7 +1289,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 }
 ```
 
-来源：[`packages/bundle/session-turn-edit-resend/src/types.ts:124`](../packages/bundle/session-turn-edit-resend/src/types.ts)
+来源：[`packages/bundle/session-turn-edit-resend/src/types.ts:163`](../packages/bundle/session-turn-edit-resend/src/types.ts)
 
 <a id="turn-resendsettled--log-only"></a>
 
@@ -1309,7 +1309,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
   | { operationId: string; outcome: 'failed'; reason: string }
 ```
 
-来源：[`packages/bundle/session-turn-edit-resend/src/types.ts:155`](../packages/bundle/session-turn-edit-resend/src/types.ts)
+来源：[`packages/bundle/session-turn-edit-resend/src/types.ts:194`](../packages/bundle/session-turn-edit-resend/src/types.ts)
 
 ### `user/*`
 
@@ -4483,7 +4483,7 @@ SHA-256: `530da6c0267813bb4511af72883cc518834e624e3b3220a7062955fd57a788a6`
 
 SHA-256: `ad16d753272f56e66a7551402f08ba1b50e0229beb894b634bb811a1a5a17f66`
 
-来源：[`packages/bundle/session-turn-edit-resend/src/types.ts:39`](../packages/bundle/session-turn-edit-resend/src/types.ts)
+来源：[`packages/bundle/session-turn-edit-resend/src/types.ts:40`](../packages/bundle/session-turn-edit-resend/src/types.ts)
 
 以下类型之一：
 
@@ -6139,7 +6139,7 @@ SHA-256: `9e41386b3a0c9572b0d63078492ebb3997da7d3a830d44e0259418bd02f4bcb2`
 
 SHA-256: `a3db9378c8e75da3f0389ff45814f35393693d6ee9a298d4985e94c4bf407a9b`
 
-来源：[`packages/bundle/session-turn-edit-resend/src/types.ts:140`](../packages/bundle/session-turn-edit-resend/src/types.ts)
+来源：[`packages/bundle/session-turn-edit-resend/src/types.ts:179`](../packages/bundle/session-turn-edit-resend/src/types.ts)
 
 | 属性 | 存在性 | 类型 |
 |---|---|---|
@@ -6169,7 +6169,7 @@ SHA-256: `bcf0caf62d964b2fcf5404bd5c909cfa9a21c3f3c96e6b7e36d9e33565223825`
 
 SHA-256: `d3765b6acfab022c6289f7b0f27e0f27bf6554c9b2a039ead0343f76e7feceb1`
 
-来源：[`packages/bundle/session-turn-edit-resend/src/types.ts:124`](../packages/bundle/session-turn-edit-resend/src/types.ts)
+来源：[`packages/bundle/session-turn-edit-resend/src/types.ts:163`](../packages/bundle/session-turn-edit-resend/src/types.ts)
 
 | 属性 | 存在性 | 类型 |
 |---|---|---|
@@ -7735,7 +7735,7 @@ SHA-256: `9890113e97dd3541787bfe6704f2b223d3a890b5325ca0acae2b0398909b413e`
 
 SHA-256: `8e1006f30d9ec160a040f1ee2991d0a23df44316026177d6f871a6dac9e29fce`
 
-来源：[`packages/bundle/session-turn-edit-resend/src/types.ts:157`](../packages/bundle/session-turn-edit-resend/src/types.ts)
+来源：[`packages/bundle/session-turn-edit-resend/src/types.ts:196`](../packages/bundle/session-turn-edit-resend/src/types.ts)
 
 | 属性 | 存在性 | 类型 |
 |---|---|---|
@@ -7749,7 +7749,7 @@ SHA-256: `8e1006f30d9ec160a040f1ee2991d0a23df44316026177d6f871a6dac9e29fce`
 
 SHA-256: `6cbb278edf62584769e6cd70d102032d2c9ad20f2f54a06eefccf4998cadb5c6`
 
-来源：[`packages/bundle/session-turn-edit-resend/src/types.ts:156`](../packages/bundle/session-turn-edit-resend/src/types.ts)
+来源：[`packages/bundle/session-turn-edit-resend/src/types.ts:195`](../packages/bundle/session-turn-edit-resend/src/types.ts)
 
 | 属性 | 存在性 | 类型 |
 |---|---|---|

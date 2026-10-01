@@ -18,17 +18,29 @@ v0.2.0-rc.2 新增会话物理删除。两个已发布的接口各增加一个�
 
 ## 迁移
 
-1. 在自定义 `SessionPersistence` 子类中实现该接口。id 不存在时不做写入直接返回，会话仍被写入者持有时拒绝：
+1. 自定义 `SessionPersistence` 子类在存储会话不存在时抛出 `SessionPersistenceNotFoundError`，在写入者持有会话时抛出 `SessionAlreadyOwnedError`。在后端删除锁保护下移除全部已提交代次：
 
    ```ts
-   async delete(id: SessionId): Promise<void> {
-     if (!this.entries.delete(id)) throw new SessionPersistenceNotFoundError(id)
+   import type { SessionId } from '@deepseek-ai/dsh-session'
+   import { SessionAlreadyOwnedError, SessionPersistenceNotFoundError } from '@deepseek-ai/dsh-session-persistence'
+
+   class ExamplePersistence {
+     private readonly entries = new Map<SessionId, readonly unknown[]>()
+     private readonly writers = new Set<SessionId>()
+
+     async delete(id: SessionId): Promise<void> {
+       if (this.writers.has(id)) throw new SessionAlreadyOwnedError(id)
+       if (!this.entries.delete(id)) throw new SessionPersistenceNotFoundError(id)
+     }
    }
    ```
 
 2. 在构造 `AgentHandle` 字面量的代码中补上该成员。返回 `false` 表示不改动 Agent，适合测试替身：
 
    ```ts
+   import type { AgentHandle } from '@deepseek-ai/dsh-agent'
+
+   declare const agent: AgentHandle['agent']
    const handle: AgentHandle = {
      agent,
      disposeIfIdle: () => Promise.resolve(false),

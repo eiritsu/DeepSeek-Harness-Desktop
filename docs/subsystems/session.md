@@ -1106,9 +1106,8 @@ Host edit-and-resend admission over the `turnResend` Remote namespace.
 /**
  * Report whether the agent's latest turn may be edited, and seed an edit.
  *
- * The answer reads current state and promises nothing about a later
- * submission: {@link submit} selects the target again under the agent's idle
- * claim.
+ * The answer uses incrementally folded turn facts and the current surface;
+ * {@link submit} selects the target again under the agent's idle claim.
  * @param agent - agent whose latest turn is offered.
  * @returns the editable prompt text and its turn, or why it is not editable.
  */

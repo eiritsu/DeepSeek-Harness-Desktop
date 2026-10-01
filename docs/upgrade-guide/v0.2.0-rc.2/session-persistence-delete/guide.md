@@ -18,17 +18,29 @@ Both are TypeScript interfaces, so an out-of-tree package that extends `SessionP
 
 ## Migration
 
-1. In a custom `SessionPersistence` subclass, implement the seam. Return without writing when the id is absent, and reject while a writer holds the session:
+1. In a custom `SessionPersistence` subclass, throw `SessionPersistenceNotFoundError` when the stored Session is absent and `SessionAlreadyOwnedError` while a writer owns it. Remove every committed generation under the backend's deletion lock:
 
    ```ts
-   async delete(id: SessionId): Promise<void> {
-     if (!this.entries.delete(id)) throw new SessionPersistenceNotFoundError(id)
+   import type { SessionId } from '@deepseek-ai/dsh-session'
+   import { SessionAlreadyOwnedError, SessionPersistenceNotFoundError } from '@deepseek-ai/dsh-session-persistence'
+
+   class ExamplePersistence {
+     private readonly entries = new Map<SessionId, readonly unknown[]>()
+     private readonly writers = new Set<SessionId>()
+
+     async delete(id: SessionId): Promise<void> {
+       if (this.writers.has(id)) throw new SessionAlreadyOwnedError(id)
+       if (!this.entries.delete(id)) throw new SessionPersistenceNotFoundError(id)
+     }
    }
    ```
 
 2. In code that builds an `AgentHandle` literal, add the member. Returning `false` leaves the Agent untouched, which suits a test double:
 
    ```ts
+   import type { AgentHandle } from '@deepseek-ai/dsh-agent'
+
+   declare const agent: AgentHandle['agent']
    const handle: AgentHandle = {
      agent,
      disposeIfIdle: () => Promise.resolve(false),

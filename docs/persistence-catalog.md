@@ -1267,7 +1267,7 @@ Source: [`packages/core/session/src/types.ts:288`](../packages/core/session/src/
 }
 ```
 
-Source: [`packages/bundle/session-turn-edit-resend/src/types.ts:140`](../packages/bundle/session-turn-edit-resend/src/types.ts)
+Source: [`packages/bundle/session-turn-edit-resend/src/types.ts:179`](../packages/bundle/session-turn-edit-resend/src/types.ts)
 
 <a id="turn-resendrequested--log-only"></a>
 
@@ -1287,7 +1287,7 @@ Source: [`packages/bundle/session-turn-edit-resend/src/types.ts:140`](../package
 }
 ```
 
-Source: [`packages/bundle/session-turn-edit-resend/src/types.ts:124`](../packages/bundle/session-turn-edit-resend/src/types.ts)
+Source: [`packages/bundle/session-turn-edit-resend/src/types.ts:163`](../packages/bundle/session-turn-edit-resend/src/types.ts)
 
 <a id="turn-resendsettled--log-only"></a>
 
@@ -1307,7 +1307,7 @@ Source: [`packages/bundle/session-turn-edit-resend/src/types.ts:124`](../package
   | { operationId: string; outcome: 'failed'; reason: string }
 ```
 
-Source: [`packages/bundle/session-turn-edit-resend/src/types.ts:155`](../packages/bundle/session-turn-edit-resend/src/types.ts)
+Source: [`packages/bundle/session-turn-edit-resend/src/types.ts:194`](../packages/bundle/session-turn-edit-resend/src/types.ts)
 
 ### `user/*`
 
@@ -4481,7 +4481,7 @@ One of:
 
 SHA-256: `ad16d753272f56e66a7551402f08ba1b50e0229beb894b634bb811a1a5a17f66`
 
-Sources: [`packages/bundle/session-turn-edit-resend/src/types.ts:39`](../packages/bundle/session-turn-edit-resend/src/types.ts)
+Sources: [`packages/bundle/session-turn-edit-resend/src/types.ts:40`](../packages/bundle/session-turn-edit-resend/src/types.ts)
 
 One of:
 
@@ -6137,7 +6137,7 @@ Sources: [`packages/compaction/compaction/src/types.ts:38`](../packages/compacti
 
 SHA-256: `a3db9378c8e75da3f0389ff45814f35393693d6ee9a298d4985e94c4bf407a9b`
 
-Sources: [`packages/bundle/session-turn-edit-resend/src/types.ts:140`](../packages/bundle/session-turn-edit-resend/src/types.ts)
+Sources: [`packages/bundle/session-turn-edit-resend/src/types.ts:179`](../packages/bundle/session-turn-edit-resend/src/types.ts)
 
 | Property | Presence | Type |
 |---|---|---|
@@ -6167,7 +6167,7 @@ Sources: [`packages/core/session/src/types.ts:464`](../packages/core/session/src
 
 SHA-256: `d3765b6acfab022c6289f7b0f27e0f27bf6554c9b2a039ead0343f76e7feceb1`
 
-Sources: [`packages/bundle/session-turn-edit-resend/src/types.ts:124`](../packages/bundle/session-turn-edit-resend/src/types.ts)
+Sources: [`packages/bundle/session-turn-edit-resend/src/types.ts:163`](../packages/bundle/session-turn-edit-resend/src/types.ts)
 
 | Property | Presence | Type |
 |---|---|---|
@@ -7733,7 +7733,7 @@ Sources: [`packages/sandbox/sandbox-policy/src/session-mode.ts:33`](../packages/
 
 SHA-256: `8e1006f30d9ec160a040f1ee2991d0a23df44316026177d6f871a6dac9e29fce`
 
-Sources: [`packages/bundle/session-turn-edit-resend/src/types.ts:157`](../packages/bundle/session-turn-edit-resend/src/types.ts)
+Sources: [`packages/bundle/session-turn-edit-resend/src/types.ts:196`](../packages/bundle/session-turn-edit-resend/src/types.ts)
 
 | Property | Presence | Type |
 |---|---|---|
@@ -7747,7 +7747,7 @@ Sources: [`packages/bundle/session-turn-edit-resend/src/types.ts:157`](../packag
 
 SHA-256: `6cbb278edf62584769e6cd70d102032d2c9ad20f2f54a06eefccf4998cadb5c6`
 
-Sources: [`packages/bundle/session-turn-edit-resend/src/types.ts:156`](../packages/bundle/session-turn-edit-resend/src/types.ts)
+Sources: [`packages/bundle/session-turn-edit-resend/src/types.ts:195`](../packages/bundle/session-turn-edit-resend/src/types.ts)
 
 | Property | Presence | Type |
 |---|---|---|

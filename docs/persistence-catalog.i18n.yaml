@@ -276,14 +276,14 @@
   en: 15efbb06298d02e6
   zh: 15efbb06298d02e6
 /session-persistence-event-catalog/events/turn-resend/turn-resend-request-started-log-only:
-  en: fe504d6af81d386a
-  zh: 244be44c8bfe8ccf
+  en: 2a3d294868f91aa8
+  zh: c08ceac2dd8c9f6a
 /session-persistence-event-catalog/events/turn-resend/turn-resend-requested-log-only:
-  en: 1384fe9a09e796aa
-  zh: 68770d8e4c3f0dcf
+  en: dfef780a5d67a493
+  zh: 76645a1df0e536ed
 /session-persistence-event-catalog/events/turn-resend/turn-resend-settled-log-only:
-  en: 005d249e060caa70
-  zh: 324afbc9c83a3f1b
+  en: b5089d94b9928b43
+  zh: db1192a3b2f92f15
 /session-persistence-event-catalog/events/user:
   en: d864a88c03e8971c
   zh: d864a88c03e8971c
@@ -1164,8 +1164,8 @@
   en: 61a78554c513d714
   zh: 795c81ec78f69005
 /session-persistence-event-catalog/resolved-persistence-types/resendblocker:
-  en: a3d0ca12feb253fa
-  zh: 451f010e315d5b33
+  en: f1c1df98a9f2eab7
+  zh: fb4e3ca105c3af1a
 /session-persistence-event-catalog/resolved-persistence-types/sandboxmode:
   en: c9fa5343ea99733b
   zh: d6de41351c57a73f
@@ -1467,14 +1467,14 @@
   en: 83b811b0f986d1c5
   zh: 64d1f1f97785f3f6
 /session-persistence-event-catalog/resolved-persistence-types/endseq-messageid-operationid-startseq:
-  en: fd00ecdb8d44df54
-  zh: aa3aab649e018d6f
+  en: b6210ecc4f352249
+  zh: 680970d9b118aea8
 /session-persistence-event-catalog/resolved-persistence-types/endseq-op-startseq:
   en: 7f91652f0b52dfdd
   zh: 14b4cba5a8a40037
 /session-persistence-event-catalog/resolved-persistence-types/endseq-operationid-startseq-turn:
-  en: e96d6d5c38a0105a
-  zh: 4fd7df7cd2623504
+  en: 4413149402ff5410
+  zh: 1a9fd765ccc26705
 /session-persistence-event-catalog/resolved-persistence-types/error-kind-error:
   en: b24398b25f46a94f
   zh: 40640447d21ba296
@@ -1869,11 +1869,11 @@
   en: 8e6a7eda2e016c09
   zh: 1b442e8de602b748
 /session-persistence-event-catalog/resolved-persistence-types/operationid-outcome-reason:
-  en: 16a4ce394048e310
-  zh: 9e2b740e3116962a
+  en: 632fb8bc1aabc6f9
+  zh: a49c8d96c7cbcbe4
 /session-persistence-event-catalog/resolved-persistence-types/operationid-outcome-refusal:
-  en: 8927d2a4eeb9e829
-  zh: 3e87264dc83d0cf7
+  en: 0f78dfea35da6333
+  zh: 916cf5f4a1eece04
 /session-persistence-event-catalog/resolved-persistence-types/policy-source:
   en: 00f1d435f82d2753
   zh: c2ab108ad2748a6c
