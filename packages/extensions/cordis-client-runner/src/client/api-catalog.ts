@@ -333,8 +333,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   {
     key: 'uiWorkspace',
     summary: 'Workspace archive and directory operations consumed by Client UI domains.',
-    description: 'Workspace archive and directory operations consumed by Client UI domains.',
+    description: 'Workspace archive and directory operations consumed by Client UI domains. Pin, unpin, and delete reuse the Workspace Controller\'s `IWorkspaces` declarations; archive selection behavior and navigation/directory policy are defined here.',
     methods: [
+      {
+        signature: 'archiveSession(sessionId: SessionId, options?: { readonly stopActivity?: boolean }): Promise<void>',
+        description: 'Archive a Session; clears the current selection when it is the archived Session.',
+        parameters: [{ name: 'sessionId', description: 'Session to archive.' }, { name: 'options', description: '`stopActivity: true` asks the Host to stop active work before archiving; otherwise active work is refused.' }],
+      },
+      {
+        signature: 'unarchiveSession(sessionId: SessionId): Promise<void>',
+        description: 'Unarchive a Session and restore the saved Workspace position.',
+        parameters: [{ name: 'sessionId', description: 'Session to unarchive.' }],
+      },
       {
         signature: 'openSession(target: SessionTarget): void',
         description: 'Select a Session and show its Conversation as one UI navigation action.',
@@ -363,16 +373,6 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: 'startSession(workspaceId?: WorkspaceId): void',
         description: 'Start a New Session flow and navigate to its Session; a creation the Host refuses is shown through the Workspace notice and leaves the selection as it was.',
         parameters: [{ name: 'workspaceId', description: 'explicit target; absent inherits the current or most recent Workspace.' }],
-      },
-      {
-        signature: 'archiveSession(sessionId: SessionId, options?: { readonly stopActivity?: boolean }): Promise<void>',
-        description: 'Archive a Session and clear it when it is the current selection.',
-        parameters: [{ name: 'sessionId', description: 'Session to archive.' }, { name: 'options', description: '`stopActivity` asks the Host to stop the Session\'s running work instead of refusing.' }],
-      },
-      {
-        signature: 'unarchiveSession(sessionId: SessionId): Promise<void>',
-        description: 'Unarchive a Session, restoring it to its recorded Workspace position.',
-        parameters: [{ name: 'sessionId', description: 'Session to unarchive.' }],
       },
       {
         signature: 'pickDirectory(): Promise<string | null>',

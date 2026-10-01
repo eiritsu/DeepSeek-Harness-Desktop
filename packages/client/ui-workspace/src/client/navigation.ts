@@ -27,13 +27,26 @@ interface MainSelection {
 
 /**
  * Workspace archive and directory operations consumed by Client UI domains.
- * The Session grouping verbs reuse the Workspace Controller's declarations;
- * this face adds only the navigation and directory policy around them.
+ * Pin, unpin, and delete reuse the Workspace Controller's `IWorkspaces`
+ * declarations; archive selection behavior and navigation/directory policy
+ * are defined here.
  */
 export interface UiWorkspace extends Pick<
   IWorkspaces,
-  'archiveSession' | 'unarchiveSession' | 'pinSession' | 'unpinSession' | 'deleteSession'
+  'pinSession' | 'unpinSession' | 'deleteSession'
 > {
+  /**
+   * Archive a Session; clears the current selection when it is the archived Session.
+   * @param sessionId - Session to archive.
+   * @param options - `stopActivity: true` asks the Host to stop active work
+   * before archiving; otherwise active work is refused.
+   */
+  archiveSession(sessionId: SessionId, options?: { readonly stopActivity?: boolean }): Promise<void>
+  /**
+   * Unarchive a Session and restore the saved Workspace position.
+   * @param sessionId - Session to unarchive.
+   */
+  unarchiveSession(sessionId: SessionId): Promise<void>
   /**
    * Select a Session and show its Conversation as one UI navigation action.
    * @param target - known Session identity or durable direct-parent subagent address to display.
