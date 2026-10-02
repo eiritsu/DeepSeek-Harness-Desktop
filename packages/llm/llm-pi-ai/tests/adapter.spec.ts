@@ -788,7 +788,7 @@ describe('provider profile lifecycle', () => {
     expect(server.requests[0]).toMatchObject({ reasoning_effort: 'none' })
   })
 
-  it('holds back reasoning_effort when the endpoint cannot take it', async () => {
+  it('does not advertise or send reasoning_effort when the endpoint cannot take it', async () => {
     vi.stubEnv('PI_TEST_KEY', 'test-key')
     const server = await mockServer([{ events: textEvents }])
     const ctx = new Context()
@@ -810,12 +810,28 @@ describe('provider profile lifecycle', () => {
       },
     })
 
-    await assemble(ctx, {
+    const info = await ctx.llm.resolveModelInfo('acme-gateway', 'acme-think')
+    expect(info.reasoning).toBeUndefined()
+
+    const unsupported = await assemble(ctx, {
       provider: 'acme-gateway',
       model: 'acme-think',
       reasoningEffort: ReasoningEffortId('high'),
       messages: [],
     })
+    expect(unsupported.finish).toMatchObject({
+      kind: 'error',
+      failure: { code: 'UNSUPPORTED_REASONING_EFFORT' },
+    })
+    expect(server.requests).toHaveLength(0)
+
+    const normal = await assemble(ctx, {
+      provider: 'acme-gateway',
+      model: 'acme-think',
+      messages: [],
+    })
+    expect(normal.finish.kind).toBe('stop')
+    expect(server.requests).toHaveLength(1)
     expect(server.requests[0]).not.toHaveProperty('reasoning_effort')
   })
 
