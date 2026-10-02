@@ -1,0 +1,40 @@
+# Keyless replay serves fixed catalog facts from a local HTTP fixture.
+- id: llm-deepseek
+  name: '@deepseek-ai/dsh-llm-deepseek-api-key'
+  disabled: true
+
+- id: plugin-package-inventory-deepseek
+  disabled: true
+
+- id: model-catalog
+  name: '@deepseek-ai/dsh-model-catalog'
+  config:
+    catalogURL: http://127.0.0.1:43119/catalog.json?type=all
+
+- insert:
+    - id: catalog-reasoning-fixture
+      name: './catalog-reasoning-fixture.mjs'
+
+    - id: llm-replay
+      name: '@deepseek-ai/dsh-llm-replay'
+      config:
+        providers:
+          - id: deepseek-official
+            name: DeepSeek
+            models:
+              - id: deepseek-v4-flash
+                contextWindow: 1000000
+                defaultMaxTokens: 256000
+                reasoningEfforts: ['off', 'low', 'high', 'max']
+                defaultReasoningEffort: max
+              - id: deepseek-v4-pro
+                contextWindow: 1000000
+                defaultMaxTokens: 256000
+                reasoningEfforts: ['low', 'high', 'max']
+                defaultReasoningEffort: high
+
+    - id: model-switch-driver
+      name: './model-switch-driver.mjs'
+
+    - id: legacy-tools-scheduler-compat
+      name: './legacy-tools-scheduler.mjs'

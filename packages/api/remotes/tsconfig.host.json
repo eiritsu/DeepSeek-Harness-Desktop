@@ -33,6 +33,9 @@
       "path": "../../llm/llm"
     },
     {
+      "path": "../../llm/model-catalog"
+    },
+    {
       "path": "../../goal/goal"
     },
     {

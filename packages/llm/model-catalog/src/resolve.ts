@@ -2,10 +2,9 @@
  * Resolution of a route-local model id onto one canonical record, and the
  * immutable view that publishes the result for a whole generation.
  *
- * Three ways in, in precedence order: an explicit mapping, an exact qualified
- * `owner/model` id, and a bare basename. Every one of them refuses rather than
- * guesses — a basename two providers publish, or a mapping two configurations
- * claim, resolves to nothing rather than to whichever entry was parsed first.
+ * Explicit mappings, exact qualified ids, unique canonical basenames, and
+ * provider entry ids resolve in that order. Every lookup refuses ambiguity
+ * rather than choosing whichever document entry appeared first.
  *
  * @module @deepseek-ai/dsh-model-catalog/src/resolve
  */
@@ -21,11 +20,6 @@ export interface CatalogAlias {
   readonly modelId: string
   /** Qualified `owner/model` identifier the catalog must carry. */
   readonly canonicalId: string
-}
-
-/** Key one channel's vocabulary is stored under; NUL cannot occur in a catalog id. */
-function channelKey(namespace: string, model: string): string {
-  return `${namespace.toLowerCase()}\u0000${model.toLowerCase()}`
 }
 
 /** Ids compare case-insensitively: providers are inconsistent about casing. */
@@ -44,8 +38,8 @@ export class CatalogView implements ModelFactsView {
   private readonly byId: ReadonlyMap<string, CanonicalRecord>
   /** Canonical records by lowercased basename; a key holds a record only when the basename is unique. */
   private readonly byBasename: ReadonlyMap<string, CanonicalRecord | undefined>
-  /** Channel vocabularies by channel key. */
-  private readonly channelByModel: ReadonlyMap<string, readonly string[]>
+  /** Channel vocabularies grouped by their canonical identity or legacy owner/model key. */
+  private readonly channels: readonly ParsedCatalog['channels'][number][]
   /** Configured mappings, in the order the deployment declared them. */
   private readonly aliases: readonly CatalogAlias[]
 
@@ -70,15 +64,7 @@ export class CatalogView implements ModelFactsView {
     }
     this.byId = byId
     this.byBasename = new Map([...candidates].map(([key, value]) => [key, value ?? undefined]))
-    const channels = new Map<string, readonly string[]>()
-    for (const channel of catalog.channels) {
-      // First entry wins: two channel keys differing only in case are one
-      // channel as far as addressing is concerned, and taking the first keeps
-      // the answer independent of the document's property order.
-      const key = channelKey(channel.namespace, channel.model)
-      if (!channels.has(key)) channels.set(key, channel.efforts)
-    }
-    this.channelByModel = channels
+    this.channels = catalog.channels
     this.aliases = aliases
   }
 
@@ -92,7 +78,7 @@ export class CatalogView implements ModelFactsView {
     const model = this.resolveModel(request)
     if (model === undefined) return undefined
     const owner = model.id.slice(0, model.id.indexOf('/'))
-    const efforts = this.channelByModel.get(channelKey(owner, basenameOf(model.id)))
+    const efforts = this.channelEfforts(request, model.id, owner)
     return {
       canonicalId: model.id,
       ...model.input === undefined ? {} : { inputModalities: model.input },
@@ -105,6 +91,39 @@ export class CatalogView implements ModelFactsView {
         ? {}
         : { reasoningEfforts: efforts ?? [] },
     }
+  }
+
+  /** Resolve one route's channel declaration without choosing among providers. */
+  private channelEfforts(request: ModelFactsRequest, canonicalId: string, canonicalOwner: string): readonly string[] | undefined {
+    const requestedOwner = request.ownedBy ?? canonicalOwner
+    const requestedModel = basenameOf(request.model)
+    const explicit = this.channels.filter(channel => channel.canonicalId !== undefined
+      && sameId(channel.canonicalId, canonicalId)
+      && sameId(channel.namespace, requestedOwner))
+    const exact = explicit.filter(channel => sameId(channel.model, requestedModel))
+    if (exact.length > 0) return this.uniqueEfforts(exact)
+    if (explicit.length === 1) return explicit[0]?.efforts
+    if (explicit.length > 1) return undefined
+
+    // An unknown route can use declarations from the canonical owner's
+    // channel. Prefer an exact canonical model entry; otherwise accept only
+    // one provider entry for that canonical model.
+    const ownerChannels = this.channels.filter(channel => sameId(channel.namespace, canonicalOwner)
+      && (channel.canonicalId === undefined
+        ? sameId(channel.model, basenameOf(canonicalId))
+        : sameId(channel.canonicalId, canonicalId)))
+    const ownerExact = ownerChannels.filter(channel => sameId(channel.model, requestedModel))
+    return this.uniqueEfforts(ownerExact.length > 0 ? ownerExact : ownerChannels)
+  }
+
+  /** Conflicting declarations are ambiguous; identical duplicates are equivalent. */
+  private uniqueEfforts(channels: readonly ParsedCatalog['channels'][number][]): readonly string[] | undefined {
+    if (channels.length === 0) return undefined
+    const distinct = new Map(channels.map(channel => [
+      channel.efforts === undefined ? undefined : JSON.stringify([...channel.efforts].sort()),
+      channel.efforts,
+    ]))
+    return distinct.size === 1 ? distinct.values().next().value : undefined
   }
 
   /**
@@ -121,8 +140,27 @@ export class CatalogView implements ModelFactsView {
     if (mapped.length > 0) return this.select(mapped, request)
     // A qualified id is addressed exactly. Matching its basename instead
     // would answer with a different model that happens to share the name.
-    if (request.model.includes('/')) return this.byId.get(request.model.toLowerCase())
-    return this.byBasename.get(request.model.toLowerCase())
+    if (request.model.includes('/')) {
+      return this.byId.get(request.model.toLowerCase()) ?? this.resolveChannelModel(request)
+    }
+    return this.byBasename.get(request.model.toLowerCase()) ?? this.resolveChannelModel(request)
+  }
+
+  /** Resolve a provider model alias only when every matching entry names one canonical record. */
+  private resolveChannelModel(request: ModelFactsRequest): CanonicalRecord | undefined {
+    const matching = this.channels.filter(channel => sameId(channel.model, request.model)
+      && channel.canonicalId !== undefined)
+    const ownedBy = request.ownedBy
+    const owned = ownedBy === undefined
+      ? []
+      : matching.filter(channel => sameId(channel.namespace, ownedBy))
+    const candidates = owned.length > 0 ? owned : matching
+    const ids = new Set(candidates
+      .map(channel => channel.canonicalId?.toLowerCase())
+      .filter((id): id is string => id !== undefined))
+    if (ids.size !== 1) return undefined
+    const [id] = ids
+    return id === undefined ? undefined : this.byId.get(id)
   }
 
   /**

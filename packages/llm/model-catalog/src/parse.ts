@@ -30,21 +30,23 @@ export interface CanonicalRecord {
   readonly reasoning?: boolean
 }
 
-/** One channel's reasoning vocabulary for one model it serves. */
+/** One provider model entry retained for canonical identity or declared efforts. */
 export interface ChannelEfforts {
   /** Channel namespace, the provider entry's own key. */
   readonly namespace: string
   /** Model id as the channel names it, the provider entry's own key. */
   readonly model: string
-  /** Levels the channel declares; empty means it declares that it accepts none. */
-  readonly efforts: readonly string[]
+  /** Qualified canonical model id when the provider entry identifies one. */
+  readonly canonicalId?: string
+  /** Levels the channel declares; an empty list declares that it accepts none. */
+  readonly efforts?: readonly string[]
 }
 
 /** Everything one accepted document yields. */
 export interface ParsedCatalog {
   /** Canonical records by qualified id. */
   readonly canonical: readonly CanonicalRecord[]
-  /** Per-channel effort vocabularies. */
+  /** Provider entries that identify canonical models or declare effort vocabularies. */
   readonly channels: readonly ChannelEfforts[]
 }
 
@@ -134,8 +136,20 @@ export function parseCatalogDocument(document: unknown): ParsedCatalog {
     const channelModels = record(record(value)?.models)
     if (channelModels === undefined) continue
     for (const [model, entry] of Object.entries(channelModels)) {
-      const declared = channelEfforts(record(entry)?.reasoning, record(entry)?.reasoning_options)
-      if (declared !== undefined) channels.push({ namespace, model, efforts: declared })
+      const providerModel = record(entry)
+      const declared = channelEfforts(providerModel?.reasoning, providerModel?.reasoning_options)
+      const canonicalId = typeof providerModel?.canonical_model_id === 'string'
+        && providerModel.canonical_model_id.includes('/')
+        ? providerModel.canonical_model_id
+        : undefined
+      if (declared !== undefined || canonicalId !== undefined) {
+        channels.push({
+          namespace,
+          model,
+          ...(declared === undefined ? {} : { efforts: declared }),
+          ...(canonicalId === undefined ? {} : { canonicalId }),
+        })
+      }
     }
   }
   return { canonical, channels }

@@ -4,6 +4,7 @@ import { hostname } from 'node:os'
 import { resolve } from 'node:path'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-fs'
+import type {} from '@deepseek-ai/dsh-model-catalog'
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { errorChain, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
@@ -319,7 +320,11 @@ export class SessionController extends TypertRemoteService {
    * @returns provider-grouped models, the deployment default, and isolated provider failures.
    */
   @Remote('modelCatalog')
-  modelCatalog(): Promise<ModelCatalog> {
+  async modelCatalog(): Promise<ModelCatalog> {
+    // The shared catalog restores a durable snapshot immediately, then
+    // refreshes it in the background. Wait for that first attempt so a cold
+    // selector does not cache model metadata from the previous snapshot.
+    await this.ctx.get('modelCatalog')?.refresh()
     return buildModelCatalog(this.ctx)
   }
 

@@ -37,6 +37,7 @@
     { "path": "../../jobs/jobs" },
     { "path": "../../fs/fs" },
     { "path": "../../llm/llm" },
+    { "path": "../../llm/model-catalog" },
     { "path": "../../util/deque" },
     { "path": "../../util/native-command" },
     { "path": "../../preset/agent-preset-registry" },

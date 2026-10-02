@@ -8,6 +8,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { z } from 'zod'
+import { defineDomain } from '@deepseek-ai/dsh-storage-domain'
 import { Context } from '@deepseek-ai/cordis'
 import Storage from '@deepseek-ai/dsh-storage'
 import {
@@ -37,14 +39,24 @@ afterEach(async () => {
 })
 
 /** A fresh durable root, mounted with the storage stack the plugin injects. */
-async function storageHarness(): Promise<Context> {
-  const root = await mkdtemp(join(tmpdir(), 'dsh-model-catalog-'))
-  roots.push(root)
+async function storageHarness(root?: string): Promise<Context> {
+  const storageRoot = root ?? await mkdtemp(join(tmpdir(), 'dsh-model-catalog-'))
+  if (root === undefined) roots.push(storageRoot)
   const ctx = new Context()
   contexts.push(ctx)
   await ctx.plugin(Storage)
-  await ctx.plugin({ name: storageJsonName, inject: storageJsonInject, apply: storageJsonApply, Config: storageJsonConfig }, { root })
-  await ctx.plugin({ name: storageDomainName, inject: storageDomainInject, apply: storageDomainApply, Config: storageDomainConfig }, { backend: 'json' })
+  await ctx.plugin({
+    name: storageJsonName,
+    inject: storageJsonInject,
+    apply: storageJsonApply,
+    Config: storageJsonConfig,
+  }, { root: storageRoot })
+  await ctx.plugin({
+    name: storageDomainName,
+    inject: storageDomainInject,
+    apply: storageDomainApply,
+    Config: storageDomainConfig,
+  }, { backend: 'json' })
   return ctx
 }
 
@@ -141,8 +153,7 @@ describe('model catalog service', () => {
           models: {
             one: { reasoning_options: [{ type: 'effort', values: ['low'] }] },
             two: { reasoning_options: [{ type: 'effort', values: ['low', 'high', 'max'] }] },
-            // A channel that declared no level accepts none, and stays that way
-            // across a restart rather than regaining the transport's own list.
+            // Keep an explicit refusal across restarts.
             quiet: { reasoning: false },
           },
         },
@@ -188,20 +199,191 @@ describe('model catalog service', () => {
     expect(ctx.modelCatalog.facts.facts({ model: 'one' })).toBeUndefined()
   })
 
-  it('serves a fresh snapshot without another request, and re-reads a stale one', async () => {
+  it('revalidates during mount and only re-reads after the configured interval', async () => {
     const fetchMock = vi.fn(() => Promise.resolve(new Response(JSON.stringify(DOCUMENT))))
     vi.stubGlobal('fetch', fetchMock)
     const fresh = await harness({ refreshIntervalMs: 3_600_000 })
-    // The mount reads the document once; every later caller shares that answer.
+    // The mount reads the document once; later fresh callers share that answer.
     await vi.waitFor(() => { expect(fetchMock).toHaveBeenCalledTimes(1) })
     await fresh.modelCatalog.refresh()
     await fresh.modelCatalog.refresh()
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
-    const stale = await harness({ refreshIntervalMs: 1 })
-    await new Promise((resolve) => { setTimeout(resolve, 5) })
+    const stale = await harness({ refreshIntervalMs: 3_600_000 })
     await stale.modelCatalog.refresh()
     expect(fetchMock).toHaveBeenCalledTimes(2)
+    const originalNow = Date.now()
+    vi.setSystemTime(originalNow + 3_600_001)
+    try {
+      await stale.modelCatalog.refresh()
+    } finally {
+      vi.setSystemTime(originalNow)
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('publishes a typed update event for each accepted generation and shares concurrent reads', async () => {
+    let finish!: (response: Response) => void
+    const fetcher = vi.fn(() => new Promise<Response>((resolve) => { finish = resolve }))
+    vi.stubGlobal('fetch', fetcher)
+    const ctx = await storageHarness()
+    const updates: number[] = []
+    ctx.on('model-catalog/updated', ({ generation }) => { updates.push(generation) })
+    await ctx.plugin(SharedModelCatalog, {
+      catalogURL: 'https://example.test/catalog.json', refreshIntervalMs: 3_600_000,
+    })
+
+    const pending = [ctx.modelCatalog.refresh(), ctx.modelCatalog.refresh()]
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    finish(new Response(JSON.stringify(DOCUMENT)))
+    await Promise.all(pending)
+
+    expect(updates).toEqual([1])
+    expect(ctx.modelCatalog.facts.generation).toBe(1)
+  })
+
+  it('aborts an in-flight periodic read during disposal without rearming its timer', async () => {
+    vi.useFakeTimers()
+    let periodicSignal: AbortSignal | undefined
+    let periodicStarted!: () => void
+    const started = new Promise<void>((resolve) => { periodicStarted = resolve })
+    const fetcher = vi.fn((_input: string | URL, init?: RequestInit): Promise<Response> => {
+      if (fetcher.mock.calls.length === 1) return Promise.resolve(new Response(JSON.stringify(DOCUMENT)))
+      periodicSignal = init?.signal ?? undefined
+      periodicStarted()
+      return new Promise((_resolve, reject) => {
+        periodicSignal?.addEventListener('abort', () => {
+          reject(new DOMException('aborted', 'AbortError'))
+        }, { once: true })
+      })
+    })
+    try {
+      vi.stubGlobal('fetch', fetcher)
+      const ctx = await storageHarness()
+      const catalogFiber = ctx.plugin(SharedModelCatalog, {
+        catalogURL: 'https://example.test/catalog.json', refreshIntervalMs: 25,
+      })
+      await catalogFiber
+      await ctx.modelCatalog.refresh()
+      await vi.advanceTimersByTimeAsync(25)
+      await started
+
+      await expect(catalogFiber.dispose()).resolves.toBeUndefined()
+      await vi.advanceTimersByTimeAsync(25)
+
+      expect(periodicSignal?.aborted).toBe(true)
+      expect(fetcher).toHaveBeenCalledTimes(2)
+      const reopened = await ctx.storageDomain.open(defineDomain({
+        name: 'model_catalog',
+        version: 1,
+        global: {
+          schema: z.object({
+            catalogURL: z.string(),
+            checkedAt: z.number(),
+            models: z.array(z.unknown()),
+            channels: z.array(z.unknown()),
+          }),
+          initial: { catalogURL: '', checkedAt: 0, models: [], channels: [] },
+        },
+        tables: {},
+      }))
+      await reopened.close()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('loads an existing version 1 durable cache with its original schema', async () => {
+    const ctx = await storageHarness()
+    const oldDomain = defineDomain({
+      name: 'model_catalog',
+      version: 1,
+      global: {
+        schema: z.object({
+          catalogURL: z.string(),
+          checkedAt: z.number(),
+          models: z.array(z.object({
+            id: z.string(),
+            modalities: z.object({ input: z.array(z.enum(['text', 'image'])).optional() }).optional(),
+            limit: z.object({ context: z.number().int().positive().optional(), output: z.number().int().positive().optional() }).optional(),
+            reasoning: z.boolean().optional(),
+          })),
+          channels: z.array(z.object({ namespace: z.string(), model: z.string(), efforts: z.array(z.string()) })),
+        }),
+        initial: { catalogURL: '', checkedAt: 0, models: [], channels: [] },
+      },
+      tables: {},
+    })
+    const old = await ctx.storageDomain.open(oldDomain)
+    await old.global.set({
+      catalogURL: 'https://example.test/catalog.json',
+      checkedAt: Date.now(),
+      models: [{ id: 'acme/one', limit: { context: 8_192 } }],
+      channels: [{ namespace: 'acme', model: 'one', efforts: ['low'] }],
+    })
+    await old.close()
+    respondWith('', { status: 503 })
+
+    await ctx.plugin(SharedModelCatalog, {
+      catalogURL: 'https://example.test/catalog.json', refreshIntervalMs: 3_600_000,
+    })
+    await vi.waitFor(() => { expect(ctx.modelCatalog.loaded).toBe(true) })
+
+    expect(ctx.modelCatalog.facts.facts({ model: 'one' })).toMatchObject({
+      canonicalId: 'acme/one',
+      contextWindow: 8_192,
+      reasoningEfforts: ['low'],
+    })
+  })
+
+  it('publishes a fresh cache before a network update and persists canonical channel aliases', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-model-catalog-revalidate-'))
+    roots.push(root)
+    const first = await storageHarness(root)
+    respondWith(JSON.stringify({
+      models: { 'deepseek/deepseek-v4.1-flash': { id: 'deepseek/deepseek-v4.1-flash', limit: { context: 1_000_000 } } },
+      providers: { chiyun: { id: 'chiyun', models: {
+        'deepseek-flash': {
+          canonical_model_id: 'deepseek/deepseek-v4.1-flash',
+          reasoning_options: [{ type: 'effort', values: ['low', 'max'] }],
+        },
+      } } },
+    }))
+    await first.plugin(SharedModelCatalog, {
+      catalogURL: 'https://example.test/catalog.json', refreshIntervalMs: 3_600_000,
+    })
+    await first.modelCatalog.refresh()
+    await first.fiber.dispose()
+
+    const second = await storageHarness(root)
+    contexts.push(second)
+    const updates: number[] = []
+    second.on('model-catalog/updated', ({ generation }) => { updates.push(generation) })
+    const updated = {
+      models: { 'deepseek/deepseek-v4.1-flash': { id: 'deepseek/deepseek-v4.1-flash', limit: { context: 2_000_000 } } },
+      providers: { chiyun: { id: 'chiyun', models: {
+        'deepseek-flash': {
+          canonical_model_id: 'deepseek/deepseek-v4.1-flash',
+          reasoning_options: [{ type: 'effort', values: ['low', 'high'] }],
+        },
+      } } },
+    }
+    let finish!: (response: Response) => void
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>((resolve) => { finish = resolve })))
+    await second.plugin(SharedModelCatalog, {
+      catalogURL: 'https://example.test/catalog.json', refreshIntervalMs: 3_600_000,
+    })
+    const cached = second.modelCatalog.facts.facts({ model: 'deepseek-flash', ownedBy: 'chiyun' })
+    expect(cached?.reasoningEfforts).toEqual(['low', 'max'])
+    const refresh = second.modelCatalog.refresh()
+    finish(new Response(JSON.stringify(updated)))
+    await refresh
+
+    expect(second.modelCatalog.facts.facts({ model: 'deepseek-flash', ownedBy: 'chiyun' })).toMatchObject({
+      contextWindow: 2_000_000,
+      reasoningEfforts: ['low', 'high'],
+    })
+    expect(updates).toEqual([1, 2])
   })
 
   it('fails loud at mount on a mapping set that cannot address one model', async () => {

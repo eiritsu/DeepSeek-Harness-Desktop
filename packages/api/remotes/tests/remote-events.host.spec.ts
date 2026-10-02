@@ -79,6 +79,24 @@ function invocationOf(value: unknown): TypertRemoteEventInvocation {
 }
 
 describe('Remote event Host source', () => {
+  it('forwards shared model-catalog generations to Client subscribers', async () => {
+    const { ctx, gateway, fiber } = await setup()
+    const abort = new AbortController()
+    const iterator = sourceOf(gateway)(abort.signal)[Symbol.asyncIterator]()
+
+    const next = iterator.next()
+    emitRaw(ctx, 'model-catalog/updated', [{ generation: 7 }])
+    await expect(next).resolves.toMatchObject({
+      done: false,
+      value: { event: 'model-catalog/updated', args: [{ generation: 7 }] },
+    })
+
+    const done = iterator.next()
+    abort.abort()
+    await expect(done).resolves.toMatchObject({ done: true })
+    await fiber.dispose()
+  })
+
   it('registers the Host home used by Client connection generations', async () => {
     const { gateway, fiber } = await setup()
     expect(gateway.host?.home).toBeTypeOf('string')

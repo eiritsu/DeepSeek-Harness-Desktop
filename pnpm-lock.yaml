@@ -1245,6 +1245,9 @@ importers:
       '@deepseek-ai/dsh-message-feedback':
         specifier: workspace:*
         version: link:../../feedback/message-feedback
+      '@deepseek-ai/dsh-model-catalog':
+        specifier: workspace:*
+        version: link:../../llm/model-catalog
       '@deepseek-ai/dsh-office-to-pdf':
         specifier: workspace:*
         version: link:../../document/office-to-pdf
@@ -1357,6 +1360,9 @@ importers:
       '@deepseek-ai/dsh-llm':
         specifier: workspace:*
         version: link:../../llm/llm
+      '@deepseek-ai/dsh-model-catalog':
+        specifier: workspace:*
+        version: link:../../llm/model-catalog
       '@deepseek-ai/dsh-native-command':
         specifier: workspace:*
         version: link:../../util/native-command
@@ -4169,6 +4175,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-slots':
         specifier: workspace:*
         version: link:../ui-slots
+      '@deepseek-ai/dsh-model-catalog':
+        specifier: workspace:*
+        version: link:../../llm/model-catalog
       '@deepseek-ai/dsh-session':
         specifier: workspace:*
         version: link:../../core/session

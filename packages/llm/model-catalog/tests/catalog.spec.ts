@@ -38,6 +38,28 @@ const DOCUMENT = {
   },
 }
 
+const ALIASED_DOCUMENT = {
+  models: {
+    'deepseek/deepseek-v4.1-flash': {
+      id: 'deepseek/deepseek-v4.1-flash',
+      reasoning: true,
+      limit: { context: 1_000_000, output: 384_000 },
+    },
+  },
+  providers: {
+    chiyun: {
+      id: 'chiyun',
+      models: {
+        'deepseek-flash': {
+          canonical_model_id: 'deepseek/deepseek-v4.1-flash',
+          reasoning: true,
+          reasoning_options: [{ type: 'effort', values: ['low', 'high', 'max'] }],
+        },
+      },
+    },
+  },
+}
+
 function view(aliases: CatalogAlias[] = [], generation = 1): CatalogView {
   return new CatalogView(generation, parseCatalogDocument(DOCUMENT), aliases)
 }
@@ -121,6 +143,15 @@ describe('catalog document parsing', () => {
       { namespace: 'a', model: 'two', efforts: [] },
     ])
   })
+
+  it('keeps provider aliases attached to their canonical model identity', () => {
+    expect(parseCatalogDocument(ALIASED_DOCUMENT).channels).toEqual([{
+      namespace: 'chiyun',
+      model: 'deepseek-flash',
+      canonicalId: 'deepseek/deepseek-v4.1-flash',
+      efforts: ['low', 'high', 'max'],
+    }])
+  })
 })
 
 describe('catalog view resolution', () => {
@@ -147,6 +178,18 @@ describe('catalog view resolution', () => {
       inputModalities: ['text', 'image'],
       contextWindow: 1_000_000,
       maxOutputTokens: 131_072,
+      reasoning: true,
+      reasoningEfforts: ['low', 'high', 'max'],
+    })
+  })
+
+  it('resolves efforts through a provider alias by canonical identity', () => {
+    const aliased = new CatalogView(2, parseCatalogDocument(ALIASED_DOCUMENT), [])
+
+    expect(aliased.facts({ model: 'deepseek-v4.1-flash', ownedBy: 'chiyun' })).toEqual({
+      canonicalId: 'deepseek/deepseek-v4.1-flash',
+      contextWindow: 1_000_000,
+      maxOutputTokens: 384_000,
       reasoning: true,
       reasoningEfforts: ['low', 'high', 'max'],
     })

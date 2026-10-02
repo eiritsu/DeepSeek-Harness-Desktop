@@ -1,7 +1,7 @@
 /**
- * The shared model catalog (`ctx.modelCatalog`): one periodic read of an
- * external catalog document, the last-good snapshot every read is answered
- * from, and the immutable generation a consumer pins while it works.
+ * The shared model catalog (`ctx.modelCatalog`): one startup revalidation and
+ * periodic reads of an external document, the last-good snapshot every read
+ * is answered from, and the immutable generation a consumer pins while it works.
  *
  * Refresh is best-effort in both directions. A failed request leaves the
  * published view exactly as it was, so a deployment that starts offline
@@ -50,7 +50,8 @@ const cacheSchema = z.object({
   channels: z.array(z.object({
     namespace: z.string().min(1),
     model: z.string().min(1),
-    efforts: z.array(z.string().min(1)),
+    canonicalId: z.string().min(1).optional(),
+    efforts: z.array(z.string().min(1)).optional(),
   })),
 })
 type Cache = z.infer<typeof cacheSchema>
@@ -117,7 +118,12 @@ function documentOf(cache: Cache): unknown {
     // An empty level list reloads as an empty declaration, which is the same
     // refusal the live document produced: a channel that declared no level
     // stays a channel that accepts none.
-    models[channel.model] = { reasoning_options: [{ type: 'effort', values: [...channel.efforts] }] }
+    models[channel.model] = {
+      ...(channel.canonicalId === undefined ? {} : { canonical_model_id: channel.canonicalId }),
+      ...(channel.efforts === undefined
+        ? {}
+        : { reasoning_options: [{ type: 'effort', values: [...channel.efforts] }] }),
+    }
     modelsByNamespace.set(channel.namespace, models)
   }
   return {
@@ -146,12 +152,12 @@ function cacheOf(catalog: ReturnType<typeof parseCatalogDocument>, catalogURL: s
         },
       ...model.reasoning === undefined ? {} : { reasoning: model.reasoning },
     })),
-    // A channel that declared no vocabulary contributes no record at all, so
-    // the reload leaves the model as silent as the live document did.
+    // Canonical links persist even when a provider entry declares no efforts.
     channels: catalog.channels.map(channel => ({
       namespace: channel.namespace,
       model: channel.model,
-      efforts: [...channel.efforts],
+      ...channel.canonicalId === undefined ? {} : { canonicalId: channel.canonicalId },
+      ...channel.efforts === undefined ? {} : { efforts: [...channel.efforts] },
     })),
   }
 }
@@ -175,6 +181,7 @@ export class SharedModelCatalog extends Service {
   private checkedAt = 0
   private timer: ReturnType<typeof setTimeout> | undefined
   private inFlight: Promise<void> | undefined
+  private readonly abortController = new AbortController()
   private stored?: DomainGlobal<Cache>
 
   constructor(ctx: Context, config: Config) {
@@ -206,21 +213,28 @@ export class SharedModelCatalog extends Service {
     // another deployment's facts.
     const cached = this.stored.get()
     if (cached.catalogURL === this.config.catalogURL && cached.models.length > 0) {
-      this.publish(parseCatalogDocument(documentOf(cached)))
+      const parsed = parseCatalogDocument(documentOf(cached))
       this.checkedAt = cached.checkedAt
+      this.publish(parsed)
     }
     this.ctx.effect(() => async () => {
       this.clearTimer()
-      await domain.close()
+      this.abortController.abort()
+      try {
+        // Shutdown owns this canceled read; refreshNow already reports its failure.
+        await this.inFlight?.catch((_readError: unknown) => undefined)
+      } finally {
+        await domain.close()
+      }
     }, 'modelCatalog.shutdown')
     this.schedule()
     // The first read must not hold plugin load open: an unreachable catalog
     // is an ordinary condition, and the durable cache above is the answer.
-    void this.refresh()
+    void this.refreshNow()
   }
 
   /**
-   * Re-read the catalog when the published snapshot has gone stale.
+   * Wait for an active read or re-read a stale catalog snapshot.
    *
    * A failed request is reported and swallowed: the last-good view stays
    * published, so an unreachable catalog costs freshness and nothing else.
@@ -231,17 +245,21 @@ export class SharedModelCatalog extends Service {
    */
   async refresh(signal?: AbortSignal): Promise<void> {
     signal?.throwIfAborted()
-    if (this.fresh()) return
+    if (this.inFlight !== undefined || !this.fresh()) await this.refreshNow()
+    signal?.throwIfAborted()
+  }
+
+  /** Start or join a catalog read, including an unconditional startup revalidation. */
+  private async refreshNow(): Promise<void> {
     this.inFlight ??= this.readAndPublish().finally(() => { this.inFlight = undefined })
     try {
       await this.inFlight
     } catch (error) {
       this.ctx.logger.warn(`model catalog: refresh failed, keeping the last good facts: ${message(error)}`)
     }
-    signal?.throwIfAborted()
   }
 
-  /** Whether the published snapshot is still inside its freshness window. */
+  /** Whether the last accepted catalog document is still within its refresh interval. */
   private fresh(): boolean {
     return this.checkedAt > 0 && Date.now() - this.checkedAt < this.config.refreshIntervalMs
   }
@@ -249,11 +267,12 @@ export class SharedModelCatalog extends Service {
   /** Arm the next periodic attempt, replacing any armed one. */
   private schedule(): void {
     this.clearTimer()
+    if (this.abortController.signal.aborted) return
     this.timer = setTimeout(() => {
       this.timer = undefined
-      void this.refresh()
+      void this.refreshNow()
         .catch((error: unknown) => { this.ctx.logger.warn(`model catalog: refresh failed: ${message(error)}`) })
-        .finally(() => { this.schedule() })
+        .finally(() => { if (!this.abortController.signal.aborted) this.schedule() })
     }, this.config.refreshIntervalMs)
     // The catalog is background work: a process that exits on its own must not
     // be held open by a poll that has not come due.
@@ -272,12 +291,15 @@ export class SharedModelCatalog extends Service {
    */
   private async readAndPublish(): Promise<void> {
     const response = await fetch(this.config.catalogURL, {
-      signal: AbortSignal.timeout(this.config.requestTimeoutMs),
+      signal: AbortSignal.any([
+        AbortSignal.timeout(this.config.requestTimeoutMs),
+        this.abortController.signal,
+      ]),
       headers: { accept: 'application/json' },
     })
     const catalog = parseCatalogDocument(await readBoundedJson(response, this.config.maxResponseBytes))
-    this.publish(catalog)
     this.checkedAt = Date.now()
+    this.publish(catalog)
     try {
       await this.stored?.set(cacheOf(catalog, this.config.catalogURL, this.checkedAt))
     } catch (error) {
@@ -289,6 +311,7 @@ export class SharedModelCatalog extends Service {
   private publish(catalog: ReturnType<typeof parseCatalogDocument>): void {
     this.generation += 1
     this.view = new CatalogView(this.generation, catalog, this.config.aliases)
+    this.ctx.emit('model-catalog/updated', { generation: this.generation })
   }
 }
 

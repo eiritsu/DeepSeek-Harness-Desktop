@@ -12,9 +12,9 @@ Status: implemented
 
 ## Decision
 
-**事实属于模型，编码属于渠道。** `packages/llm/model-catalog` 通过 `ctx.modelCatalog` 发布一代来自 models.dev 目录（`https://models.dev/catalog.json?type=all`）的、按规范模型划分的事实。该文档按间隔读取、在字节上限内解析，最近一次被接受的世代还会保存在持久存储中，因此没有可达目录的冷启动可以用它上次收集的快照作答。失败的刷新保持已发布的世代不动：不可达的目录只损失新鲜度，别无其他；而解析不出任何内容的文档会被拒绝，而不是被发布。
+**事实属于模型，编码属于渠道。** `packages/llm/model-catalog` 通过 `ctx.modelCatalog` 发布一代来自 models.dev 目录（`https://models.dev/catalog.json?type=all`）的、按规范模型划分的事实。该文档按间隔读取、在字节上限内解析，最近一次被接受的世代还会保存在持久存储中，因此启动时会先发布 URL 匹配的快照，再在后台重新验证，即使快照仍然新鲜也会验证。失败的刷新保持已发布的世代不动：不可达的目录只损失新鲜度，别无其他；而解析不出任何内容的文档会被拒绝，而不是被发布。每次被接受的发布都会通过 `model-catalog/updated` 携带其代次编号发出通知。
 
-把路由本地的模型 id 寻址到规范记录有三种形式，优先级依次是——部署方显式的映射、精确的限定 `owner/model` id、以及裸 basename——每一种都是拒绝而不是猜测。两个 owner 发布的同名 basename 解析不出结果，两条声称同一 id 的映射也解析不出结果，而为另一个 `catalogURL` 收集的已存快照会被丢弃，而不是在它并非为此收集的配置下读取。
+把路由本地的模型 id 寻址到规范记录有三种形式，优先级依次是——部署方显式的映射、精确的限定 `owner/model` id、以及裸 basename——每一种都是拒绝而不是猜测。provider 模型条目通过 `canonical_model_id` 关联到规范记录；只有匹配条目都指向同一规范记录时，路由本地别名才会解析。channel efforts 跟随该身份并优先采用请求渠道的声明；自定义路由没有目录渠道时，只有一个无歧义的规范 owner 声明能提供 effort。两个 owner 发布的同名 basename 会解析为空，除非 provider 条目能唯一确定它；两条声称同一 id 的映射也解析为空；为另一个 `catalogURL` 收集的已存快照会被丢弃，而不是在它并非为此收集的配置下读取。可选缓存 channel identity 保持现有 version-1 single-unit cache 可读；旧条目继续使用 owner 与 model 寻址。
 
 等级词汇是唯一不属于事实的部分，因为它就是渠道能放到线路上的东西。目录按渠道报告它，适配器再与自身传输能力取交集，然后才报告自己能编码什么。`ModelFacts.maxOutputTokens` 是请求默认值可以主张的上限，而绝不是请求默认值：部署配置的输出预算由部署自己决定。
 

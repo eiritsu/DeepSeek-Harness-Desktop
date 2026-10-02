@@ -28,17 +28,17 @@ import { closeMockServers, mockServer, textEvents } from '../../llm-pi-ai/tests/
 /** The catalog document the model catalog endpoint serves, keyed as models.dev keys it. */
 const CATALOG = {
   models: {
-    'deepseek/deepseek-v4-flash': {
-      id: 'deepseek/deepseek-v4-flash',
+    'deepseek/catalog-test-model': {
+      id: 'deepseek/catalog-test-model',
       modalities: { input: ['text'] },
-      limit: { context: 4_096, output: 512 },
+      limit: { context: 8_192, output: 512 },
       reasoning: true,
     },
   },
   providers: {
     deepseek: {
       id: 'deepseek',
-      models: { 'deepseek-v4-flash': { reasoning_options: [{ type: 'effort', values: ['low', 'high'] }] } },
+      models: { 'catalog-test-model': { reasoning_options: [{ type: 'effort', values: ['low', 'high'] }] } },
     },
   },
 }
@@ -89,8 +89,13 @@ async function boot(catalogURL: string, providerURL: string, storageRoot: string
     '  config:',
     '    providers:',
     '      deepseek:',
+    '        api: openai-completions',
     '        apiKeyEnv: PI_TEST_KEY',
     `        baseURL: ${providerURL}`,
+    '        models:',
+    '          - id: catalog-test-model',
+    '            contextWindow: 1000000',
+    '            maxTokens: 65536',
     '',
   ].join('\n'))
 
@@ -174,8 +179,8 @@ describe('shared model catalog in the shipped composition', () => {
     // The installed pi-ai entry claims a million tokens of context and
     // 65,536 of output; the shared record is the one a deployment reads, and
     // the route it names is the one the request is bounded by.
-    await expect(ctx.llm.resolveModelInfo('deepseek', 'deepseek-v4-flash')).resolves.toMatchObject({
-      context: { contextWindow: 4_096 },
+    await expect(ctx.llm.resolveModelInfo('deepseek', 'catalog-test-model')).resolves.toMatchObject({
+      context: { contextWindow: 8_192 },
       inputModalities: ['text'],
       reasoning: {
         efforts: [
@@ -188,13 +193,13 @@ describe('shared model catalog in the shipped composition', () => {
     // A cap above what the record says the model produces is refused before
     // the provider is asked, so no request leaves the process at all.
     await expect(requestText(ctx, {
-      provider: 'deepseek', model: 'deepseek-v4-flash', maxTokens: 1_024,
+      provider: 'deepseek', model: 'catalog-test-model', maxTokens: 1_024,
     })).rejects.toThrow(/produces at most 512 output tokens/)
     expect(provider.paths).toEqual([])
 
-    // A cap the model can answer is sent, carrying the deployment's own budget.
+    // A cap the model can answer reaches the configured route.
     expect(await requestText(ctx, {
-      provider: 'deepseek', model: 'deepseek-v4-flash', maxTokens: 512,
+      provider: 'deepseek', model: 'catalog-test-model', maxTokens: 512,
     })).toBe('hello')
     expect(provider.requests[0]).toMatchObject({ max_tokens: 512 })
   }, 30_000)
@@ -221,10 +226,10 @@ describe('shared model catalog in the shipped composition', () => {
     const recovered = catalogOf(second)
 
     expect(recovered.loaded).toBe(true)
-    expect(recovered.facts.facts({ model: 'deepseek-v4-flash', ownedBy: 'deepseek' })).toEqual({
-      canonicalId: 'deepseek/deepseek-v4-flash',
+    expect(recovered.facts.facts({ model: 'catalog-test-model', ownedBy: 'deepseek' })).toEqual({
+      canonicalId: 'deepseek/catalog-test-model',
       inputModalities: ['text'],
-      contextWindow: 4_096,
+      contextWindow: 8_192,
       maxOutputTokens: 512,
       reasoning: true,
       reasoningEfforts: ['low', 'high'],

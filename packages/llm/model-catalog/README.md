@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`@deepseek-ai/dsh-model-catalog` publishes one shared models.dev fact per canonical model, whatever channel serves it. It reads the catalog on an interval, parses it under a byte limit, and publishes each result as one immutable generation; adapters pin a generation for a whole operation, so a model is encoded from the facts it was described with. A failed refresh changes nothing: the last good generation stays published and, across a restart, stays on disk. A document that parses to nothing is refused, so a truncated response cannot replace good facts with none.
+`@deepseek-ai/dsh-model-catalog` publishes one shared models.dev fact per canonical model, whatever channel serves it. On startup it publishes the durable last-good snapshot first, then revalidates in the background even when that snapshot is fresh. Later reads follow the configured refresh interval. Each accepted document becomes one immutable generation; adapters pin a generation for a whole operation, and `model-catalog/updated` announces each publication. A failed refresh changes nothing: the last good generation stays published and, across a restart, stays on disk. A document that parses to nothing is refused, so a truncated response cannot replace good facts with none.
 
 ## Table of Contents
 
@@ -62,7 +62,7 @@ A mapping whose `canonicalId` carries no owner, or whose `modelId` is empty, fai
 
 ### Address a model
 
-Three ways in, in precedence order. A configured mapping decides the answer — including when it decides there is none, so a mapping naming a canonical id this generation does not carry resolves to nothing rather than falling through to a same-named model. Failing that, a qualified `owner/model` id is answered exactly, and a bare basename is answered only when exactly one owner publishes it. Every refusal is `undefined`: the adapter keeps whatever facts it had.
+Three ways in, in precedence order. A configured mapping decides the answer — including when it decides there is none, so a mapping naming a canonical id this generation does not carry resolves to nothing rather than falling through to a same-named model. Failing that, a qualified `owner/model` id is answered exactly, and a bare basename is answered only when exactly one owner publishes it. Provider entry ids also resolve through their `canonical_model_id`; an unknown route owner inherits the canonical owner's channel efforts only when the catalog identifies one unambiguous declaration. Every refusal is `undefined`: the adapter keeps whatever facts it had.
 
 ```ts
 import type { Context } from '@deepseek-ai/cordis'
@@ -90,10 +90,11 @@ What a record carries is a property of the model, not of the channel serving it:
 | `src/resolve.ts` | `CatalogView`, the immutable generation, and its addressing rules |
 | `src/service.ts` | The service: domain, periodic refresh, publish, and durable snapshot |
 | `src/config.ts` | Configuration schema and the one place its defaults are applied |
+| `src/events.ts` | Typed live event emitted for each published generation |
 
 ### Generations
 
-A refresh publishes a whole new `CatalogView`; a published view is never mutated. A consumer that must answer twice from the same facts — describing a model, then encoding a request against it — holds one view for the whole operation, and recognizes a refresh by the view's identity rather than by a number it would have to poll. `dsh-llm-pi-ai` builds its collection under exactly one view, so a refresh between a selector's read and a request's read produces two consistent snapshots rather than one mixed one.
+A refresh publishes a whole new `CatalogView`; a published view is never mutated. Startup publishes a matching durable snapshot before beginning a network revalidation, regardless of the snapshot age. A successful network read replaces it and emits `model-catalog/updated` with the new generation number. A consumer that must answer twice from the same facts — describing a model, then encoding a request against it — holds one view for the whole operation, and recognizes a refresh by the view's identity rather than by a number it would have to poll. `dsh-llm-pi-ai` builds its collection under exactly one view, so a refresh between a selector's read and a request's read produces two consistent snapshots rather than one mixed one.
 
 ### What is bounded
 
@@ -101,7 +102,7 @@ The byte limit is applied while the body streams, so an oversized or endless res
 
 ### The durable snapshot
 
-The `model_catalog` domain's global slot holds the last accepted document and the URL it was collected for. It exists so a cold start with no reachable catalog still has facts. A stored document naming another URL is discarded rather than read under configuration it was not collected for. A persistence failure is reported on its own and leaves the published facts in place: the next cold start is the only thing that loses.
+The `model_catalog` domain's global slot holds the last accepted document and the URL it was collected for. The additive optional channel identity remains readable in the existing version-1 single-unit cache; old snapshots without it retain their legacy owner-and-model association. It exists so a cold start with no reachable catalog still has facts. A stored document naming another URL is discarded rather than read under configuration it was not collected for. A persistence failure is reported on its own and leaves the published facts in place: the next cold start is the only thing that loses.
 
 -----
 

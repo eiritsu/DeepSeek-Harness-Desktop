@@ -173,6 +173,20 @@ function currentSelection(ctx: Context, sessionId: SessionId) {
 }
 
 describe('Web session model selection', () => {
+  it('refreshes shared model facts before returning selector metadata', async () => {
+    const { ctx } = await harness()
+    const refresh = vi.fn(() => Promise.resolve())
+    ctx.provide('modelCatalog', { refresh } as never)
+    const remote = createSessionTestRemote(ctx, {
+      defaultModelSelection: () => ({ provider: 'deepseek-official', model: 'deepseek-chat' }),
+      cwd: '/tmp',
+    })
+
+    expect(expectValue(await remote.modelCatalog()).groups).toHaveLength(1)
+    expect(refresh).toHaveBeenCalledOnce()
+    await ctx.fiber.dispose()
+  })
+
   it('validates an ordered image batch before persisting any member', async () => {
     const { ctx, agent, sessionId } = await harness()
     const validateImage = vi.fn((_input: { data: Uint8Array }) => Promise.resolve())

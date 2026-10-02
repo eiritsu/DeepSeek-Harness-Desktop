@@ -1523,7 +1523,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     methods: [
       {
         signature: 'async refresh(signal?: AbortSignal): Promise<void>',
-        description: 'Re-read the catalog when the published snapshot has gone stale.\n\nA failed request is reported and swallowed: the last-good view stays published, so an unreachable catalog costs freshness and nothing else. Concurrent callers share one request.',
+        description: 'Wait for an active read or re-read a stale catalog snapshot.\n\nA failed request is reported and swallowed: the last-good view stays published, so an unreachable catalog costs freshness and nothing else. Concurrent callers share one request.',
         parameters: [{ name: 'signal', description: 'optional cancellation for this caller.' }],
         returns: 'resolution once the snapshot is fresh, or once the attempt failed.',
         throws: ['the caller\'s own abort, and nothing else.'],
@@ -1964,7 +1964,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'after saving the first available model or retaining the existing default.',
       },
       {
-        signature: '@Remote(\'modelCatalog\') modelCatalog(): Promise<ModelCatalog>',
+        signature: '@Remote(\'modelCatalog\') async modelCatalog(): Promise<ModelCatalog>',
         description: 'Describe every currently routable model for Host-generation selectors.',
         parameters: [],
         returns: 'provider-grouped models, the deployment default, and isolated provider failures.',
@@ -4165,6 +4165,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     summary: 'Waterfall around every streaming model call (retry, replay, routing).',
     description: 'Waterfall around every streaming model call (retry, replay, routing). Bound to the LlmRuntime; call `next()` to reach the resolved adapter\'s stream, or yield your own chunks to short-circuit.',
     parameters: [{ name: 'options', description: 'the full request. A LOOP-built request carries the process-local {@link markAgentLoopRequest} identity and arrives deep-frozen (mutation throws): its content is a pure function of the session log (the reconstructability Agent Note), so listeners read it, never rewrite it. Hand-built calls do not carry that marker; callers own their request inputs and must keep them unchanged until the stream settles.' }],
+  },
+  {
+    name: 'model-catalog/updated',
+    mode: 'emit',
+    signature: '\'model-catalog/updated\'(payload: { generation: number }): void',
+    summary: 'A complete catalog generation was accepted and published.',
+    description: 'A complete catalog generation was accepted and published.',
+    parameters: [{ name: 'payload', description: 'The generation consumers should read from `ctx.modelCatalog.facts`.' }],
   },
   {
     name: 'permission-presets/catalog-changed',

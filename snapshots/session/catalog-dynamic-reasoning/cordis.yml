@@ -1,0 +1,4 @@
+# Preserve the model switch while replay verifies its effort against catalog facts.
+- insert:
+    - id: model-switch-driver
+      name: './model-switch-driver.mjs'

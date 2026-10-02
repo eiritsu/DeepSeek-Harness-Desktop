@@ -58,6 +58,7 @@ export function apply(ctx) {
     handler(_request, response) { response.end('plugin route ready') } }))
   ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/desktop-smoke-office-cli',
     async handler(_request, response) {
+      console.log('desktop runtime: skill CLI smoke started')
       try {
         const skill = await ctx.skills.get('office-docx')
         const json = skill?.content.match(/\\n(\\{\\n[\\s\\S]+)$/u)?.[1]
@@ -68,6 +69,7 @@ export function apply(ctx) {
         const output = ${JSON.stringify(join(home, 'cli.pdf'))}
         await promisify(execFile)(node, [cli, 'convert', '--input', ${JSON.stringify(join(home, 'input.docx'))}, '--output', output], options)
         response.end(JSON.stringify({ capabilities: JSON.parse(capabilities.stdout), pdf: (await readFile(output)).toString('base64') }))
+        console.log('desktop runtime: skill CLI smoke succeeded')
       } catch (error) {
         response.statusCode = 500
         response.end(inspect(error, { depth: 5 }))
@@ -76,12 +78,14 @@ export function apply(ctx) {
   for (const input of ${JSON.stringify(inputs)}) {
     ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/desktop-smoke-office/' + input.extension,
       async handler(_request, response) {
+        console.log('desktop runtime: ' + input.extension.toUpperCase() + '-to-PDF HTTP request started')
         try {
           const bytes = Buffer.from(input.bytes, 'base64')
           const result = await ctx.officeToPdf.convert({ extension: input.extension, priority: 'foreground',
             source: { key: 'desktop-smoke-' + input.extension, version: 'fixture', bytes: bytes.length,
               async read() { return { bytes, version: 'fixture' } } } })
           response.end(Buffer.from(result.pdf))
+          console.log('desktop runtime: ' + input.extension.toUpperCase() + '-to-PDF HTTP request succeeded')
         } catch (error) {
           response.statusCode = 500
           response.end(inspect(error, { depth: 5 }))

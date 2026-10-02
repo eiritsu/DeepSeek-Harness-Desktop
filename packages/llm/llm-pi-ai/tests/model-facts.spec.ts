@@ -41,7 +41,16 @@ function adapterOf(
 
 /** The installed-catalog route pointed at a provider stand-in. */
 function catalogRoute(baseURL: string): Record<string, PiAiProviderProfile> {
-  return { deepseek: { baseURL } }
+  return {
+    deepseek: {
+      api: 'openai-completions',
+      baseURL,
+      models: [
+        { id: 'deepseek-v4-flash', contextWindow: 1_000_000, maxTokens: 65_536, input: ['text', 'image'], reasoningEfforts: { low: 'low', high: 'high' } },
+        { id: 'deepseek-v4-flash-vision-exp', contextWindow: 1_000_000, maxTokens: 65_536, input: ['text', 'image'], reasoningEfforts: { low: 'low', high: 'high' } },
+      ],
+    },
+  }
 }
 
 /** A hand-declared gateway, where every model fact comes from configuration. */
@@ -61,6 +70,16 @@ function withoutName<T extends { name: string }>(described: T): Omit<T, 'name'> 
   const { name, ...rest } = described
   void name
   return rest
+}
+
+/** Decode provider bodies captured by the local HTTP boundary. */
+function requestsOf(server: { requests: unknown[] }): Record<string, unknown>[] {
+  return server.requests.map((request) => {
+    if (typeof request !== 'object' || request === null || Array.isArray(request)) {
+      throw new Error('mock provider request was not a JSON object')
+    }
+    return request as Record<string, unknown>
+  })
 }
 
 /** Drive one prepared call far enough to reach the refusal it makes. */
@@ -98,6 +117,7 @@ describe('shared model facts', () => {
       id: 'deepseek-v4-flash-vision-exp',
       inputModalities: ['text'],
       context: { contextWindow: 4_096 },
+      defaultMaxTokens: 65_536,
       reasoning: {
         efforts: [
           { id: ReasoningEffortId('low'), name: 'Low' },
@@ -108,7 +128,7 @@ describe('shared model facts', () => {
     // A model this record does not describe keeps the installed catalog's facts.
     await expect(adapter.resolveModel('deepseek', 'deepseek-v4-flash')).resolves.toMatchObject({
       context: { contextWindow: 1_000_000 },
-      inputModalities: ['text'],
+      inputModalities: ['text', 'image'],
     })
   })
 
@@ -221,7 +241,7 @@ describe('shared model facts', () => {
     expect(described.reasoning).toBeUndefined()
   })
 
-  it('keeps the transport modalities when the record shares none of them', async () => {
+  it('uses the shared modalities instead of a text-only route fallback', async () => {
     const server = await mockServer([{ events: textEvents }])
     const adapter = adapterOf(gateway(`${server.url}/v1`, {
       id: 'acme-text',
@@ -231,13 +251,60 @@ describe('shared model facts', () => {
       'acme-gateway/acme-text': { canonicalId: 'zhipuai/glm-5.3-flash', inputModalities: ['image'] },
     }))
 
-    // A record with no modality this route can carry says nothing usable about
-    // it, so the transport's own list stands rather than describing a model
-    // that takes only images the request path refuses.
+    // A route's text-only fallback must not hide a modality the accepted
+    // model record declares for this exact model.
     await expect(adapter.resolveModel('acme-gateway', 'acme-text')).resolves.toMatchObject({
-      inputModalities: ['text'],
+      inputModalities: ['image'],
       context: { contextWindow: 65_536 },
     })
+  })
+
+  it('materializes shared effort and capacity facts for a custom route', async () => {
+    const server = await mockServer([
+      { events: textEvents }, { events: textEvents }, { events: textEvents },
+    ])
+    const adapter = adapterOf({
+      'acme-gateway': {
+        apiKeyEnv: 'PI_TEST_KEY',
+        api: 'openai-completions',
+        baseURL: `${server.url}/v1`,
+        compat: { supportsReasoningEffort: true },
+        models: [{ id: 'acme-dynamic', contextWindow: 65_536, maxTokens: 4_096 }],
+      },
+    }, () => generation({
+      'acme-gateway/acme-dynamic': {
+        canonicalId: 'zhipuai/glm-5.3-flash',
+        inputModalities: ['text', 'image'],
+        contextWindow: 131_072,
+        maxOutputTokens: 2_048,
+        reasoning: true,
+        reasoningEfforts: ['none', 'low', 'high', 'xhigh', 'max'],
+      },
+    }))
+
+    await expect(adapter.resolveModel('acme-gateway', 'acme-dynamic')).resolves.toMatchObject({
+      inputModalities: ['text', 'image'],
+      context: { contextWindow: 131_072 },
+      reasoning: {
+        efforts: [
+          { id: ReasoningEffortId('off') },
+          { id: ReasoningEffortId('low') },
+          { id: ReasoningEffortId('high') },
+          { id: ReasoningEffortId('xhigh') },
+          { id: ReasoningEffortId('max') },
+        ],
+      },
+    })
+
+    for (const effort of ['off', 'xhigh', 'max']) {
+      await firstChunk({
+        provider: 'acme-gateway', model: 'acme-dynamic', messages: [],
+        reasoningEffort: ReasoningEffortId(effort),
+      }, adapter)
+    }
+    const requests = requestsOf(server)
+    expect(requests.map(request => request['reasoning_effort'])).toEqual(['none', 'xhigh', 'max'])
+    expect(requests.map(request => request['max_completion_tokens'])).toEqual([2_048, 2_048, 2_048])
   })
 
   it('bounds a request by the shared output ceiling without making one a default', async () => {

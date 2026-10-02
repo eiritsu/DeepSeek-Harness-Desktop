@@ -35,6 +35,7 @@ import type {
   ModelThinkingLevel,
   MutableModels,
   SimpleStreamOptions,
+  ThinkingLevelMap,
   ThinkingLevel,
 } from '@earendil-works/pi-ai'
 import {
@@ -64,6 +65,7 @@ import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import type { ResolvedPiAiProviderProfile } from './config.ts'
 import { toPiContext } from './context.ts'
 import type { DeclaredModelFacts, PiAiModality } from './catalog.ts'
+import { THINKING_LEVELS } from './catalog.ts'
 import { createModels, getSupportedThinkingLevels } from './models.ts'
 import { toStreamChunks } from './stream.ts'
 
@@ -156,12 +158,8 @@ function profileOptions(
  *
  * The shared record describes the model and overrides a local declaration for
  * every field it carries; a field it leaves unset falls back to what this
- * profile declared, then to the installed catalog. The transport has the last
- * word either way — a modality the request path refuses must not appear in what
- * a selector shows, or the model would be described as taking images that every
- * request to it rejects. A record that shares no modality at all with the
- * transport says nothing usable about this route, so the transport's own list
- * stands.
+ * profile declaration, then to the installed catalog. The effective descriptor
+ * is registered with pi-ai, so discovery and requests use the same modality list.
  * @param model - the resolved model descriptor.
  * @param facts - the shared facts for this route and model, when a catalog is mounted.
  * @param declared - the facts this profile declared for the model, when any.
@@ -172,13 +170,63 @@ function effectiveModalities(
   facts: ModelFacts | undefined,
   declared: DeclaredModelFacts | undefined,
 ): readonly PiAiModality[] {
-  if (facts?.inputModalities !== undefined) {
-    const shared = new Set(facts.inputModalities)
-    const narrowed = model.input.filter(modality => shared.has(modality))
-    return narrowed.length > 0 ? narrowed : [...model.input]
-  }
+  // The route profile supplies a fallback when the shared record is silent;
+  // it does not narrow a model capability the current record names.
+  if (facts?.inputModalities !== undefined) return [...facts.inputModalities]
   if (declared?.inputModalities !== undefined) return [...declared.inputModalities]
   return [...model.input]
+}
+
+/** Whether pi-ai's selected protocol encoder accepts an explicit effort. */
+function canEncodeReasoningEffort(model: Model<Api>): boolean {
+  if (model.api !== 'openai-completions') return true
+  if (model.compat === undefined) return true
+  const compat = model.compat as {
+    supportsReasoningEffort?: boolean
+    thinkingFormat?: string
+  }
+  return compat.supportsReasoningEffort !== false
+    || compat.thinkingFormat === 'openrouter'
+    || compat.thinkingFormat === 'ant-ling'
+    || compat.thinkingFormat === 'string-thinking'
+}
+
+/** The accepted model facts applied to the descriptor pi-ai uses for this call. */
+function modelWithFacts(
+  model: Model<Api>,
+  facts: ModelFacts | undefined,
+  declared: DeclaredModelFacts | undefined,
+): Model<Api> {
+  const input = effectiveModalities(model, facts, declared)
+  const contextWindow = facts?.contextWindow ?? declared?.contextWindow ?? model.contextWindow
+  const maxTokens = facts?.maxOutputTokens === undefined
+    ? model.maxTokens
+    : Math.min(model.maxTokens, facts.maxOutputTokens)
+  if (facts?.reasoning === false) {
+    return { ...model, input: [...input], contextWindow, maxTokens, reasoning: false }
+  }
+  if (facts?.reasoningEfforts === undefined) return { ...model, input: [...input], contextWindow, maxTokens }
+
+  const wireValues = new Map<ModelThinkingLevel, string>()
+  for (const value of facts.reasoningEfforts) {
+    const level: ModelThinkingLevel = value === 'none' ? 'off' : value as ModelThinkingLevel
+    if (value !== 'none' && !THINKING_LEVELS.includes(value as ModelThinkingLevel)) continue
+    const existing = model.thinkingLevelMap?.[level]
+    if (model.thinkingLevelMap !== undefined && existing === null) continue
+    wireValues.set(level, typeof existing === 'string' ? existing : value)
+  }
+  const thinkingLevelMap: ThinkingLevelMap = Object.fromEntries(
+    THINKING_LEVELS.map(level => [level, wireValues.get(level) ?? null]),
+  )
+  const profileDenied = declared?.reasoning === false
+  return {
+    ...model,
+    input: [...input],
+    contextWindow,
+    maxTokens,
+    reasoning: !profileDenied && canEncodeReasoningEffort(model) && wireValues.size > 0,
+    thinkingLevelMap,
+  }
 }
 
 /**
@@ -202,18 +250,21 @@ function encodableLevels(
   facts: ModelFacts | undefined,
   declared: DeclaredModelFacts | undefined,
 ): ModelThinkingLevel[] {
-  const levels = getSupportedThinkingLevels(model)
+  const effective = modelWithFacts(model, facts, declared)
+  if (!effective.reasoning || !canEncodeReasoningEffort(effective)) return []
+  const levels = getSupportedThinkingLevels(effective)
   // A record that says the model does not reason denies every level, whatever
   // the transport could encode for it — the same denial the description shows.
   if (facts?.reasoning === false) return []
-  if (facts?.reasoningEfforts !== undefined) {
-    const accepted = new Set(facts.reasoningEfforts)
-    return levels.filter(level => accepted.has(level))
-  }
+  if (facts?.reasoningEfforts !== undefined) return levels
   if (declared?.reasoningEfforts !== undefined) {
     const own = new Set(declared.reasoningEfforts)
     return levels.filter(level => own.has(level))
   }
+  // A shared positive reasoning flag carries no selectable level list. Keep
+  // a custom route's local `false` descriptor from turning that flag into a
+  // generic menu of levels the directory never advertised.
+  if (facts?.reasoning === true && !model.reasoning) return []
   return levels
 }
 
@@ -341,8 +392,15 @@ export class PiAiAdapter extends LlmAdapter {
     const facts = this.config.modelFacts?.()
     if (this.snapshot?.profiles === profiles && this.snapshot.facts === facts) return this.snapshot
     const models: MutableModels = createModels(this.config.auth)
-    for (const profile of profiles.values()) {
-      if (profile.piProvider !== undefined) models.setProvider(profile.piProvider)
+    for (const [provider, profile] of profiles) {
+      const source = profile.piProvider
+      if (source === undefined) continue
+      const entries = source.getModels().map(model => modelWithFacts(
+        model,
+        facts?.facts({ model: model.id, ownedBy: provider }),
+        profile.declaredFacts.get(model.id),
+      ))
+      models.setProvider({ ...source, getModels: () => entries })
     }
     this.snapshot = { profiles, models, facts }
     return this.snapshot
@@ -440,8 +498,8 @@ export class PiAiAdapter extends LlmAdapter {
       provider,
       id: model,
       name: resolvedModel.name,
-      inputModalities: effectiveModalities(resolvedModel, facts, declared),
-      context: { contextWindow: facts?.contextWindow ?? declared?.contextWindow ?? resolvedModel.contextWindow },
+      inputModalities: resolvedModel.input,
+      context: { contextWindow: resolvedModel.contextWindow },
       ...configuredMaxTokens === undefined ? {} : { defaultMaxTokens: configuredMaxTokens },
       ...reasoningInfo(resolvedModel, facts, declared, levels, defaultLevel),
     }

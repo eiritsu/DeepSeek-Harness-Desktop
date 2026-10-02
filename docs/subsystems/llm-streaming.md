@@ -1098,7 +1098,7 @@ Reads are synchronous from the published view; only refresh awaits. The view is 
 
 ```ts cordis-catalog
 /**
- * Re-read the catalog when the published snapshot has gone stale.
+ * Wait for an active read or re-read a stale catalog snapshot.
  *
  * A failed request is reported and swallowed: the last-good view stays
  * published, so an unreachable catalog costs freshness and nothing else.
@@ -1160,4 +1160,25 @@ Waterfall around every streaming model call (retry, replay, routing). Bound to t
 ```
 
 Source: [`packages/llm/llm/src/index.ts`](../../packages/llm/llm/src/index.ts)
+
+<a id="model-catalog-events"></a>
+
+### `model-catalog/*` events
+
+<a id="model-catalogupdated--emit"></a>
+
+#### `model-catalog/updated` — emit
+
+A complete catalog generation was accepted and published.
+
+```ts cordis-catalog
+/**
+ * A complete catalog generation was accepted and published.
+ * @param payload - The generation consumers should read from `ctx.modelCatalog.facts`.
+ * @mode emit
+ */
+'model-catalog/updated'(payload: { generation: number }): void
+```
+
+Source: [`packages/llm/model-catalog/src/events.ts`](../../packages/llm/model-catalog/src/events.ts)
 <!-- END GENERATED cordis-surface -->

@@ -265,6 +265,21 @@ describe('ui-model-selection dual entry', () => {
     }
   })
 
+  it('reloads model metadata when the shared catalog publishes a new generation', async () => {
+    const b = await bench()
+    try {
+      b.mint('s1')
+      const before = b.calls.models
+      b.setGroups([{ ...GROUPS[0]!, models: [GROUPS[0]!.models[0]!] }])
+      b.remote.emit('model-catalog/updated', [{ generation: 2 }])
+      await vi.waitFor(() => { expect(b.calls.models).toBe(before + 1) })
+      const options = await b.popup().options(projection('s1'), new AbortController().signal)
+      expect(options.map(option => option.label)).toEqual(['DeepSeek-V4-Flash'])
+    } finally {
+      await b.ctx.fiber.dispose()
+    }
+  })
+
   it('a seat selection is the current the popup marks active next — one shared state', async () => {
     const b = await bench()
     b.mint('s1')

@@ -16,6 +16,7 @@
  */
 
 import { SharedModelCatalog } from './service.ts'
+import './events.ts'
 
 export { Config, DEFAULT_CATALOG_URL, DEFAULT_MAX_RESPONSE_BYTES, DEFAULT_REFRESH_INTERVAL_MS, DEFAULT_REQUEST_TIMEOUT_MS, resolveConfig } from './config.ts'
 export type { ResolvedConfig } from './config.ts'

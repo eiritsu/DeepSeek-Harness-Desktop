@@ -89,6 +89,7 @@
     "@deepseek-ai/dsh-file-reference": "workspace:*",
     "@deepseek-ai/dsh-fs": "workspace:*",
     "@deepseek-ai/dsh-llm": "workspace:*",
+    "@deepseek-ai/dsh-model-catalog": "workspace:*",
     "@deepseek-ai/dsh-native-command": "workspace:*",
     "@deepseek-ai/dsh-scope": "workspace:*",
     "@deepseek-ai/dsh-session": "workspace:*",
@@ -114,6 +115,9 @@
     "@deepseek-ai/dsh-session-projection-cache": {
       "optional": true
     },
+    "@deepseek-ai/dsh-model-catalog": {
+      "optional": true
+    },
     "@deepseek-ai/dsh-settings": {
       "optional": true
     }
@@ -137,6 +141,7 @@
     "@deepseek-ai/dsh-fs": "workspace:*",
     "@deepseek-ai/dsh-fs-local": "workspace:*",
     "@deepseek-ai/dsh-llm": "workspace:*",
+    "@deepseek-ai/dsh-model-catalog": "workspace:*",
     "@deepseek-ai/dsh-native-command": "workspace:*",
     "@deepseek-ai/dsh-permission-presets": "workspace:*",
     "@deepseek-ai/dsh-remote-mock": "workspace:*",
