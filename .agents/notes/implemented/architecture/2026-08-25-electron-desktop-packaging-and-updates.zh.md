@@ -81,7 +81,7 @@ Electron 更新只使用一个 `electron-updater` 发布流和签名 `electron-b
 
 核心 dsh 和私有 Desktop Host 只来自签名应用的资源树。插件安装把包规格交给 pnpm，包括本地和远程来源，但不接受原始 pnpm 命令。pnpm 负责依赖解析和 profile 的 `allowBuilds` 策略；Host 加载已启用的 bundle。
 
-Electron 发布产物必须签名；macOS 产物必须公证。打包与上传命令从 Git 忽略的目标 `.env.windows` 或 `.env.macos` 读取发布配置，子进程通过编排器选择的环境字段接收配置。目标文件是发布字段的唯一来源，避免旧的 shell 或系统凭据覆盖本地选择；配置加载不修改父进程环境。打包在构建、下载或清理发布记录前校验该模式必需的应用 ID、更新地址、签名身份及本地文件，macOS 还要求一套完整公证凭据。单独的 `check:package` 执行同一校验而不访问 Token 或 Apple；凭据真实性仍由实际签名与公证验证。配置加载会拒绝缺失或格式错误的标识符和不完整的公证凭据，macOS 打包还会强制签名，避免证书发现过程静默选择其他已安装身份或生成未签名发布。运行时准备会验证每个内嵌 Mach-O 文件的精确 Authority 与 Team ID，以及时间戳和 hardened-runtime 标记。签名后钩子会执行 Apple 的深度严格应用验证，并要求同一叶证书 Authority 与 Team ID 完全匹配，验证通过后才继续生成产物。固定目标安装包命令使用[隔离的 App 副本并行公证](../process/2026-09-09-parallel-macos-notarization.zh.md)：ZIP 包含已钉票的 App，签名 DMG 则携带覆盖其中未钉票 App 的票据。DMG 的 artifact-completion hook 要求其使用配置的身份、具备有效票据并通过 Gatekeeper。只有两条产物流都成功，命令才会移入其输出并写入发布完成记录；仅生成目录的命令仍会公证 App 并钉票。macOS 更新使用签名 ZIP，因此 DMG 不生成 blockmap；否则钉票会让已经生成的 DMG blockmap 失效。
+Electron 发布产物必须签名；macOS 发布产物必须公证。打包与上传命令从 Git 忽略的目标 `.env.windows` 或 `.env.macos` 读取发布配置，子进程通过编排器选择的环境字段接收配置。目标文件是发布字段的唯一来源，避免旧的 shell 或系统凭据覆盖本地选择；配置加载不修改父进程环境。打包在构建、下载或清理发布记录前校验该模式必需的应用 ID、更新地址、签名身份及本地文件，macOS 发布构建还要求一套完整公证凭据。单独的 `check:package` 执行同一校验而不访问 Token 或 Apple；凭据真实性仍由实际签名与公证验证。配置加载会拒绝缺失或格式错误的标识符和不完整的公证凭据；发布打包要求配置的签名身份，避免证书发现过程静默选择其他已安装身份或生成未签名发布。显式的本地 macOS 未签名构建使用 electron-builder 身份 `-` 对 App 进行 ad-hoc 签名，无需 Apple 凭据。其 `afterSign` 钩子和运行时冒烟检查都会执行深度严格 bundle 验证并要求 ad-hoc 签名标记；仅执行 Electron RunAsNode 不能发现无效的嵌套 bundle 资源。现有 `disable-library-validation` entitlement 支持该身份使用配置的 hardened runtime。运行时准备会验证每个内嵌 Mach-O 文件的精确 Authority 与 Team ID，以及时间戳和 hardened-runtime 标记。签名后钩子会执行 Apple 的深度严格应用验证，并要求同一叶证书 Authority 与 Team ID 完全匹配，验证通过后才继续生成发布产物。固定目标安装包命令使用[隔离的 App 副本并行公证](../process/2026-09-09-parallel-macos-notarization.zh.md)：ZIP 包含已钉票的 App，签名 DMG 则携带覆盖其中未钉票 App 的票据。DMG 的 artifact-completion hook 要求其使用配置的身份、具备有效票据并通过 Gatekeeper。只有两条产物流都成功，命令才会移入其输出并写入发布完成记录；仅生成目录的命令仍会公证 App 并钉票。macOS 更新使用签名 ZIP，因此 DMG 不生成 blockmap；否则钉票会让已经生成的 DMG blockmap 失效。
 
 [固定版本的 osx-sign 补丁](../../../../patches/@electron__osx-sign@1.3.3.patch)在两种已发布模块构建中使用 `lstat`，因此 Framework 的文件和目录别名不会触发重复签名。选定的上游版本能够跳过这些别名前，仍需保留该补丁。PAK 文件由外层 bundle 签名记录完整性；逐个签名会增加串行时间戳请求，但不会增加资源完整性保护。Desktop 保留全部语言文件，只跳过其单独签名。可执行代码仍使用 Developer ID 签名、安全时间戳和 hardened runtime。[签名器遍历回归测试](../../../../apps/desktop/tests/macos-signing-walk.spec.ts)使用真实 Framework 别名执行已安装依赖；发布验收仍要求严格应用验证、公证和启动。
 
@@ -124,6 +124,8 @@ Windows 应用替换遵循[目录安装决策](2026-09-11-windows-directory-inst
 
 **从 registry 包删除非目标 Mach-O 文件。** 架构裁剪可以节省少量 运行时空间，但包可能有意附带多个架构变体，调用方也可以观察安装后的文件集。签署每个实际携带的 Mach-O 对象，无需发明 Desktop 专属包布局就能满足公证要求。
 
+**让本地未签名 macOS 构建完全跳过签名。** Electron RunAsNode 冒烟检查不会验证嵌套 bundle 签名或资源封印。Ad-hoc 签名无需发布证书或公证凭据，即可让 bundle 通过深度严格验证。
+
 **把 Windows EV 私钥导出到 PFX 文件。** 外部提供的公开叶证书让 SignTool 构造签名，`/csp` 与 `/kc` 则定位硬件密钥。EV 私钥保持不可导出，并留在 Token 上。
 
 **把凭据写进已跟踪脚本或系统环境。** 本地平台文件把配置限制在单个 checkout，并使打包输入明确。代价是凭据以明文落盘：构建账号需要限制文件访问权限，CI 必须清理临时配置，Git 与发布文件映射都必须排除真实配置。已提交的模板不含凭据；Windows CMD 只包含变量引用，签名串行执行并在首次失败后停止，文件格式不会免除 Token 的错误 PIN 计数。
@@ -134,6 +136,7 @@ Windows 应用替换遵循[目录安装决策](2026-09-11-windows-directory-inst
 
 - 没有系统 Node.js 或 pnpm 的干净离线机器能够启动内置 dsh，无需安装核心依赖。
 - 签名应用记录最终运行时文件清单；每个 macOS 原生文件都具有发布 Developer ID、安全时间戳和 hardened runtime，每个 Windows 产物都具有配置的硬件 EV 签名。
+- 本地未签名 macOS DMG 仍不签名且不公证，但其中的 App 带有经过验证的 ad-hoc 签名。
 - `.dsh/profiles/desktop/node_modules` 保存由共享 Web 插件管理器管理的外部插件。
 - Desktop 包操作使用启动器提供的内置 pnpm，以及共享管理器的子进程环境与 profile 配置。
 - 主应用的“插件”页面向共享 Host 服务发送结构化包操作与激活请求。

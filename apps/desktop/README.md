@@ -323,13 +323,13 @@ The command requires `DSH_DESKTOP_APP_ID` and the normal build dependencies, inc
 
 ### Unsigned macOS test DMG
 
-On macOS, use the unsigned packaging command for a local DMG without code signing or notarization:
+On macOS, use the unsigned packaging command for a local DMG without Developer ID signing or notarization:
 
 ```sh
 pnpm run package:desktop:mac:arm64:unsigned
 ```
 
-`package:desktop:mac:x64:unsigned` builds the Intel target on Intel macOS or Apple Silicon with Rosetta. The command requires `DSH_DESKTOP_APP_ID` and the selected mandatory-update policy origin, plus the normal build dependencies. It writes `deepseek-harness-<version>-mac-<arch>-unsigned.dmg` to `.desktop-build/targets/<target>/unsigned-artifacts/`, produces no ZIP or blockmap, strips signing and Apple credentials before electron-builder runs, makes no code-signing or notarization call, and creates no release completion record. It does not require `CSC_LINK`, `CSC_KEY_PASSWORD`, a signing identity, a Team ID, or notarization credentials. The signed macOS packaging and upload commands retain their release requirements.
+`package:desktop:mac:x64:unsigned` builds the Intel target on Intel macOS or Apple Silicon with Rosetta. The command requires `DSH_DESKTOP_APP_ID` and the selected mandatory-update policy origin, plus the normal build dependencies. It writes `deepseek-harness-<version>-mac-<arch>-unsigned.dmg` to `.desktop-build/targets/<target>/unsigned-artifacts/`, produces no ZIP or blockmap, and creates no release completion record. electron-builder ad-hoc signs the app with identity `-`; packaging and the smoke check both run `codesign --verify --deep --strict` and require `Signature=adhoc`. The DMG remains unsigned and the app is not notarized, so macOS may warn or block the first launch until the user approves opening it. The command does not require `CSC_LINK`, `CSC_KEY_PASSWORD`, a Developer ID identity, a Team ID, or notarization credentials. The signed macOS packaging and upload commands retain their release requirements.
 
 ### Windows installer interface
 

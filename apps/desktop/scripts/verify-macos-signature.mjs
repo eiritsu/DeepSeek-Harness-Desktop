@@ -39,6 +39,18 @@ export function assertMacOSRuntimeSignatureDetails(details, expected) {
 }
 
 /**
+ * Require Apple's ad-hoc signature marker on an unsigned-build application.
+ * @param {string} details - Output from `codesign --display --verbose=4`.
+ * @returns {void}
+ */
+export function assertMacOSAdHocSignatureDetails(details) {
+  const fields = new Set(details.split(/\r?\n/u).map(line => line.trim()))
+  if (!fields.has('Signature=adhoc')) {
+    throw new Error('desktop macOS signing: unsigned application does not have an ad-hoc signature')
+  }
+}
+
+/**
  * Execute one Apple release tool and return its diagnostic streams.
  * @param {string} command - Absolute executable path.
  * @param {readonly string[]} args - Tool arguments.
@@ -151,6 +163,17 @@ export function verifyMacOSSignature(appPath, expected) {
   runCodeSign(['--verify', '--deep', '--strict', '--verbose=2', appPath])
   const details = runCodeSign(['--display', '--verbose=4', appPath])
   assertMacOSSignatureDetails(details, expected)
+}
+
+/**
+ * Verify an unsigned-build application has a valid ad-hoc signature throughout its bundle.
+ * @param {string} appPath - Path to the packaged `.app` directory.
+ * @returns {void}
+ */
+export function verifyMacOSAdHocSignature(appPath) {
+  runCodeSign(['--verify', '--deep', '--strict', '--verbose=2', appPath])
+  const details = runCodeSign(['--display', '--verbose=4', appPath])
+  assertMacOSAdHocSignatureDetails(details)
 }
 
 /**

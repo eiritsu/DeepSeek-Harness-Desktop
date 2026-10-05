@@ -15,6 +15,12 @@ export function assertMacOSSignatureDetails(details: string, expected: MacOSSign
 export function assertMacOSRuntimeSignatureDetails(details: string, expected: MacOSSigningEnvironment): void
 
 /**
+ * Require Apple's ad-hoc signature marker on an unsigned-build application.
+ * @param details - Output from `codesign --display --verbose=4`.
+ */
+export function assertMacOSAdHocSignatureDetails(details: string): void
+
+/**
  * Sign one Mach-O file using the packaging-owned CSC_KEYCHAIN; missing setup rejects before signing.
  * @param path - Writable standalone Mach-O file.
  * @param identifier - Stable code-signing identifier derived from the release app ID and CAS digest.
@@ -42,6 +48,12 @@ export function verifyMacOSRuntimeCode(path: string, expected: MacOSSigningEnvir
  * @param expected - Public release identity.
  */
 export function verifyMacOSSignature(appPath: string, expected: MacOSSigningEnvironment): void
+
+/**
+ * Verify an unsigned-build application has a valid ad-hoc signature throughout its bundle.
+ * @param appPath - Path to the packaged `.app` directory.
+ */
+export function verifyMacOSAdHocSignature(appPath: string): void
 
 /**
  * Verify an independently distributed application's signature, ticket, and Gatekeeper acceptance.

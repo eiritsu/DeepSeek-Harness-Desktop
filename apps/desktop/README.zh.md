@@ -325,13 +325,13 @@ pnpm run package:desktop:win:x64:unsigned
 
 ### 未签名 macOS 测试 DMG
 
-在 macOS 上，使用未签名打包命令生成不经代码签名和公证的本地 DMG：
+在 macOS 上，使用未签名打包命令生成不经 Developer ID 签名和公证的本地 DMG：
 
 ```sh
 pnpm run package:desktop:mac:arm64:unsigned
 ```
 
-`package:desktop:mac:x64:unsigned` 会在 Intel macOS 或带 Rosetta 的 Apple Silicon 上构建 Intel 目标。该命令要求设置 `DSH_DESKTOP_APP_ID` 和所选的强制更新策略源地址，并具备常规构建依赖。命令将 `deepseek-harness-<版本>-mac-<架构>-unsigned.dmg` 写入 `.desktop-build/targets/<目标>/unsigned-artifacts/`，不生成 ZIP 或 blockmap，在 electron-builder 运行前清除签名与 Apple 凭据，不执行任何代码签名或公证调用，也不生成发布完成记录。它不需要 `CSC_LINK`、`CSC_KEY_PASSWORD`、签名身份、Team ID 或公证凭据。签名 macOS 打包和上传命令仍遵循正式发布要求。
+`package:desktop:mac:x64:unsigned` 会在 Intel macOS 或带 Rosetta 的 Apple Silicon 上构建 Intel 目标。该命令要求设置 `DSH_DESKTOP_APP_ID` 和所选的强制更新策略源地址，并具备常规构建依赖。命令将 `deepseek-harness-<版本>-mac-<架构>-unsigned.dmg` 写入 `.desktop-build/targets/<目标>/unsigned-artifacts/`，不生成 ZIP 或 blockmap，也不生成发布完成记录。electron-builder 使用身份 `-` 对 App 进行 ad-hoc 签名；打包后和冒烟检查都会运行 `codesign --verify --deep --strict` 并要求 `Signature=adhoc`。DMG 本身不签名，App 不经公证；首次启动时 macOS 可能会警告或阻止打开，直到用户批准。命令不需要 `CSC_LINK`、`CSC_KEY_PASSWORD`、Developer ID 身份、Team ID 或公证凭据。签名 macOS 打包和上传命令仍遵循正式发布要求。
 
 ### Windows 安装界面
 

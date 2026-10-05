@@ -142,7 +142,7 @@ describe('desktop macOS release signature', () => {
     expect(portablePath(config.directories.output)).toContain('/targets/mac-arm64/unsigned-artifacts')
     expect(config.artifactName).toBe('deepseek-harness-${version}-${os}-${arch}-unsigned.${ext}')
     expect(config).toMatchObject({
-      mac: { identity: null, forceCodeSigning: false, notarize: false, target: ['dmg'] },
+      mac: { identity: '-', forceCodeSigning: false, notarize: false, target: ['dmg'] },
       dmg: { sign: false, writeUpdateInfo: false },
       publish: null,
     })
