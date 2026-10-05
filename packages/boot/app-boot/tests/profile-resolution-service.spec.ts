@@ -9,7 +9,7 @@ import { getEnvironmentData } from 'node:worker_threads'
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it } from 'vitest'
 import { PluginPackages } from '../src/profile-resolution/service.ts'
-import type { RuntimeResolution } from '../src/profile.ts'
+import { createRuntimeResolution, type RuntimeResolution } from '../src/profile.ts'
 
 const roots: string[] = []
 const contexts: Context[] = []
@@ -53,6 +53,25 @@ function resolution(
 }
 
 describe('profile package metadata service', () => {
+  it('refreshes a computed installation-only resolution', async () => {
+    const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-package-service-installation-')))
+    roots.push(root)
+    const installAnchor = join(root, 'install', 'package.json')
+    file(installAnchor, JSON.stringify({ name: 'installation', version: '1.0.0', dependencies: { 'metadata-lib': '*' } }))
+    const ctx = new Context()
+    contexts.push(ctx)
+    await ctx.plugin(PluginPackages, { resolution: await createRuntimeResolution({ installAnchor, home: root }) })
+    const parentURL = pathToFileURL(join(root, 'profiles', 'test', 'caller.cjs')).href
+    expect(ctx.pluginPackages.packageOf('metadata-lib', parentURL)).toBeUndefined()
+    const packageDir = join(root, 'install', 'node_modules', 'metadata-lib')
+    pkg(packageDir, '1.0.0')
+
+    await ctx.pluginPackages.refresh()
+
+    expect(ctx.pluginPackages.packageOf('metadata-lib', parentURL)).toMatchObject({ dir: packageDir, version: '1.0.0' })
+    expect(createRequire(parentURL).resolve('metadata-lib')).toBe(join(packageDir, 'index.cjs'))
+  })
+
   it('reads translated metadata from the selected local package without importing its entry', async () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-localized-package-service-'))
     roots.push(root)

@@ -6,8 +6,8 @@
   en: 6a4338564c01ad91
   zh: 241248cff9bd4cfc
 /agent-note-add-immutable-profile-resolution-generations/problem:
-  en: 8e192c176fe48c4c
-  zh: adb965d650088eb0
+  en: 1f0bafbd0c813adf
+  zh: 24007a80a061a9a3
 /agent-note-add-immutable-profile-resolution-generations/decision:
   en: a3022a87337058c5
   zh: 1d53a08a25ed6eb3
@@ -21,8 +21,8 @@
   en: 53a9e92698ce9a5d
   zh: 6124d446e8d4a532
 /agent-note-add-immutable-profile-resolution-generations/decision/immutable-generations:
-  en: cd4e64bd80f448a2
-  zh: 585e1fbd8721ae99
+  en: 6096a4197d5fc8c7
+  zh: f0d208e5980da503
 /agent-note-add-immutable-profile-resolution-generations/decision/shared-esm-and-commonjs-rule:
   en: 0e0575a04a081b52
   zh: 94c74334939e6d13
@@ -32,9 +32,9 @@
 /agent-note-add-immutable-profile-resolution-generations/decision/workers-and-generation-updates:
   en: 99308bd758859e02
   zh: 35f1e7719fe80d2e
-/agent-note-add-immutable-profile-resolution-generations/decision/additive-package-changes:
-  en: 718dfa7826783f2a
-  zh: 21c3d5fdfae9cb99
+/agent-note-add-immutable-profile-resolution-generations/decision/successor-validation:
+  en: 366d48548032cdef
+  zh: 528054a7a8b7903e
 /agent-note-add-immutable-profile-resolution-generations/decision/filesystem-and-runtime-carriers:
   en: b0607713102a093d
   zh: 2de9c33bfaa0e3e2
@@ -48,5 +48,5 @@
   en: fbb17aa8fe62b1e8
   zh: 2ed091fdfd995fc8
 /agent-note-add-immutable-profile-resolution-generations/consequences:
-  en: 54cae20b2734a07e
-  zh: caa334f8f7a40452
+  en: 55b5d2ba21648079
+  zh: e74506cf6d81f5a3

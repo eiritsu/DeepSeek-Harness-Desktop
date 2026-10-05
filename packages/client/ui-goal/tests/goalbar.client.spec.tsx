@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { GoalSnapshot } from '@deepseek-ai/dsh-goal/client'
 import { makeTranslate, RemoteError } from '@deepseek-ai/dsh-client-test-runtime'
@@ -88,9 +88,17 @@ describe('GoalBar', () => {
     fireEvent.change(box, { target: { value: '   ' } })
     expect(screen.getByRole('button', { name: '保存目标' })).toHaveProperty('disabled', true)
 
-    fireEvent.change(box, { target: { value: 'Ship v2' } })
-    fireEvent.keyDown(box, { key: 'Enter' })
-    expect(actions.onEdit).toHaveBeenCalledWith('Ship v2')
+    fireEvent.keyDown(box, { key: 'Enter', shiftKey: true })
+    fireEvent.keyDown(box, { key: 'Enter', isComposing: true })
+    fireEvent.keyDown(box, { key: 'Enter', keyCode: 229 })
+    expect(actions.onEdit).not.toHaveBeenCalled()
+
+    fireEvent.change(box, { target: { value: 'Ship\nv2' } })
+    expect(box).toHaveProperty('value', 'Ship\nv2')
+    const enter = createEvent.keyDown(box, { key: 'Enter' })
+    fireEvent(box, enter)
+    expect(enter.defaultPrevented).toBe(true)
+    expect(actions.onEdit).toHaveBeenCalledWith('Ship\nv2')
     await waitFor(() => { expect(screen.getByText('进行中的目标')).toBeTruthy() })
   })
 

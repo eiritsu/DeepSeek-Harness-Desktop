@@ -1137,7 +1137,10 @@ function InstallDialog({
             {uncertaintyText === null ? null : <p className={css.wizardSub} role="alert">{uncertaintyText}</p>}
             {phase === 'unknown' ? <p className={css.wizardSub}>{t('installUnknownDescription')}</p> : null}
           </div>
-          {install.subject === null ? null : <SubjectCard subject={install.subject} t={t} />}
+          {install.subject === null
+            ? null
+            : <SubjectCard subject={phase === 'done' && install.installedVersion !== null
+              ? { ...install.subject, version: install.installedVersion } : install.subject} t={t} />}
           {approvable
             ? (
               <section className={css.approval} role="group" aria-labelledby={approvalId} data-install-approval>
@@ -1157,6 +1160,20 @@ function InstallDialog({
             : null}
           {phase === 'done' && install.restartRequired
             ? <p className={css.resultWarn} role="status">{t('installDoneRestart')}</p>
+            : null}
+          {phase === 'done' && install.subject?.kind === 'registry' && install.subject.name !== undefined
+            && install.subject.version !== undefined && install.installedVersion !== null
+            && install.installedVersion !== install.subject.version
+            && (install.attempts?.registries.length ?? 1) === 1
+            ? (
+              <p className={css.resultWarn} role="status">
+                {t('installDoneOtherVersion', {
+                  installed: install.installedVersion,
+                  version: install.subject.version,
+                  exact: `${install.subject.name}@${install.subject.version}`,
+                })}
+              </p>
+            )
             : null}
           {phase === 'done' && install.approvedBuilds.length > 0
             ? <p className={css.result} role="status">{t('installDoneApproved', { names: install.approvedBuilds.join(', ') })}</p>

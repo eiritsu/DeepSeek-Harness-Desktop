@@ -28,7 +28,7 @@ Session Remote journal 只下发原始、已验证、可持久化的 Session eve
 
 Client Conversation 层继续负责工具调用与结果的 identity、配对、生命周期、PTC dispatch 拓扑和稳定 Chat Node。它不解释具体工具名称，也不生成 terminal、diff、read、search 或 web 组件 props。
 
-Client `ui-tool` 继续负责 card model 和具体 renderer。每个 card model 改为直接读取 `ToolCallBlock` 中的工具名称、原始参数、结果内容、错误、持久 metadata、Session cwd 与 Host home，并生成与现有页面相同的组件 props。
+Client `ui-tool` 继续负责 card model 和具体 renderer。每个 card model 直接读取 `ToolCallBlock` 中的工具名称、原始参数、结果内容、错误、持久 metadata、Session cwd 与 Host home，并生成与现有页面相同的组件 props。它校验卡片展示所需的数据；Host 校验是否依赖 Session sandbox mode 的 escalation 字段。
 
 Client 不建立第二套 presenter registry。工具名称分发只使用现有 `tool.call.toolview` keyed slot；Client 中的纯 card-model helper 属于 renderer 实现，不成为 Cordis service、公开 registry 或 wire DTO。
 

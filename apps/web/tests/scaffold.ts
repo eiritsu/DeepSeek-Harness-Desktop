@@ -741,12 +741,11 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
       patchPath: join(profileDir, 'cordis.patch.yml'),
       patches: [],
     }
-    const resolutionOptions = { installAnchor: INSTALL_ANCHOR, home: harnessHome, profile }
-    const resolution = await createRuntimeResolution(resolutionOptions)
     await mkdir(profileDir, { recursive: true })
     const rootConfig = join(profileDir, 'cordis.yml')
     await writeFile(rootConfig, '[]\n')
     ctx.baseUrl = pathToFileURL(profileDir).href + '/'
+    let resolution: Awaited<ReturnType<typeof createRuntimeResolution>>
     let profileContext: ProfileContext
     {
       // A real profile: the shipped web bundles plus each fixture package,
@@ -772,6 +771,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
       const manifest = readProfileManifest('dsh', profileDir)
       manifest.dependencies = dependencies
       await writeFile(join(profileDir, 'package.json'), JSON.stringify(manifest, null, 2) + '\n')
+      resolution = await createRuntimeResolution({ installAnchor: INSTALL_ANCHOR, home: harnessHome, profile })
       profileContext = {
         name: 'scaffold', dir: profileDir, patchPath: profile.patchPath, installAnchor: INSTALL_ANCHOR,
         ...options.profile?.packageManager === undefined ? {} : { packageManager: options.profile.packageManager },

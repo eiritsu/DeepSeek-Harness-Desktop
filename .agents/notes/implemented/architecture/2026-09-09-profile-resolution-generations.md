@@ -8,7 +8,7 @@ English | [中文](2026-09-09-profile-resolution-generations.zh.md)
 
 A profile loads plugin rows from its own package project, while Harness packages and packages carried by selected bundles can live outside that project's ordinary dependency tree. Bridging the trees through shared symlinks, profile-owned links, or packaged-executable proxy packages persists package selections across processes and installations. Those files require reconciliation and locking, expose generated proxy manifests to metadata readers, and cannot represent a process-local change atomically.
 
-The runtime design keeps installation-first, ordered-bundle, and local-before-fallback precedence. It covers imports performed by plugin modules as well as Loader row imports and works in the main thread and Harness-owned Workers. Generation replacement preserves existing package mappings and local package names, permits linked-root membership changes, and never mutates a live table entry by entry.
+The runtime design keeps installation-first, ordered-bundle, and local-before-fallback precedence. It covers imports performed by plugin modules as well as Loader row imports and works in the main thread and Harness-owned Workers. Generation replacement keeps installation mappings fixed, may remove profile mappings and local package names, permits linked-root membership changes, and never mutates a live table entry by entry.
 
 ## Decision
 
@@ -75,7 +75,7 @@ Linked-root membership is immutable within a generation. A successor may add or 
 
 The router retains the real target of each successfully published link name for its lifetime, solely to validate successors. Removing a root does not erase that record or keep its directory intercepted. Re-adding the same name and target is allowed; a different target is rejected because Node caches real paths. Failed publication changes neither the current generation nor the recorded targets.
 
-The launcher constructs one startup generation. The service accepts a complete successor, but no package-manager transaction invokes replacement in this implementation.
+The launcher constructs one startup generation. `PluginPackages` retains its source inputs and recomputes a successor from the profile directory on disk. The Plugin Manager publishes accepted generations at package-operation commit points after affected entries stop; [the package-operation decision](2026-10-05-profile-package-operation-publication.md) owns that ordering.
 
 ### Shared ESM and CommonJS rule
 
@@ -103,11 +103,11 @@ The main thread publishes a structured-clone representation of the current gener
 
 New Workers inherit the latest published generation. Existing Workers keep the generation they inherited, so a caller that publishes a successor must restart them. The ESM bootstrap cannot affect static dependencies linked before its execution, so Worker bundles keep pre-bootstrap static imports natively resolvable and start code needing the profile resolver through a later dynamic import.
 
-### Additive package changes
+### Successor validation
 
-A caller adding a package completes its pnpm transaction before constructing a successor generation. Replacement rejects any generation that changes the directory or version of an existing package. The caller publishes an additive successor before mounting the new Loader row; this implementation does not provide that package transaction. A mount failure may leave the package installed but inactive.
+A successor keeps every installation package name, normalized directory, version, scope, and declaring anchor unchanged. It may remove profile-scope entries and local package names after their plugins stop. A retained profile entry keeps its normalized directory, version, and scope but may record another selected bundle as its declarer when that bundle still supplies the same package. A new local name cannot override a mapped package name.
 
-Changing or removing an existing runtime package mapping, or removing a recorded profile-local package name, requires process restart because Node's ESM Module Map, CommonJS cache, existing object references, and running Workers can retain the old module identity. These restrictions do not prohibit removing a linked root from the interception scope. Generation replacement does not claim to unload modules.
+Replacing or removing an installation mapping, changing a package directory or version, or changing profile scope requires process restart because Node's ESM Module Map, CommonJS cache, existing object references, and running Workers can retain the old module identity. Removing a profile mapping changes only later lookups; generation replacement does not unload modules, so callers stop its plugins before publishing the removal.
 
 ### Filesystem and runtime carriers
 
@@ -152,4 +152,4 @@ Behavior tests exercise root order, transitive and peer dependencies, local and 
 
 ## Consequences
 
-Runtime startup avoids disk mutation and proxy manifests while retaining package-precedence rules. Real-directory anchors align dependency discovery with default Node loading and tsx workspace mapping, including cases where a logical symlink path would select another version. The implementation accepts the maintenance cost of Node Internal compatibility tests and an early, self-contained bootstrap in each owned Worker; it provides no disk-only backend or dual comparison mode. Package mappings and local package names remain additive; linked-root membership may change without unloading modules.
+Runtime startup avoids disk mutation and proxy manifests while retaining package-precedence rules. Real-directory anchors align dependency discovery with default Node loading and tsx workspace mapping, including cases where a logical symlink path would select another version. The implementation accepts the maintenance cost of Node Internal compatibility tests and an early, self-contained bootstrap in each owned Worker; it provides no disk-only backend or dual comparison mode. Installation mappings stay fixed; profile mappings and local package names may be removed after affected plugins stop, and linked-root membership may change without unloading modules.

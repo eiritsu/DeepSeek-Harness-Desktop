@@ -1629,7 +1629,8 @@ describe('runtime resolution', { concurrent: false }, () => {
     }).toThrow(/cannot change its profile scope/u)
     registration.replace({ ...first, localPackageNames: ['new-local'] })
     registration.replace({ ...first, localPackageNames: ['new-local'] })
-    expect(() => { registration.replace(first) }).toThrow(/removing local package/u)
+    registration.replace({ ...first, localPackageNames: [] })
+    registration.replace({ ...first, localPackageNames: ['new-local'] })
     const linked = { name: 'linked-plugin', realPath: join(f.root, 'work', 'a') }
     const withLocal = { ...first, localPackageNames: ['new-local'] }
     registration.replace({ ...withLocal, linkedRoots: [linked] })
@@ -1641,6 +1642,41 @@ describe('runtime resolution', { concurrent: false }, () => {
     expect(registration.packageDir(
       '@deepseek-ai/dsh-core', pathToFileURL(join(f.profile.dir, 'entry.mjs')).href,
     )).toBe(f.installed)
+  })
+
+  it('removes profile mappings and permits a surviving dependency to change declarer', async () => {
+    const f = fixture()
+    const profileDir = join(f.root, 'profile-packages', 'profile-lib')
+    const profileAnchor = pkg(profileDir, 'profile-lib', 7)
+    const first = await resolutionOf(f)
+    const profileEntry = {
+      name: 'profile-lib', packageDir: profileDir, version: '7.0.0', declarer: profileAnchor, scope: 'profile' as const,
+    }
+    const initial = { ...first, entries: [...first.entries, profileEntry] }
+    const registration = installRuntimeInterception(initial)
+    registrations.push(registration)
+    const parent = pathToFileURL(join(f.profile.dir, 'entry.mjs')).href
+    expect(registration.packageDir('profile-lib', parent)).toBe(profileDir)
+
+    registration.replace({
+      ...initial,
+      entries: initial.entries.map(entry => entry.name === 'profile-lib'
+        ? { ...entry, declarer: join(f.root, 'another-bundle', 'package.json') }
+        : entry),
+    })
+    expect(registration.packageDir('profile-lib', parent)).toBe(profileDir)
+
+    registration.replace(first)
+
+    expect(registration.packageDir('profile-lib', parent)).toBeUndefined()
+    expect(() => {
+      registration.replace({
+        ...first,
+        entries: first.entries.map(entry => entry.name === '@deepseek-ai/dsh-core'
+          ? { ...entry, declarer: join(f.root, 'another-bundle', 'package.json') }
+          : entry),
+      })
+    }).toThrow(/requires a process restart/u)
   })
 
   it('leaves non-package and out-of-scope metadata lookups to native resolution', async () => {

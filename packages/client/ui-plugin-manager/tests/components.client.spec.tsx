@@ -62,7 +62,7 @@ const MIRROR_OPTION = `${en.registryNpmmirror} registry.npmmirror.com`
 const IDLE_INSTALL: InstallState = {
   open: false, spec: '', registries: null, registry: { kind: 'offered', registry: null }, registryOpen: false, registryError: false, attempts: null,
   phase: 'idle', inputError: null, subject: null, runs: [], detailsOpen: false,
-  installed: null, restartRequired: false, failure: null, approvedBuilds: [], enabling: false,
+  installed: null, installedVersion: null, restartRequired: false, failure: null, approvedBuilds: [], enabling: false,
 }
 
 const READY: PluginManagerState = {
@@ -1283,6 +1283,27 @@ describe('PluginManagerPage', () => {
     expect(screen.queryByRole('button', { name: en.installEnableNow })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: en.installClose }))
     expect(actions.closeInstall).toHaveBeenCalledTimes(1)
+  })
+
+  it('names the exact spec when pnpm installed another version than the one inspected', () => {
+    const subject = { spec: 'dsh-x', status: 'accepted', kind: 'registry', name: 'dsh-x', version: '1.4.2', bundle: true, registry: null } as const
+    const other = en.installDoneOtherVersion
+      .replace('{installed}', '1.4.1').replaceAll('{version}', '1.4.2').replace('{exact}', 'dsh-x@1.4.2')
+    const done = { ...IDLE_INSTALL, open: true, spec: 'dsh-x', phase: 'done', installed: 'dsh-x' } as const
+    const { set } = renderTab({ install: { ...done, subject, installedVersion: '1.4.1' } })
+    expect(screen.getByText(other)).toBeTruthy()
+    expect(screen.getByText(en.installVersion.replace('{version}', '1.4.1'))).toBeTruthy()
+    set({ install: { ...done, subject, installedVersion: '1.4.1', attempts: { registries: [null, 'https://mirror.example/'], total: 2 } } })
+    expect(screen.queryByText(other)).toBeNull()
+    set({ install: { ...done, subject, installedVersion: '1.4.1', attempts: { registries: [null], total: 2 } } })
+    expect(screen.getByText(other)).toBeTruthy()
+    const { name: _name, ...unnamed } = subject
+    set({ install: { ...done, subject: unnamed, installedVersion: '1.4.1' } })
+    expect(screen.queryByText(other)).toBeNull()
+    set({ install: { ...done, subject, installedVersion: '1.4.2' } })
+    expect(screen.queryByText(other)).toBeNull()
+    set({ install: { ...done, subject: { ...subject, kind: 'path' }, installedVersion: '1.4.1' } })
+    expect(screen.queryByText(other)).toBeNull()
   })
 
   it('asks to allow the scripts a blocked install left pending, retries with them, and says what was allowed', () => {

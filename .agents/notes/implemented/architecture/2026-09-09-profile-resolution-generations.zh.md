@@ -8,7 +8,7 @@ Status: implemented
 
 profile 从自己的包项目加载插件配置项，而 Harness 包和所选 bundle 携带的包可能位于该项目普通依赖树之外。通过共享 symlink、profile 自有链接或打包可执行文件的代理包连接两棵依赖树，会让选包结果跨进程和安装版本持续存在。这些文件需要协调和锁来维护，并向元数据读取方暴露生成的代理 manifest（元数据清单），也无法原子表示进程内变更。
 
-运行时设计保留安装优先、有序 bundle 和本地包优先于 fallback 的顺序。它覆盖插件模块内部的 import 以及 Loader 配置项的 import，并在主线程和 Harness 自有 Worker 中工作。generation 替换保留既有包映射和本地包名，允许调整 linked root 集合，不会逐项修改正在使用的表。
+运行时设计保留安装优先、有序 bundle 和本地包优先于 fallback 的顺序。它覆盖插件模块内部的 import 以及 Loader 配置项的 import，并在主线程和 Harness 自有 Worker 中工作。generation 替换保持 installation 映射不变，可删除 profile 映射和本地包名，允许调整 linked root 集合，不会逐项修改正在使用的表。
 
 ## Decision
 
@@ -75,7 +75,7 @@ linked root 集合在一个 generation 内不可变。后继 generation 可以�
 
 解析器在自身生命周期内保留每个已成功发布的 link 名称对应的真实目标，仅用于校验后继 generation。移除 root 不会抹掉该记录，也不会让其目录继续被拦截。同名、同目标可以重新加入；不同目标会被拒绝，因为 Node 缓存真实路径。发布失败时，当前 generation 和已记录目标均不变。
 
-launcher 只构造启动 generation。服务接受完整的后继 generation，但本实现没有包管理器事务调用替换操作。
+launcher 构造启动 generation。`PluginPackages` 保留来源参数，并根据磁盘上的 profile 目录重算后继 generation。Plugin Manager 在包操作提交点发布已接受的 generation；[包操作决策](2026-10-05-profile-package-operation-publication.zh.md)记录其时序。
 
 ### ESM 与 CommonJS 共用规则
 
@@ -103,11 +103,11 @@ runtime resolution 列出它提供的包；Loader entries 组成活动插件列�
 
 新 Worker 继承最新发布的 generation。已运行的 Worker 保留启动时继承的 generation，因此发布后继 generation 的调用方必须重启它们。ESM bootstrap 无法影响其执行前已链接的静态依赖，因此 Worker bundle 必须保证 bootstrap 之前的静态 import 可由原生 Node 解析，需要 profile resolver 的业务入口在 bootstrap 后通过 dynamic import 启动。
 
-### 只增加包的变更
+### 后继版本校验
 
-添加包的调用方先完成 pnpm 事务，再构造下一代。替换操作会拒绝改变任何既有 package name 的目录或版本。调用方先发布只增加映射的后继 generation，再挂载新的 Loader 配置项；本实现不提供该包事务。挂载失败可以留下已安装但未启用的包。
+后继版本保留每个 installation 包名、规范化目录、版本、作用域和声明锚点。在相关插件停止后，可以移除 profile 作用域条目和本地包名。保留的 profile 条目维持规范化目录、版本和作用域，但若另一个选中 bundle 仍提供同一个包，可以记录该 bundle 作为声明方。新的本地名称不能覆盖已映射包名。
 
-修改或删除既有运行时包映射，或删除已记录的 profile 本地包名，需要重启，因为 Node 的 ESM Module Map、CommonJS cache、现存对象引用和运行中的 Worker 都可能保留旧模块 identity。这些限制不禁止从拦截范围移除 linked root。generation 换代不声称卸载模块。
+替换或删除 installation 映射、改变包目录或版本、改变 profile 作用域都需要重启，因为 Node 的 ESM Module Map、CommonJS cache、现存对象引用和运行中的 Worker 都可能保留旧模块 identity。删除 profile 映射只影响后续查询；generation 换代不会卸载模块，因此调用方需在发布删除前停止相关插件。
 
 ### 文件系统与运行时载体
 
@@ -152,4 +152,4 @@ generation 构造发生在启动或显式更新阶段，不属于单次 resolve�
 
 ## Consequences
 
-runtime 启动避免磁盘修改和代理 manifest，同时保留包优先级规则。真实目录锚点让依赖发现对齐 Node 默认加载与 tsx workspace 映射，也覆盖软链接逻辑路径会选中另一版本的情况。实现需要持续维护 Node Internal 兼容测试，并在每个自有 Worker 中尽早执行自包含 bootstrap；它不提供纯磁盘后端或 dual 对比模式。包映射和本地包名仍只允许新增；linked root 集合可以变化，而不卸载模块。
+runtime 启动避免磁盘修改和代理 manifest，同时保留包优先级规则。真实目录锚点让依赖发现对齐 Node 默认加载与 tsx workspace 映射，也覆盖软链接逻辑路径会选中另一版本的情况。实现需要持续维护 Node Internal 兼容测试，并在每个自有 Worker 中尽早执行自包含 bootstrap；它不提供纯磁盘后端或 dual 对比模式。Installation 映射保持不变；相关插件停止后，可移除 profile 映射和本地包名；linked root 集合也可在不卸载模块的情况下改变。

@@ -65,7 +65,7 @@ application combo 脚本只携带每个插件的 `client.js` 入口，并在启�
 
 ### 惰性 CJS 模型
 
-执行插件 bundle 只注册其 factory；每个模块主体副作用（包括 CSS 注入）都位于 factory 闭包中，在物化时运行（`factory(require)` → 导出，在 `loadCache` 中记忆化）。factory 依赖另一个已注册但未物化的模块时会递归物化它；require 循环会抛出异常，因为 factory 形式的 CJS 无法提供部分导出。解析会依次检查平台 seed 表、已记忆记录、启动图 row 与已注册 factory；其他情况一律抛错。交给 factory 的同步 `require` 使用相同顺序，但不含异步图 row 加载，并把观察到的边记录到模块记录中。它的 `require.async` 操作返回 Promise，并在一次性物化编译器生成的包内 chunk 前先获取该 chunk。该协议只支持自包含 chunk：入口与 chunk 产物不能同步 require 另一个相对 `client*.js` 产物。
+执行插件 bundle 只注册其 factory；每个模块主体副作用（包括 CSS 注入）都位于 factory 闭包中，在物化时运行（`factory(require)` → 导出，在 `loadCache` 中记忆化）。每个 factory 只认领自己新增的未标记 style；若 factory 抛错，会先认领这些元素再清理。factory 依赖另一个已注册但未物化的模块时会递归物化它；require 循环会抛出异常，因为 factory 形式的 CJS 无法提供部分导出。解析会依次检查平台 seed 表、已记忆记录、启动图 row 与已注册 factory；其他情况一律抛错。交给 factory 的同步 `require` 使用相同顺序，但不含异步图 row 加载，并把观察到的边记录到模块记录中。它的 `require.async` 操作返回 Promise，并在一次性物化编译器生成的包内 chunk 前先获取该 chunk。该协议只支持自包含 chunk：入口与 chunk 产物不能同步 require 另一个相对 `client*.js` 产物。
 
 ### 增量组合
 

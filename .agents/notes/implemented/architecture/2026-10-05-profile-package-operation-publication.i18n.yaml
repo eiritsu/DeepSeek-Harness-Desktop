@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for 2026-10-05-profile-package-operation-publication.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-10-05-profile-package-operation-publication.md
+/agent-note-publish-profile-package-mappings-at-operation-commit-points:
+  en: 0b2aaed9d9b4df9c
+  zh: a3a8b9bd21e2c257
+/agent-note-publish-profile-package-mappings-at-operation-commit-points/problem:
+  en: 0ab9839967f2a3d6
+  zh: b31a8fe6d01bc291
+/agent-note-publish-profile-package-mappings-at-operation-commit-points/decision:
+  en: a15c7c13f167e5ac
+  zh: a15c7c13f167e5ac
+/agent-note-publish-profile-package-mappings-at-operation-commit-points/decision/runtime-mapping-publication:
+  en: 11575aef7e74684b
+  zh: 75d331230dca5044
+/agent-note-publish-profile-package-mappings-at-operation-commit-points/decision/installation-result-version:
+  en: ed4be4846eefdc0e
+  zh: 5209f7b2e598d15c
+/agent-note-publish-profile-package-mappings-at-operation-commit-points/alternatives-considered:
+  en: e127e7b50a4247ae
+  zh: 30032ca9b140abde
+/agent-note-publish-profile-package-mappings-at-operation-commit-points/testing:
+  en: 7699ec763be5c2a2
+  zh: 3458d11e7e1f7616
+/agent-note-publish-profile-package-mappings-at-operation-commit-points/consequences:
+  en: 169ca3d9d415eb7f
+  zh: 5a585bb46172e31d

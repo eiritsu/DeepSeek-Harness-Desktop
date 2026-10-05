@@ -45,6 +45,11 @@
   pointer-events: none;
 }
 
+.editBar {
+  height: auto;
+  min-height: 36px;
+}
+
 .goalGlyph {
   display: inline-flex;
   flex: none;
@@ -88,23 +93,7 @@
 .objectiveInput {
   flex: 1;
   min-width: 0;
-  height: 26px;
-  padding: 0 8px;
-  border: 0.5px solid var(--dsw-alias-border-l4);
-  border-radius: var(--dsw-radius-sm);
-  background: var(--dsw-alias-bg-base);
-  font-size: 13px;
-  line-height: 20px;
-  color: var(--dsw-alias-label-primary);
-  outline: none;
-}
-
-.objectiveInput:focus {
-  border-color: var(--dsw-alias-state-business-primary);
-}
-
-.objectiveInput::placeholder {
-  color: var(--dsw-alias-label-caption);
+  align-self: center;
 }
 
 /* ---- Icon actions ---- */

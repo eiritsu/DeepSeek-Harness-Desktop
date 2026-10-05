@@ -28,7 +28,7 @@ The Session Remote journal sends only raw, validated, persistable Session events
 
 The Client Conversation layer continues to own tool call/result identity, pairing, lifecycle, PTC dispatch topology, and stable Chat Nodes. It does not interpret individual tool names or produce terminal, diff, read, search, or web component props.
 
-Client `ui-tool` continues to own card models and concrete renderers. Each card model directly reads the tool name, raw arguments, result content, error, durable metadata, Session cwd, and Host home from `ToolCallBlock`, and produces the same component props as the current page.
+Client `ui-tool` continues to own card models and concrete renderers. Each card model directly reads the tool name, raw arguments, result content, error, durable metadata, Session cwd, and Host home from `ToolCallBlock`, and produces the same component props as the current page. It validates the card's display inputs; the Host validates escalation fields whose acceptance depends on Session sandbox mode.
 
 The Client has no second presenter registry. Tool-name dispatch uses only the existing `tool.call.toolview` keyed slot. Pure Client card-model helpers are renderer implementation details, not a Cordis service, public registry, or wire DTO.
 
