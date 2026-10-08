@@ -79,6 +79,17 @@ async function harness(config: Partial<Config> = {}): Promise<Context> {
   return ctx
 }
 
+/** Mount the catalog over an existing durable root for cache restart tests. */
+async function mountCatalogAtRoot(root: string): Promise<Context> {
+  const ctx = new Context()
+  contexts.push(ctx)
+  await ctx.plugin(Storage)
+  await ctx.plugin({ name: storageJsonName, inject: storageJsonInject, apply: storageJsonApply, Config: storageJsonConfig }, { root })
+  await ctx.plugin({ name: storageDomainName, inject: storageDomainInject, apply: storageDomainApply, Config: storageDomainConfig }, { backend: 'json' })
+  await ctx.plugin(SharedModelCatalog, { catalogURL: 'https://example.test/catalog.json', refreshIntervalMs: 3_600_000 })
+  return ctx
+}
+
 describe('model catalog service', () => {
   it('publishes what one document says, under its own generation', async () => {
     respondWith(JSON.stringify(DOCUMENT))
@@ -94,6 +105,7 @@ describe('model catalog service', () => {
       contextWindow: 4_096,
       maxOutputTokens: 512,
       reasoningEfforts: ['low'],
+      reasoningControl: { type: 'effort', efforts: ['low'] },
     })
   })
 
@@ -124,6 +136,7 @@ describe('model catalog service', () => {
       contextWindow: 4_096,
       maxOutputTokens: 512,
       reasoningEfforts: ['low'],
+      reasoningControl: { type: 'effort', efforts: ['low'] },
     })
 
     // A stored document belongs to the URL it was collected for, so a
@@ -146,15 +159,18 @@ describe('model catalog service', () => {
         'acme/one': { id: 'acme/one', modalities: { input: ['text'] }, limit: { context: 4_096, output: 512 } },
         'acme/two': { id: 'acme/two', modalities: { input: ['text', 'image'] }, limit: { context: 8_192 } },
         'acme/quiet': { id: 'acme/quiet', modalities: { input: ['text'] } },
+        'acme/toggle': { id: 'acme/toggle', modalities: { input: ['text'] }, reasoning: true },
       },
       providers: {
         acme: {
           id: 'acme',
+          api: 'https://api.acme.test/anthropic/v1',
           models: {
             one: { reasoning_options: [{ type: 'effort', values: ['low'] }] },
             two: { reasoning_options: [{ type: 'effort', values: ['low', 'high', 'max'] }] },
             // Keep an explicit refusal across restarts.
             quiet: { reasoning: false },
+            toggle: { reasoning_options: [{ type: 'toggle' }] },
           },
         },
       },
@@ -162,32 +178,78 @@ describe('model catalog service', () => {
     respondWith(JSON.stringify(document))
     const root = await mkdtemp(join(tmpdir(), 'dsh-model-catalog-'))
     roots.push(root)
-    const mount = async (): Promise<Context> => {
-      const ctx = new Context()
-      contexts.push(ctx)
-      await ctx.plugin(Storage)
-      await ctx.plugin({ name: storageJsonName, inject: storageJsonInject, apply: storageJsonApply, Config: storageJsonConfig }, { root })
-      await ctx.plugin({ name: storageDomainName, inject: storageDomainInject, apply: storageDomainApply, Config: storageDomainConfig }, { backend: 'json' })
-      await ctx.plugin(SharedModelCatalog, { catalogURL: 'https://example.test/catalog.json', refreshIntervalMs: 3_600_000 })
-      return ctx
-    }
-    const first = await mount()
+    const first = await mountCatalogAtRoot(root)
     await first.modelCatalog.refresh()
     const live = (ctx: Context) => ({
       one: ctx.modelCatalog.facts.facts({ model: 'one', ownedBy: 'acme' }),
       two: ctx.modelCatalog.facts.facts({ model: 'two', ownedBy: 'acme' }),
       quiet: ctx.modelCatalog.facts.facts({ model: 'quiet', ownedBy: 'acme' }),
+      toggle: ctx.modelCatalog.facts.facts({ model: 'toggle', ownedBy: 'custom', apiURL: 'https://api.acme.test/v1' }),
     })
     const before = live(first)
     await first.fiber.dispose()
 
     respondWith('', { status: 503 })
-    const second = await mount()
+    const second = await mountCatalogAtRoot(root)
     await vi.waitFor(() => { expect(second.modelCatalog.loaded).toBe(true) })
     expect(live(second)).toEqual(before)
     expect(before.two?.reasoningEfforts).toEqual(['low', 'high', 'max'])
     expect(before.one?.reasoningEfforts).toEqual(['low'])
     expect(before.quiet?.reasoningEfforts).toEqual([])
+    expect(before.quiet?.reasoningControl).toEqual({ type: 'none' })
+    expect(before.toggle?.reasoningControl).toEqual({ type: 'toggle' })
+  })
+
+  it('keeps template API endpoints in cache and serves them after an offline cold start', async () => {
+    const document = {
+      models: {
+        'minimax/MiniMax-M3': { id: 'minimax/MiniMax-M3', reasoning: true },
+        'neon/neon-model': { id: 'neon/neon-model', reasoning: true },
+      },
+      providers: {
+        'minimax-cn': {
+          id: 'minimax-cn',
+          api: 'https://api.minimax.cn/anthropic/v1',
+          models: { 'MiniMax-M3': { reasoning_options: [{ type: 'toggle' }] } },
+        },
+        neon: {
+          id: 'neon',
+          api: '${NEON_AI_GATEWAY_BASE_URL}/v1',
+          models: { 'neon-model': {
+            canonical_model_id: 'neon/neon-model',
+            reasoning_options: [{ type: 'effort', values: ['low', 'high'] }],
+          } },
+        },
+      },
+    }
+    const root = await mkdtemp(join(tmpdir(), 'dsh-model-catalog-template-url-'))
+    roots.push(root)
+    respondWith(JSON.stringify(document))
+    const warm = await mountCatalogAtRoot(root)
+    await warm.modelCatalog.refresh()
+    expect(warm.modelCatalog.facts.facts({
+      model: 'MiniMax-M3', ownedBy: 'minimax-cn-custom', apiURL: 'https://api.minimax.cn/v1',
+    })).toMatchObject({
+      reasoningControl: { type: 'toggle' },
+    })
+    expect(warm.modelCatalog.facts.facts({ model: 'neon-model', ownedBy: 'neon' })).toMatchObject({
+      reasoningControl: { type: 'effort', efforts: ['low', 'high'] },
+    })
+    await warm.fiber.dispose()
+
+    respondWith('', { status: 503 })
+    const cold = await mountCatalogAtRoot(root)
+    expect(cold.modelCatalog.loaded).toBe(true)
+    expect(cold.modelCatalog.facts.facts({
+      model: 'MiniMax-M3', ownedBy: 'minimax-cn-custom', apiURL: 'https://api.minimax.cn/v1',
+    })).toMatchObject({
+      canonicalId: 'minimax/MiniMax-M3',
+      reasoningControl: { type: 'toggle' },
+    })
+    expect(cold.modelCatalog.facts.facts({ model: 'neon-model', ownedBy: 'neon' })).toMatchObject({
+      canonicalId: 'neon/neon-model',
+      reasoningControl: { type: 'effort', efforts: ['low', 'high'] },
+    })
   })
 
   it('rejects a body over the byte limit and an unsuccessful response', async () => {
@@ -333,6 +395,7 @@ describe('model catalog service', () => {
       canonicalId: 'acme/one',
       contextWindow: 8_192,
       reasoningEfforts: ['low'],
+      reasoningControl: { type: 'effort', efforts: ['low'] },
     })
   })
 

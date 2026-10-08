@@ -139,8 +139,8 @@ describe('catalog document parsing', () => {
     // vocabulary; a channel with no effort option and a non-record entry
     // declare nothing at all.
     expect(parsed.channels).toEqual([
-      { namespace: 'a', model: 'one', efforts: ['low', 'high'] },
-      { namespace: 'a', model: 'two', efforts: [] },
+      { namespace: 'a', model: 'one', efforts: ['low', 'high'], reasoningControl: 'effort', budget: true },
+      { namespace: 'a', model: 'two', efforts: [], reasoningControl: 'none' },
     ])
   })
 
@@ -150,11 +150,122 @@ describe('catalog document parsing', () => {
       model: 'deepseek-flash',
       canonicalId: 'deepseek/deepseek-v4.1-flash',
       efforts: ['low', 'high', 'max'],
+      reasoningControl: 'effort',
     }])
+  })
+
+  it('retains toggle, empty, and combined declarations as distinct controls', () => {
+    const parsed = parseCatalogDocument({
+      models: {
+        'minimax/m3': { id: 'minimax/m3', reasoning: true },
+        'minimax/m2.7': { id: 'minimax/m2.7', reasoning: true },
+        'minimax/deepseek-hybrid': { id: 'minimax/deepseek-hybrid', reasoning: true },
+      },
+      providers: {
+        'minimax-cn': {
+          api: 'https://api.minimax.cn/anthropic/v1',
+          models: {
+            'MiniMax-M3': { reasoning_options: [{ type: 'toggle' }] },
+            'MiniMax-M2.7': { reasoning_options: [] },
+            hybrid: { reasoning_options: [
+              { type: 'toggle' }, { type: 'effort', values: ['low', 'high'] },
+            ] },
+          },
+        },
+      },
+    })
+
+    expect(parsed.channels).toEqual([
+      { namespace: 'minimax-cn', model: 'MiniMax-M3', reasoningControl: 'toggle', apiURL: 'https://api.minimax.cn/anthropic/v1' },
+      { namespace: 'minimax-cn', model: 'MiniMax-M2.7', reasoningControl: 'none', efforts: [], apiURL: 'https://api.minimax.cn/anthropic/v1' },
+      { namespace: 'minimax-cn', model: 'hybrid', reasoningControl: 'effort', efforts: ['low', 'high'], toggle: true, apiURL: 'https://api.minimax.cn/anthropic/v1' },
+    ])
   })
 })
 
 describe('catalog view resolution', () => {
+  it('matches provider endpoint metadata across declared protocol suffixes and refuses conflicts', () => {
+    const catalog = parseCatalogDocument({
+      models: {
+        'minimax/MiniMax-M3': { id: 'minimax/MiniMax-M3', reasoning: true },
+        'minimax/MiniMax-M3.1': { id: 'minimax/MiniMax-M3.1', reasoning: true },
+      },
+      providers: {
+        'minimax-cn': {
+          api: 'https://api.minimax.cn/anthropic/v1',
+          models: {
+            'MiniMax-M3': { reasoning_options: [{ type: 'toggle' }] },
+            'MiniMax-M3.1': { canonical_model_id: 'minimax/MiniMax-M3.1', reasoning_options: [
+              { type: 'effort', values: ['low', 'medium', 'high', 'xhigh', 'max'] },
+            ] },
+          },
+        },
+      },
+    })
+    const view = new CatalogView(1, catalog, [])
+    expect(view.facts({ model: 'MiniMax-M3', ownedBy: 'custom-cn', apiURL: 'https://api.minimax.cn/v1' })?.reasoningControl)
+      .toEqual({ type: 'toggle' })
+    expect(view.facts({ model: 'MiniMax-M3.1', ownedBy: 'custom-cn', apiURL: 'https://api.minimax.cn/anthropic' })?.reasoningEfforts)
+      .toEqual(['low', 'medium', 'high', 'xhigh', 'max'])
+    expect(view.facts({ model: 'MiniMax-M3', ownedBy: 'custom-cn', apiURL: 'https://api.minimax.cn/tenant-a/v1' })?.reasoningControl)
+      .toBeUndefined()
+  })
+
+  it('does not associate equal invalid API URLs', () => {
+    const catalog = parseCatalogDocument({
+      models: { 'minimax/MiniMax-M3': { id: 'minimax/MiniMax-M3', reasoning: true } },
+      providers: {
+        'minimax-cn': {
+          api: 'not a URL',
+          models: { 'MiniMax-M3': { reasoning_options: [{ type: 'toggle' }] } },
+        },
+      },
+    })
+    const resolved = new CatalogView(1, catalog, []).facts({
+      model: 'MiniMax-M3',
+      ownedBy: 'custom-cn',
+      apiURL: 'not a URL',
+    })
+
+    expect(resolved?.reasoningControl).toBeUndefined()
+  })
+
+  it('resolves the current DeepSeek alias before a same-named legacy canonical basename', () => {
+    const catalog = parseCatalogDocument({
+      models: {
+        'deepseek/deepseek-v4-flash-vision-exp': { id: 'deepseek/deepseek-v4-flash-vision-exp', reasoning: true },
+        'deepseek/deepseek-v4.1-flash': { id: 'deepseek/deepseek-v4.1-flash', reasoning: true },
+      },
+      providers: {
+        deepseek: {
+          api: 'https://api.deepseek.com',
+          models: { 'deepseek-v4-flash-vision-exp': {
+            canonical_model_id: 'deepseek/deepseek-v4.1-flash',
+            reasoning_options: [{ type: 'toggle' }, { type: 'effort', values: ['low', 'high', 'max'] }],
+          } },
+        },
+        other: {
+          api: 'https://other.example/v1',
+          models: { 'deepseek-v4-flash-vision-exp': {
+            canonical_model_id: 'deepseek/deepseek-v4-flash-vision-exp',
+            reasoning_options: [{ type: 'effort', values: ['low'] }],
+          } },
+        },
+      },
+    })
+    const view = new CatalogView(1, catalog, [])
+
+    expect(view.facts({
+      model: 'deepseek-v4-flash-vision-exp',
+      ownedBy: 'deepseek-official',
+      apiURL: 'https://api.deepseek.com/v1',
+    })).toMatchObject({
+      canonicalId: 'deepseek/deepseek-v4.1-flash',
+      reasoningEfforts: ['low', 'high', 'max'],
+      reasoningControl: { type: 'effort', efforts: ['low', 'high', 'max'], toggle: true },
+    })
+  })
+
   it('answers a bare id only when one owner publishes it', () => {
     expect(view().facts({ model: 'plain-1' })).toEqual({
       canonicalId: 'zhipuai/plain-1',
@@ -169,6 +280,7 @@ describe('catalog view resolution', () => {
       inputModalities: ['text'],
       contextWindow: 8_192,
       reasoningEfforts: [],
+      reasoningControl: { type: 'none' },
     })
   })
 
@@ -180,6 +292,7 @@ describe('catalog view resolution', () => {
       maxOutputTokens: 131_072,
       reasoning: true,
       reasoningEfforts: ['low', 'high', 'max'],
+      reasoningControl: { type: 'effort', efforts: ['low', 'high', 'max'] },
     })
   })
 
@@ -192,6 +305,7 @@ describe('catalog view resolution', () => {
       maxOutputTokens: 384_000,
       reasoning: true,
       reasoningEfforts: ['low', 'high', 'max'],
+      reasoningControl: { type: 'effort', efforts: ['low', 'high', 'max'] },
     })
   })
 

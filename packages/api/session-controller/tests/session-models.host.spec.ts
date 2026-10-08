@@ -84,7 +84,15 @@ const REASONING: LlmModelReasoningInfo = {
 }
 
 const DESCRIBED_REASONING: LlmModelReasoningInfo = {
+  control: 'effort',
   efforts: [{ id: ReasoningEffortId('high'), name: 'High', description: 'More thinking' }],
+}
+const TOGGLE_REASONING: LlmModelReasoningInfo = {
+  control: 'toggle',
+  efforts: [
+    { id: ReasoningEffortId('off'), name: 'Off' },
+    { id: ReasoningEffortId('on'), name: 'Enabled' },
+  ],
 }
 
 /**
@@ -94,6 +102,7 @@ const DESCRIBED_REASONING: LlmModelReasoningInfo = {
 function selectorReasoning(reasoning?: LlmModelReasoningInfo): ModelReasoning | undefined {
   if (reasoning === undefined) return undefined
   return {
+    ...reasoning.control === undefined ? {} : { control: reasoning.control },
     efforts: reasoning.efforts.map(effort => ({ id: effort.id, name: effort.name })),
     ...reasoning.defaultEffort === undefined ? {} : { defaultEffort: reasoning.defaultEffort },
   }
@@ -173,6 +182,36 @@ function currentSelection(ctx: Context, sessionId: SessionId) {
 }
 
 describe('Web session model selection', () => {
+  it('records a toggle On value in the model selection event', async () => {
+    const { ctx, agent, sessionId } = await harness()
+    ctx.llm.registerAdapter(['minimax-cn'], new CatalogAdapter('MiniMax CN', [
+      { provider: 'minimax-cn', id: 'MiniMax-M3', name: 'MiniMax-M3' },
+    ], TOGGLE_REASONING))
+    const append = vi.spyOn(agent.session, 'append')
+    const remote = createSessionTestRemote(ctx, {
+      defaultModelSelection: () => ({ provider: 'deepseek-official', model: 'deepseek-chat' }),
+      cwd: '/tmp',
+    })
+
+    expect(expectValue(await remote.selectModel(request({
+      sessionId,
+      provider: 'minimax-cn',
+      model: 'MiniMax-M3',
+      reasoningEffort: ReasoningEffortId('on'),
+    }))).selected).toEqual({
+      provider: 'minimax-cn',
+      model: 'MiniMax-M3',
+      reasoningEffort: 'on',
+    })
+    expect(append).toHaveBeenCalledWith('model/selection', {
+      provider: 'minimax-cn',
+      model: 'MiniMax-M3',
+      reasoningEffort: 'on',
+    })
+    append.mockRestore()
+    await ctx.fiber.dispose()
+  })
+
   it('refreshes shared model facts before returning selector metadata', async () => {
     const { ctx } = await harness()
     const refresh = vi.fn(() => Promise.resolve())
@@ -484,8 +523,7 @@ describe('Web session model selection', () => {
     ], DESCRIBED_REASONING))
     ctx.llm.registerAdapter(['string-failure'], new class extends CatalogAdapter {
       override listModels(): Promise<readonly LlmModelInfo[]> {
-        // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- non-Error provider normalization is the scenario.
-        return Promise.reject('string catalog failure')
+        return Promise.resolve().then(() => { throw 'string catalog failure' })
       }
     }('String Failure', []))
     createSessionTestRemote(ctx, {
@@ -518,6 +556,19 @@ describe('Web session model selection', () => {
       .toStrictEqual([{ id: 'plain-model', name: 'Plain Model' }])
     expect(catalog.failures).toContainEqual({
       id: 'string-failure', name: 'String Failure', message: 'string catalog failure',
+    })
+    expect(selectorReasoning({
+      control: 'toggle',
+      efforts: [
+        { id: ReasoningEffortId('off'), name: 'Off' },
+        { id: ReasoningEffortId('on'), name: 'Enabled' },
+      ],
+    })).toEqual({
+      control: 'toggle',
+      efforts: [
+        { id: ReasoningEffortId('off'), name: 'Off' },
+        { id: ReasoningEffortId('on'), name: 'Enabled' },
+      ],
     })
     await ctx.fiber.dispose()
   })
@@ -891,8 +942,7 @@ describe('Web session model selection', () => {
     }('Image Capable', [{ provider: 'image-capable', id: 'vision', name: 'Vision' }]))
     ctx.llm.registerAdapter(['string-error'], new class extends CatalogAdapter {
       override resolveModel(): Promise<LlmResolvedModelInfo> {
-        // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- non-Error provider normalization is the scenario.
-        return Promise.reject('string selection failure')
+        return Promise.resolve().then(() => { throw 'string selection failure' })
       }
     }('String Error', [{ provider: 'string-error', id: 'plain', name: 'Plain' }]))
     let saveMode: 'success' | 'error' | 'remote' = 'success'

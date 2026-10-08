@@ -860,6 +860,7 @@ export class LlmRuntime extends TypertRemoteService {
     return {
       ...info,
       reasoning: {
+        ...reasoning.control === undefined ? {} : { control: reasoning.control },
         efforts,
         ...reasoning.defaultEffort === undefined ? {} : { defaultEffort: reasoning.defaultEffort },
       },

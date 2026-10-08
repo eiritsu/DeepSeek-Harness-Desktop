@@ -163,13 +163,17 @@ describe('request-level dynamic configuration', () => {
     const server = await mockServer([{ kind: 'sse', events: textEvents }])
     const { ctx } = await boot(dir, { baseURL: server.url })
 
+    await expect(ctx.llm.listModels('deepseek-official')).resolves.toEqual([])
     const keyless = await prompt(ctx)
     expect(keyless.finish).toMatchObject({ kind: 'error', failure: { code: 'MISSING_CREDENTIAL' } })
     await expect(access(join(dir, '.anonymous-user-id'))).rejects.toMatchObject({ code: 'ENOENT' })
     await ctx.credentials.set(KEY_REF, 'sk-arrived')
+    await expect(ctx.llm.listModels('deepseek-official')).resolves.toHaveLength(2)
     await prompt(ctx)
     expect(server.headers[0]?.['x-api-key']).toBe('sk-arrived')
     await expect(access(join(dir, '.anonymous-user-id'))).resolves.toBeUndefined()
+    await ctx.credentials.unset(KEY_REF)
+    await expect(ctx.llm.listModels('deepseek-official')).resolves.toEqual([])
   })
 
   it('rejects a stored credential no header can carry, never echoing it in the failure', async () => {

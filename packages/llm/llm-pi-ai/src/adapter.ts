@@ -69,6 +69,21 @@ import { THINKING_LEVELS } from './catalog.ts'
 import { createModels, getSupportedThinkingLevels } from './models.ts'
 import { toStreamChunks } from './stream.ts'
 
+/** Narrow the SDK model union to the protocol whose compat owns these fields. */
+function isOpenAICompletionsModel(model: Model<Api>): model is Model<'openai-completions'> {
+  return model.api === 'openai-completions'
+}
+
+/** Whether a selectable declaration also contains an unsupported budget control. */
+function hasBudgetControl(control: ModelFacts['reasoningControl']): boolean {
+  return (control?.type === 'toggle' || control?.type === 'effort') && control.budget === true
+}
+
+/** Narrow one SDK JSON payload record without assuming an arbitrary object is indexable. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 /** One resolution's frozen view: the profiles, the collection built from them, and the catalog generation. */
 interface PiAiSnapshot {
   /** The resolved profiles this collection was built from, used as its identity. */
@@ -138,11 +153,72 @@ function profileOptions(
   profile: ResolvedPiAiProviderProfile,
   reasoning: ModelThinkingLevel | undefined,
   apiKey: string | undefined,
+  model: Model<Api>,
+  control: ModelFacts['reasoningControl'],
 ): SimpleStreamOptions {
   const enabledReasoning: ThinkingLevel | undefined = reasoning === 'off' ? undefined : reasoning
+  const toggleControl = control?.type === 'toggle'
+    || (control?.type === 'effort' && control.toggle === true)
+  const budgetControl = hasBudgetControl(control)
+  const updateNested = (
+    payload: Record<string, unknown>,
+    key: string,
+    field: string,
+    value: unknown,
+  ): Record<string, unknown> => {
+    const current = payload[key]
+    const nested = isRecord(current)
+      ? { ...current }
+      : {}
+    const updated = Object.fromEntries(Object.entries(nested).filter(([name]) => name !== field))
+    if (value !== undefined) updated[field] = value
+    if (Object.keys(updated).length === 0) {
+      return Object.fromEntries(Object.entries(payload).filter(([name]) => name !== key))
+    }
+    return { ...payload, [key]: updated }
+  }
   return {
     ...apiKey === undefined ? {} : { apiKey },
     ...enabledReasoning === undefined ? {} : { reasoning: enabledReasoning },
+    ...!toggleControl || budgetControl ? {} : {
+      onPayload: (payload: unknown): unknown => {
+        if (!isRecord(payload)) return payload
+        let next = { ...payload }
+        if (model.api === 'anthropic-messages') {
+          if (reasoning === undefined) {
+            next = updateNested(next, 'output_config', 'effort', undefined)
+            delete next.thinking_budget_tokens
+            next = updateNested(next, 'thinking', 'type', undefined)
+            next = updateNested(next, 'thinking', 'budget_tokens', undefined)
+          } else if (reasoning === 'off') {
+            next = updateNested(next, 'output_config', 'effort', undefined)
+            delete next.thinking_budget_tokens
+            next = updateNested(next, 'thinking', 'budget_tokens', undefined)
+            next = updateNested(next, 'thinking', 'type', 'disabled')
+          } else if (control.type === 'toggle') {
+            next = updateNested(next, 'output_config', 'effort', undefined)
+            delete next.thinking_budget_tokens
+            next = updateNested(next, 'thinking', 'budget_tokens', undefined)
+            next = updateNested(next, 'thinking', 'type', 'adaptive')
+          }
+        } else if (isOpenAICompletionsModel(model) && model.compat?.thinkingFormat === undefined) {
+          if (reasoning === undefined) {
+            delete next.reasoning_effort
+            next = updateNested(next, 'thinking', 'type', undefined)
+          } else if (reasoning === 'off') {
+            delete next.reasoning_effort
+            next = updateNested(next, 'thinking', 'type', 'disabled')
+          } else if (control.type === 'toggle') {
+            delete next.reasoning_effort
+            next = updateNested(next, 'thinking', 'type', 'adaptive')
+          }
+        } else if (model.api === 'openai-responses' && reasoning === undefined) {
+          next = updateNested(next, 'reasoning', 'effort', undefined)
+          delete next.reasoning_effort
+        }
+        return next
+      },
+    },
     ...profile.thinkingBudgets === undefined ? {} : { thinkingBudgets: profile.thinkingBudgets },
     ...profile.cacheRetention === undefined ? {} : { cacheRetention: profile.cacheRetention },
     ...profile.transport === undefined ? {} : { transport: profile.transport },
@@ -179,16 +255,12 @@ function effectiveModalities(
 
 /** Whether pi-ai's selected protocol encoder accepts an explicit effort. */
 function canEncodeReasoningEffort(model: Model<Api>): boolean {
-  if (model.api !== 'openai-completions') return true
+  if (!isOpenAICompletionsModel(model)) return true
   if (model.compat === undefined) return true
-  const compat = model.compat as {
-    supportsReasoningEffort?: boolean
-    thinkingFormat?: string
-  }
-  return compat.supportsReasoningEffort !== false
-    || compat.thinkingFormat === 'openrouter'
-    || compat.thinkingFormat === 'ant-ling'
-    || compat.thinkingFormat === 'string-thinking'
+  return model.compat.supportsReasoningEffort !== false
+    || model.compat.thinkingFormat === 'openrouter'
+    || model.compat.thinkingFormat === 'ant-ling'
+    || model.compat.thinkingFormat === 'string-thinking'
 }
 
 /** The accepted model facts applied to the descriptor pi-ai uses for this call. */
@@ -202,8 +274,32 @@ function modelWithFacts(
   const maxTokens = facts?.maxOutputTokens === undefined
     ? model.maxTokens
     : Math.min(model.maxTokens, facts.maxOutputTokens)
-  if (facts?.reasoning === false) {
-    return { ...model, input: [...input], contextWindow, maxTokens, reasoning: false }
+  if (facts?.reasoning === false || facts?.reasoningControl?.type === 'none') {
+    if (facts.reasoning === false) {
+      return { ...model, input: [...input], contextWindow, maxTokens, reasoning: false }
+    }
+    const thinkingLevelMap: ThinkingLevelMap = Object.fromEntries(THINKING_LEVELS.map(level => [level, null]))
+    return { ...model, input: [...input], contextWindow, maxTokens, thinkingLevelMap }
+  }
+  if (facts?.reasoningControl?.budget === true) {
+    return { ...model, input: [...input], contextWindow, maxTokens }
+  }
+  if (facts?.reasoningControl?.type === 'toggle') {
+    const thinkingLevelMap: ThinkingLevelMap = Object.fromEntries(
+      THINKING_LEVELS.map(level => [level, level === 'off' ? 'none' : level === 'high' ? 'high' : null]),
+    )
+    const compat = model.api === 'anthropic-messages'
+      ? { ...model.compat, forceAdaptiveThinking: true }
+      : model.compat
+    return {
+      ...model,
+      input: [...input],
+      contextWindow,
+      maxTokens,
+      reasoning: true,
+      thinkingLevelMap,
+      ...(compat === undefined ? {} : { compat }),
+    }
   }
   if (facts?.reasoningEfforts === undefined) return { ...model, input: [...input], contextWindow, maxTokens }
 
@@ -215,17 +311,28 @@ function modelWithFacts(
     if (model.thinkingLevelMap !== undefined && existing === null) continue
     wireValues.set(level, typeof existing === 'string' ? existing : value)
   }
+  if (facts.reasoningControl?.type === 'effort' && facts.reasoningControl.toggle === true) {
+    wireValues.set('off', 'none')
+  }
   const thinkingLevelMap: ThinkingLevelMap = Object.fromEntries(
     THINKING_LEVELS.map(level => [level, wireValues.get(level) ?? null]),
   )
   const profileDenied = declared?.reasoning === false
+  const compat = model.api === 'anthropic-messages' && facts.reasoningControl?.type === 'effort'
+    ? { ...model.compat, forceAdaptiveThinking: true }
+    : isOpenAICompletionsModel(model)
+      && facts.reasoningControl?.type === 'effort'
+      && model.compat?.supportsReasoningEffort !== false
+      ? { ...model.compat, supportsReasoningEffort: true }
+      : model.compat
   return {
     ...model,
     input: [...input],
     contextWindow,
     maxTokens,
-    reasoning: !profileDenied && canEncodeReasoningEffort(model) && wireValues.size > 0,
+    reasoning: !profileDenied && canEncodeReasoningEffort(model),
     thinkingLevelMap,
+    ...(compat === undefined ? {} : { compat }),
   }
 }
 
@@ -251,11 +358,16 @@ function encodableLevels(
   declared: DeclaredModelFacts | undefined,
 ): ModelThinkingLevel[] {
   const effective = modelWithFacts(model, facts, declared)
+  if (facts?.reasoning === false) return []
+  if (hasBudgetControl(facts?.reasoningControl)) {
+    if (!effective.reasoning) return []
+    const nativeLevels = getSupportedThinkingLevels(effective)
+    if (declared?.reasoningEfforts === undefined) return nativeLevels
+    const declaredLevels = new Set(declared.reasoningEfforts)
+    return nativeLevels.filter(level => declaredLevels.has(level))
+  }
   if (!effective.reasoning || !canEncodeReasoningEffort(effective)) return []
   const levels = getSupportedThinkingLevels(effective)
-  // A record that says the model does not reason denies every level, whatever
-  // the transport could encode for it — the same denial the description shows.
-  if (facts?.reasoning === false) return []
   if (facts?.reasoningEfforts !== undefined) return levels
   if (declared?.reasoningEfforts !== undefined) {
     const own = new Set(declared.reasoningEfforts)
@@ -285,8 +397,10 @@ function encodableLevels(
 function describableReasoningLevel(
   levels: readonly ModelThinkingLevel[],
   effort: ReasoningEffortIdType | ModelThinkingLevel | undefined,
+  control: ModelFacts['reasoningControl'],
 ): ModelThinkingLevel | undefined {
   if (effort === undefined) return undefined
+  if (effort === 'on' && control?.type === 'toggle' && levels.includes('high')) return 'high'
   return levels.includes(effort as ModelThinkingLevel) ? effort as ModelThinkingLevel : undefined
 }
 
@@ -302,8 +416,10 @@ function resolveReasoningLevel(
   model: Model<Api>,
   levels: readonly ModelThinkingLevel[],
   effort: ReasoningEffortIdType | ModelThinkingLevel | undefined,
+  control: ModelFacts['reasoningControl'],
 ): ModelThinkingLevel | undefined {
   if (effort === undefined) return undefined
+  if (effort === 'on' && control?.type === 'toggle' && levels.includes('high')) return 'high'
   if (levels.includes(effort as ModelThinkingLevel)) return effort as ModelThinkingLevel
   throw new LlmError(
     `pi-ai provider "${model.provider}" model "${model.id}" does not support reasoning effort "${effort}"`,
@@ -349,11 +465,25 @@ function reasoningInfo(
   if (levels.length === 0) return {}
   return {
     reasoning: {
-      efforts: levels.map(level => ({
+      ...!hasBudgetControl(facts?.reasoningControl)
+        && (facts?.reasoningControl?.type === 'toggle' || facts?.reasoningControl?.type === 'effort')
+        ? { control: facts.reasoningControl.type }
+        : {},
+      efforts: (facts?.reasoningControl?.type === 'toggle' && !hasBudgetControl(facts.reasoningControl)
+        ? levels.map(level => level === 'high' ? 'on' : level)
+        : levels).map(level => ({
         id: ReasoningEffortId(level),
-        name: `${level.charAt(0).toUpperCase()}${level.slice(1)}`,
+        name: level === 'on' ? 'Enabled' : `${level.charAt(0).toUpperCase()}${level.slice(1)}`,
       })),
-      ...defaultLevel === undefined ? {} : { defaultEffort: ReasoningEffortId(defaultLevel) },
+      ...defaultLevel === undefined ? {} : {
+        defaultEffort: ReasoningEffortId(
+          facts?.reasoningControl?.type === 'toggle'
+            && !hasBudgetControl(facts.reasoningControl)
+            && defaultLevel === 'high'
+            ? 'on'
+            : defaultLevel,
+        ),
+      },
     },
   }
 }
@@ -397,7 +527,11 @@ export class PiAiAdapter extends LlmAdapter {
       if (source === undefined) continue
       const entries = source.getModels().map(model => modelWithFacts(
         model,
-        facts?.facts({ model: model.id, ownedBy: provider }),
+        facts?.facts({
+          model: model.id,
+          ownedBy: provider,
+          apiURL: model.baseUrl,
+        }),
         profile.declaredFacts.get(model.id),
       ))
       models.setProvider({ ...source, getModels: () => entries })
@@ -409,16 +543,20 @@ export class PiAiAdapter extends LlmAdapter {
   /**
    * The shared facts for one exact route and model, or undefined when no
    * catalog is mounted or the catalog has no unambiguous record. The route id
-   * is the owner a mapping is matched against: it is the upstream provider for
-   * an installed-catalog route, and a deployment naming its own gateway routes
-   * says so with a configured mapping.
+   * selects exact provider aliases, and the descriptor's API URL lets a custom
+   * route match an unambiguous published provider endpoint.
    * @param snapshot - the frozen view this operation captured.
    * @param provider - the route id.
    * @param model - the route-local model id.
    * @returns the facts, or undefined.
    */
   private factsOf(snapshot: PiAiSnapshot, provider: string, model: string): ModelFacts | undefined {
-    return snapshot.facts?.facts({ model, ownedBy: provider })
+    const descriptor = snapshot.models.getModel(provider, model)
+    return snapshot.facts?.facts({
+      model,
+      ownedBy: provider,
+      ...descriptor?.baseUrl === undefined ? {} : { apiURL: descriptor.baseUrl },
+    })
   }
 
   /** The profile for one route within one snapshot, or the not-owned failure. */
@@ -490,7 +628,7 @@ export class PiAiAdapter extends LlmAdapter {
     const facts = this.factsOf(snapshot, provider, model)
     const declared = profile.declaredFacts.get(model)
     const levels = encodableLevels(resolvedModel, facts, declared)
-    const defaultLevel = describableReasoningLevel(levels, profile.reasoning)
+    const defaultLevel = describableReasoningLevel(levels, profile.reasoning, facts?.reasoningControl)
     // Only a cap the deployment configured is a request default; the
     // catalog's `maxTokens` sizes the model and stops there.
     const configuredMaxTokens = profile.configuredMaxTokens.get(model)
@@ -533,10 +671,12 @@ export class PiAiAdapter extends LlmAdapter {
     const model = this.modelOf(snapshot, options.provider, options.model)
     const facts = this.factsOf(snapshot, options.provider, options.model)
     const declared = profile.declaredFacts.get(options.model)
+    const requestedReasoning = options.reasoningEffort ?? profile.reasoning
     const reasoning = resolveReasoningLevel(
       model,
       encodableLevels(model, facts, declared),
-      options.reasoningEffort ?? profile.reasoning,
+      requestedReasoning,
+      facts?.reasoningControl,
     )
     // The catalog's output ceiling is a capability, not a request default: it
     // never becomes one here. It does bound what a default may claim, and
@@ -583,7 +723,7 @@ export class PiAiAdapter extends LlmAdapter {
           },
         }, onReplayDegrade)
       const events = snapshot.models.streamSimple(model, context, {
-        ...profileOptions(profile, reasoning, apiKey),
+        ...profileOptions(profile, reasoning, apiKey, model, facts?.reasoningControl),
         ...options.temperature === undefined ? {} : { temperature: options.temperature },
         ...options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens },
         ...options.sessionId === undefined ? {} : { sessionId: String(options.sessionId) },

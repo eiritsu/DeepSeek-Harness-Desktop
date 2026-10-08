@@ -2,10 +2,9 @@
  * The model-fact vocabulary this catalog publishes.
  *
  * A fact is a property of one canonical model as models.dev records it, and it
- * is the same for every channel that serves that model. What a channel
- * *encodes* is not a fact: it is the effort vocabulary a route can put on the
- * wire, reported separately as {@link ModelFacts.reasoningEfforts}, and it is
- * the only channel-specific part of a {@link ModelFacts} record.
+ * is the same for every channel that serves that model. A channel separately
+ * declares which reasoning controls it accepts; this is distinct from the
+ * model's `reasoning` capability flag.
  *
  * @module @deepseek-ai/dsh-model-catalog/src/facts
  */
@@ -34,7 +33,15 @@ export interface ModelFacts {
    * none, which refuses every explicit level.
    */
   readonly reasoningEfforts?: readonly string[]
+  /** Selectable control declared by the serving channel; absent means unknown. */
+  readonly reasoningControl?: ReasoningControl
 }
+
+/** Selectable reasoning controls models.dev declares for one serving channel. */
+export type ReasoningControl =
+  | { readonly type: 'none' }
+  | { readonly type: 'toggle'; readonly budget?: boolean }
+  | { readonly type: 'effort'; readonly efforts: readonly string[]; readonly toggle?: boolean; readonly budget?: boolean }
 
 /** Which route-local model a caller wants facts for. */
 export interface ModelFactsRequest {
@@ -42,6 +49,8 @@ export interface ModelFactsRequest {
   readonly model: string
   /** Upstream owner, required to disambiguate between mappings or basenames. */
   readonly ownedBy?: string
+  /** Route API endpoint, used to associate custom routes with published providers. */
+  readonly apiURL?: string
 }
 
 /**

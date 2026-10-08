@@ -154,7 +154,7 @@ describe('ModelsSettingsStore', () => {
     expect(seenRefs).toEqual([['DEEPSEEK_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GHOST_API_KEY']])
     const byProvider = new Map(state.rows.map(row => [row.entry.provider, row]))
     expect(byProvider.get('deepseek-official')).toMatchObject({
-      configured: true,
+      configured: false,
       removable: false,
       apiKeyEnv: 'DEEPSEEK_API_KEY',
       credential: { configured: false, writable: true },
@@ -169,6 +169,43 @@ describe('ModelsSettingsStore', () => {
     expect(byProvider.get('anthropic')?.apiKeyEnv).toBeUndefined()
     expect(byProvider.get('ghost')).toMatchObject({ configured: false, removable: false })
     expect(state.namespaces.get('llm-pi-ai')?.ns).toBe('llm-pi-ai')
+  })
+
+  it('counts the official whole-section route only while its key is configured', async () => {
+    const { ctx, mirror } = api({
+      describeCredentials: refs => Promise.resolve(remoteOk(Object.fromEntries(refs.map(ref => [ref, {
+        configured: ref === 'DEEPSEEK_API_KEY',
+        writable: true,
+      }])))),
+    })
+    const store = new ModelsSettingsStore(ctx, settingsSchema, mirror)
+
+    await store.load()
+
+    expect(store.store.getSnapshot().rows.find(row => row.entry.provider === 'deepseek-official')).toMatchObject({
+      configured: true,
+      removable: true,
+      credential: { configured: true, writable: true },
+    })
+    expect(store.store.getSnapshot().rows.find(row => row.entry.provider === 'deepseek-account')).toBeUndefined()
+  })
+
+  it('keeps an environment-provided official key configured but not removable', async () => {
+    const { ctx, mirror } = api({
+      describeCredentials: refs => Promise.resolve(remoteOk(Object.fromEntries(refs.map(ref => [ref, {
+        configured: ref === 'DEEPSEEK_API_KEY',
+        writable: ref !== 'DEEPSEEK_API_KEY',
+      }])))),
+    })
+    const store = new ModelsSettingsStore(ctx, settingsSchema, mirror)
+
+    await store.load()
+
+    expect(store.store.getSnapshot().rows.find(row => row.entry.provider === 'deepseek-official')).toMatchObject({
+      configured: true,
+      removable: false,
+      credential: { configured: true, writable: false },
+    })
   })
 
   it('degrades the credential badge, not the page, when the credential domain fails', async () => {

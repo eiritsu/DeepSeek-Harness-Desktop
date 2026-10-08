@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用此包
 
-`apiKeyEnv` 默认为 `DEEPSEEK_API_KEY`，在每次请求时解析凭据。已组合 credentials 服务时，按其优先级解析；只有未组合该服务时才直接读取启动环境。请求时凭据缺失以 `MISSING_CREDENTIAL` 失败；格式错误以 `INVALID_CREDENTIAL` 失败。模型发现始终返回配置的目录，不依赖凭据。
+`apiKeyEnv` 默认为 `DEEPSEEK_API_KEY`，在每次请求时解析凭据。已组合 credentials 服务时，按其优先级解析；只有未组合该服务时才直接读取启动环境。请求时凭据缺失以 `MISSING_CREDENTIAL` 失败；格式错误以 `INVALID_CREDENTIAL` 失败。密钥缺失时，模型发现返回空目录，因此选择器会隐藏该路由，直到密钥可用；无效凭据仍会使发现操作显式失败。
 
 ```yaml
 - id: llm-deepseek
@@ -60,7 +60,7 @@ kind: "package-reference"
 
 #### Token effect
 
-鉴权和目录过滤不增加输入 token；实际调用的 token 由所选模型与请求内容决定。
+鉴权和目录可用性不增加输入 token；实际调用的 token 由所选模型与请求内容决定。
 
 #### KV Cache effect
 

@@ -244,8 +244,23 @@ export class ModelsSettingsStore {
         if (row.entry.provider === 'deepseek-account') return row
         const named = row.apiKeyEnv === undefined ? undefined : credentials[row.apiKeyEnv]
         const derived = row.apiKeyEnv !== undefined ? undefined : credentials[deriveKeyRef(row.entry.provider)]
+        const officialApi = row.entry.provider === 'deepseek-official'
+          && row.entry.settingsNs === 'llm-deepseek'
+          && row.entry.settingsPath.length === 0
+        const managedKeyRef = row.entry.provider === 'deepseek-official'
+          ? 'DEEPSEEK_API_KEY'
+          : deriveKeyRef(row.entry.provider)
+        const managedKey = row.apiKeyEnv === managedKeyRef
+          && named?.configured === true
+          && named.writable
         return {
           ...row,
+          // The shipped whole-section route is dormant in Models until its
+          // key is available; the directory still offers it through Add.
+          ...(officialApi ? {
+            configured: row.configured && named?.configured === true,
+            removable: managedKey,
+          } : {}),
           ...named === undefined ? {} : { credential: named },
           ...derived === undefined ? {} : { derivedCredential: derived },
         }

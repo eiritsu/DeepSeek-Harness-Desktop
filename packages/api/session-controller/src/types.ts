@@ -127,17 +127,16 @@ export interface ModelReasoningEffort {
 }
 
 /**
- * The reasoning ladder every model in the catalog offers.
+ * Reasoning controls one resolved provider route and model accepts.
  *
- * `efforts` is the fixed harness vocabulary, not the route's capability: a
- * selector shows the same rows for every model, and a level the serving route
- * cannot encode is refused at request time as `UNSUPPORTED_REASONING_EFFORT`
- * rather than silently lowered. The choice to send no effort is the "Default"
- * row and is not part of this list. `defaultEffort` names the effort a request
- * carrying none is materialized with, so a surface can show what "Default"
- * will actually become.
+ * `efforts` is the adapter's exact encodable list. A toggle marks binary `on`
+ * and `off` rows; otherwise rows represent effort levels. `Default` is a
+ * separate choice that sends no explicit value. `defaultEffort` names the
+ * configured level a request without an explicit choice uses.
  */
 export interface ModelReasoning {
+  /** Whether rows are a binary toggle or selectable effort levels. */
+  readonly control?: 'toggle' | 'effort'
   readonly efforts: readonly ModelReasoningEffort[]
   readonly defaultEffort?: string
 }

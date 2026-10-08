@@ -10,14 +10,16 @@
  */
 
 import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { dirname, join } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import Loader, { type ModuleLoaderV2 } from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
+import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import * as LlmPiAi from '@deepseek-ai/dsh-llm-pi-ai'
 import Storage from '@deepseek-ai/dsh-storage'
 import * as StorageDomain from '@deepseek-ai/dsh-storage-domain'
@@ -62,11 +64,52 @@ afterEach(async () => {
  * @param storageRoot - durable root for the last-good snapshot.
  * @returns the booted root context.
  */
-async function boot(catalogURL: string, providerURL: string, storageRoot: string): Promise<Context> {
+interface CoreModules {
+  llm: unknown
+  modelCatalog: unknown
+  llmPiAi: unknown
+}
+
+async function boot(
+  catalogURL: string,
+  providerURL: string,
+  storageRoot: string,
+  route: {
+    provider?: string
+    model?: string
+    models?: readonly string[]
+    api?: string
+    catalogOrder?: 'before-pi-ai' | 'after-pi-ai' | 'late'
+  } = {},
+  coreModules?: CoreModules,
+): Promise<Context> {
   vi.stubEnv('PI_TEST_KEY', 'test-key')
   const root = await mkdtemp(join(tmpdir(), 'dsh-catalog-composition-'))
   roots.push(root)
   const configPath = join(root, 'cordis.yml')
+  const catalogEntry = [
+    '- id: model-catalog',
+    "  name: '@deepseek-ai/dsh-model-catalog'",
+    '  config:',
+    `    catalogURL: ${catalogURL}`,
+  ]
+  const piAiEntry = [
+    '- id: llm-pi-ai',
+    "  name: '@deepseek-ai/dsh-llm-pi-ai'",
+    '  config:',
+    '    providers:',
+    `      ${route.provider ?? 'deepseek'}:`,
+    `        api: ${route.api ?? 'openai-completions'}`,
+    '        apiKeyEnv: PI_TEST_KEY',
+    `        baseURL: ${providerURL}`,
+    '        models:',
+    ...(route.models ?? [route.model ?? 'catalog-test-model']).flatMap(model => [
+      `          - id: ${model}`,
+      '            contextWindow: 1000000',
+      '            maxTokens: 65536',
+    ]),
+  ]
+  const catalogOrder = route.catalogOrder ?? 'before-pi-ai'
   await writeFile(configPath, [
     '- id: llm',
     "  name: '@deepseek-ai/dsh-llm'",
@@ -80,22 +123,9 @@ async function boot(catalogURL: string, providerURL: string, storageRoot: string
     "  name: '@deepseek-ai/dsh-storage-domain'",
     '  config:',
     '    backend: json',
-    '- id: model-catalog',
-    "  name: '@deepseek-ai/dsh-model-catalog'",
-    '  config:',
-    `    catalogURL: ${catalogURL}`,
-    '- id: llm-pi-ai',
-    "  name: '@deepseek-ai/dsh-llm-pi-ai'",
-    '  config:',
-    '    providers:',
-    '      deepseek:',
-    '        api: openai-completions',
-    '        apiKeyEnv: PI_TEST_KEY',
-    `        baseURL: ${providerURL}`,
-    '        models:',
-    '          - id: catalog-test-model',
-    '            contextWindow: 1000000',
-    '            maxTokens: 65536',
+    ...(catalogOrder === 'before-pi-ai' ? catalogEntry : []),
+    ...piAiEntry,
+    ...(catalogOrder === 'after-pi-ai' ? catalogEntry : []),
     '',
   ].join('\n'))
 
@@ -105,12 +135,12 @@ async function boot(catalogURL: string, providerURL: string, storageRoot: string
   await ctx.plugin(Loader)
   ctx.loader.builtins.include = Include
   const modules = new Map<string, unknown>([
-    ['@deepseek-ai/dsh-llm', LlmRuntime],
+    ['@deepseek-ai/dsh-llm', coreModules?.llm ?? LlmRuntime],
     ['@deepseek-ai/dsh-storage', Storage],
     ['@deepseek-ai/dsh-storage-json', StorageJson],
     ['@deepseek-ai/dsh-storage-domain', StorageDomain],
-    ['@deepseek-ai/dsh-model-catalog', ModelCatalog],
-    ['@deepseek-ai/dsh-llm-pi-ai', LlmPiAi],
+    ['@deepseek-ai/dsh-model-catalog', coreModules?.modelCatalog ?? ModelCatalog],
+    ['@deepseek-ai/dsh-llm-pi-ai', coreModules?.llmPiAi ?? LlmPiAi],
   ])
   const internal: ModuleLoaderV2 = {
     version: 'v2',
@@ -140,6 +170,20 @@ function catalogOf(ctx: Context) {
   return catalog
 }
 
+const builtLibraryTestEnabled = process.env.DSH_TEST_BUILT_CORE === '1'
+const testDirectory = dirname(fileURLToPath(import.meta.url))
+const builtLibraryPaths = {
+  llm: join(testDirectory, '../../llm/lib/index.js'),
+  modelCatalog: join(testDirectory, '../lib/index.js'),
+  llmPiAi: join(testDirectory, '../../llm-pi-ai/lib/index.js'),
+}
+
+async function importBuiltLibrary(path: string): Promise<unknown> {
+  if (!existsSync(path)) throw new Error(`built core composition requires ${path}`)
+  const loaded: unknown = await import(pathToFileURL(path).href)
+  return loaded
+}
+
 /**
  * Drive one request through the service the loop drives. An adapter failure
  * arrives as the stream protocol's terminal error chunk, which is how the loop
@@ -154,6 +198,7 @@ async function requestText(ctx: Context, options: {
   provider: string
   model: string
   maxTokens?: number
+  reasoningEffort?: ReturnType<typeof ReasoningEffortId>
 }): Promise<string> {
   const assembler = new (await import('@deepseek-ai/dsh-llm')).BlockAssembler()
   for await (const chunk of ctx.llm.stream({ messages: [], ...options })) {
@@ -168,6 +213,103 @@ async function requestText(ctx: Context, options: {
 }
 
 describe('shared model catalog in the shipped composition', () => {
+  it.skipIf(!builtLibraryTestEnabled)('resolves live channel controls through built Llm, catalog and PiAI packages in Loader', async () => {
+    const catalog = await mockServer([{
+      body: JSON.stringify({
+        models: {
+          'minimax/MiniMax-M3': { id: 'minimax/MiniMax-M3', reasoning: true },
+          'minimax/MiniMax-M2.7-highspeed': { id: 'minimax/MiniMax-M2.7-highspeed', reasoning: true },
+          'minimax/MiniMax-M3.1-Flash-Preview': { id: 'minimax/MiniMax-M3.1-Flash-Preview', reasoning: true },
+        },
+        providers: {
+          'minimax-cn': {
+            api: 'https://api.minimax.cn/anthropic/v1',
+            models: {
+              'MiniMax-M3': { reasoning_options: [{ type: 'toggle' }] },
+              'MiniMax-M2.7-highspeed': { reasoning_options: [] },
+            },
+          },
+          'minimax-cn-coding-plan': {
+            api: 'https://api.minimax.cn/anthropic/v1',
+            models: { 'MiniMax-M3.1-Flash-Preview': {
+              canonical_model_id: 'minimax/MiniMax-M3.1-Flash-Preview',
+              reasoning_options: [{ type: 'effort', values: ['low', 'medium', 'high', 'xhigh', 'max'] }],
+            } },
+          },
+        },
+      }),
+    }])
+    const storageRoot = join(await mkdtemp(join(tmpdir(), 'dsh-built-catalog-storage-')), 'storages')
+    roots.push(join(storageRoot, '..'))
+    const coreModules: CoreModules = {
+      llm: await importBuiltLibrary(builtLibraryPaths.llm),
+      modelCatalog: await importBuiltLibrary(builtLibraryPaths.modelCatalog),
+      llmPiAi: await importBuiltLibrary(builtLibraryPaths.llmPiAi),
+    }
+    const ctx = await boot(catalog.url, 'https://api.minimax.cn/v1', storageRoot, {
+      provider: 'minimax-cn-custom',
+      api: 'openai-responses',
+      models: ['MiniMax-M3', 'MiniMax-M2.7-highspeed', 'MiniMax-M3.1-Flash-Preview'],
+    }, coreModules)
+    await catalogOf(ctx).refresh()
+
+    await expect(ctx.llm.resolveModelInfo('minimax-cn-custom', 'MiniMax-M3')).resolves.toMatchObject({
+      reasoning: { control: 'toggle', efforts: [{ id: 'off' }, { id: 'on' }] },
+    })
+    await expect(ctx.llm.resolveModelInfo('minimax-cn-custom', 'MiniMax-M3.1-Flash-Preview')).resolves.toMatchObject({
+      reasoning: {
+        control: 'effort',
+        efforts: [{ id: 'low' }, { id: 'medium' }, { id: 'high' }, { id: 'xhigh' }, { id: 'max' }],
+      },
+    })
+    expect((await ctx.llm.resolveModelInfo('minimax-cn-custom', 'MiniMax-M2.7-highspeed')).reasoning)
+      .toBeUndefined()
+  })
+
+  it.skipIf(!builtLibraryTestEnabled)('PiAI observes a catalog mounted after its route', async () => {
+    const catalog = await mockServer([{
+      body: JSON.stringify({
+        models: { 'minimax/MiniMax-M3': { id: 'minimax/MiniMax-M3', reasoning: true } },
+        providers: {
+          'minimax-cn': {
+            api: 'https://api.minimax.cn/anthropic/v1',
+            models: { 'MiniMax-M3': { reasoning_options: [{ type: 'toggle' }] } },
+          },
+        },
+      }),
+    }])
+    const storageRoot = join(await mkdtemp(join(tmpdir(), 'dsh-built-late-catalog-storage-')), 'storages')
+    roots.push(join(storageRoot, '..'))
+    const coreModules: CoreModules = {
+      llm: await importBuiltLibrary(builtLibraryPaths.llm),
+      modelCatalog: await importBuiltLibrary(builtLibraryPaths.modelCatalog),
+      llmPiAi: await importBuiltLibrary(builtLibraryPaths.llmPiAi),
+    }
+    const ctx = await boot(catalog.url, 'https://api.minimax.cn/v1', storageRoot, {
+      provider: 'minimax-cn-custom',
+      api: 'openai-responses',
+      model: 'MiniMax-M3',
+      catalogOrder: 'late',
+    }, coreModules)
+
+    expect(ctx.get('modelCatalog')).toBeUndefined()
+    await expect(ctx.llm.resolveModelInfo('minimax-cn-custom', 'MiniMax-M3')).resolves.not.toMatchObject({
+      reasoning: { control: 'toggle' },
+    })
+
+    const entryId = await ctx.loader.create({
+      name: '@deepseek-ai/dsh-model-catalog',
+      config: { catalogURL: catalog.url },
+    })
+    const entry = ctx.loader.resolve(entryId)
+    await entry.fiber?.await()
+    await catalogOf(ctx).refresh()
+
+    await expect(ctx.llm.resolveModelInfo('minimax-cn-custom', 'MiniMax-M3')).resolves.toMatchObject({
+      reasoning: { control: 'toggle', efforts: [{ id: 'off' }, { id: 'on' }] },
+    })
+  })
+
   it('describes and bounds a real request from the catalog record', async () => {
     const catalog = await mockServer([{ body: JSON.stringify(CATALOG) }])
     const provider = await mockServer([{ events: textEvents }])
@@ -233,9 +375,53 @@ describe('shared model catalog in the shipped composition', () => {
       maxOutputTokens: 512,
       reasoning: true,
       reasoningEfforts: ['low', 'high'],
+      reasoningControl: { type: 'effort', efforts: ['low', 'high'] },
     })
     // The recovered generation is published before any request could have
     // been refused for want of facts.
     expect(recovered.facts.generation).toBeGreaterThan(0)
+  }, 30_000)
+
+  it('resolves custom-route toggle controls and serializes explicit On through Loader and LlmRuntime', async () => {
+    const provider = await mockServer([{ status: 401, body: '{}' }, { status: 401, body: '{}' }, { status: 401, body: '{}' }])
+    const catalog = await mockServer([{
+      body: JSON.stringify({
+        models: { 'minimax/MiniMax-M3': { id: 'minimax/MiniMax-M3', reasoning: true } },
+        providers: {
+          'minimax-cn': {
+            api: provider.url,
+            models: { 'MiniMax-M3': { reasoning_options: [{ type: 'toggle' }] } },
+          },
+        },
+      }),
+    }])
+    const storageRoot = join(await mkdtemp(join(tmpdir(), 'dsh-catalog-toggle-storage-')), 'storages')
+    roots.push(join(storageRoot, '..'))
+    const ctx = await boot(catalog.url, provider.url, storageRoot, {
+      provider: 'minimax-custom', model: 'MiniMax-M3', api: 'openai-responses',
+    })
+    await catalogOf(ctx).refresh()
+
+    await expect(ctx.llm.resolveModelInfo('minimax-custom', 'MiniMax-M3')).resolves.toMatchObject({
+      reasoning: {
+        control: 'toggle',
+        efforts: [{ id: 'off' }, { id: 'on' }],
+      },
+    })
+    await expect(requestText(ctx, {
+      provider: 'minimax-custom', model: 'MiniMax-M3',
+    })).rejects.toThrow()
+    await expect(requestText(ctx, {
+      provider: 'minimax-custom', model: 'MiniMax-M3', reasoningEffort: ReasoningEffortId('on'),
+    })).rejects.toThrow()
+    await expect(requestText(ctx, {
+      provider: 'minimax-custom', model: 'MiniMax-M3', reasoningEffort: ReasoningEffortId('off'),
+    })).rejects.toThrow()
+
+    expect(provider.requests).toHaveLength(3)
+    const bodies = provider.requests as Record<string, unknown>[]
+    expect(bodies[0]).not.toHaveProperty('reasoning')
+    expect(bodies[1]).toMatchObject({ reasoning: { effort: 'high' } })
+    expect(bodies[2]).toMatchObject({ reasoning: { effort: 'none' } })
   }, 30_000)
 })

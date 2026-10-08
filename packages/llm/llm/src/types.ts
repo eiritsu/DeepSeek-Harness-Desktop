@@ -378,8 +378,10 @@ export interface LlmReasoningEffortInfo {
 
 /** Selectable reasoning efforts for one exact provider/model route. */
 export interface LlmModelReasoningInfo {
+  /** Control kind; absent keeps older adapters' effort-list behavior. */
+  control?: 'toggle' | 'effort'
   /**
-   * Efforts this exact route can encode on the wire, in adapter-preferred order.
+   * Values this exact route can encode on the wire, in adapter-preferred order.
    *
    * This is both the route's capability and the selector's rows: a surface
    * offers exactly these efforts and omits the reasoning control when the route
@@ -387,7 +389,8 @@ export interface LlmModelReasoningInfo {
    * before the route changed — is refused by the runtime with
    * `UNSUPPORTED_REASONING_EFFORT`, never substituted by a neighboring level.
    * Absence of the enclosing reasoning metadata means the route encodes no
-   * effort at all, so any explicit one is refused.
+   * effort at all, so any explicit one is refused. Toggle controls use `on`
+   * and `off` ids; the adapter maps them to the provider's native protocol.
    */
   efforts: readonly LlmReasoningEffortInfo[]
   /**

@@ -2,14 +2,15 @@
  * Resolution of a route-local model id onto one canonical record, and the
  * immutable view that publishes the result for a whole generation.
  *
- * Explicit mappings, exact qualified ids, unique canonical basenames, and
- * provider entry ids resolve in that order. Every lookup refuses ambiguity
- * rather than choosing whichever document entry appeared first.
+ * Explicit mappings, exact qualified ids, provider aliases, API endpoints,
+ * canonical-owner aliases, and unique basenames resolve in that order. Every
+ * lookup refuses ambiguity rather than choosing whichever document entry
+ * appeared first.
  *
  * @module @deepseek-ai/dsh-model-catalog/src/resolve
  */
 
-import type { ModelFacts, ModelFactsRequest, ModelFactsView } from './facts.ts'
+import type { ModelFacts, ModelFactsRequest, ModelFactsView, ReasoningControl } from './facts.ts'
 import type { CanonicalRecord, ParsedCatalog } from './parse.ts'
 
 /** One configured route-local model id mapped onto a canonical catalog id. */
@@ -78,13 +79,28 @@ export class CatalogView implements ModelFactsView {
     const model = this.resolveModel(request)
     if (model === undefined) return undefined
     const owner = model.id.slice(0, model.id.indexOf('/'))
-    const efforts = this.channelEfforts(request, model.id, owner)
+    const channel = this.channelEfforts(request, model.id, owner)
+    const efforts = channel?.efforts
+    const reasoningControl: ReasoningControl | undefined = channel?.reasoningControl === undefined
+      ? efforts === undefined ? undefined : efforts.length === 0
+        ? { type: 'none' }
+        : { type: 'effort', efforts }
+      : channel.reasoningControl === 'toggle'
+        ? { type: 'toggle', ...(channel.budget === true ? { budget: true } : {}) }
+        : channel.reasoningControl === 'none'
+          ? { type: 'none' }
+          : {
+            type: 'effort', efforts: efforts ?? [],
+            ...(channel.toggle === true ? { toggle: true } : {}),
+            ...(channel.budget === true ? { budget: true } : {}),
+          }
     return {
       canonicalId: model.id,
       ...model.input === undefined ? {} : { inputModalities: model.input },
       ...model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow },
       ...model.maxOutputTokens === undefined ? {} : { maxOutputTokens: model.maxOutputTokens },
       ...model.reasoning === undefined ? {} : { reasoning: model.reasoning },
+      ...reasoningControl === undefined ? {} : { reasoningControl },
       // A canonical record that denies reasoning denies it through every
       // channel, even where the channel entry says nothing.
       ...efforts === undefined && model.reasoning !== false
@@ -94,16 +110,40 @@ export class CatalogView implements ModelFactsView {
   }
 
   /** Resolve one route's channel declaration without choosing among providers. */
-  private channelEfforts(request: ModelFactsRequest, canonicalId: string, canonicalOwner: string): readonly string[] | undefined {
+  private channelEfforts(
+    request: ModelFactsRequest,
+    canonicalId: string,
+    canonicalOwner: string,
+  ): ParsedCatalog['channels'][number] | undefined {
     const requestedOwner = request.ownedBy ?? canonicalOwner
     const requestedModel = basenameOf(request.model)
     const explicit = this.channels.filter(channel => channel.canonicalId !== undefined
       && sameId(channel.canonicalId, canonicalId)
       && sameId(channel.namespace, requestedOwner))
     const exact = explicit.filter(channel => sameId(channel.model, requestedModel))
-    if (exact.length > 0) return this.uniqueEfforts(exact)
-    if (explicit.length === 1) return explicit[0]?.efforts
+    if (exact.length > 0) return this.uniqueChannel(exact)
+    if (explicit.length === 1) return explicit[0]
     if (explicit.length > 1) return undefined
+
+    // A custom route may identify a catalog provider by the endpoint that
+    // provider publishes. The endpoint paths models.dev uses for these APIs
+    // are protocol suffixes; arbitrary deployment paths remain distinct.
+    if (request.apiURL !== undefined) {
+      const endpoint = endpointIdentity(request.apiURL)
+      const endpointChannels = this.channels.filter((channel) => {
+        if (endpoint === undefined || channel.apiURL === undefined) return false
+        const channelEndpoint = endpointIdentity(channel.apiURL)
+        return channelEndpoint !== undefined
+          && channelEndpoint === endpoint
+          && (channel.canonicalId === undefined
+            ? sameId(channel.model, requestedModel)
+            : sameId(channel.canonicalId, canonicalId))
+      })
+      if (endpointChannels.length > 0) {
+        const exactEndpoint = endpointChannels.filter(channel => sameId(channel.model, requestedModel))
+        return this.uniqueChannel(exactEndpoint.length > 0 ? exactEndpoint : endpointChannels)
+      }
+    }
 
     // An unknown route can use declarations from the canonical owner's
     // channel. Prefer an exact canonical model entry; otherwise accept only
@@ -113,16 +153,21 @@ export class CatalogView implements ModelFactsView {
         ? sameId(channel.model, basenameOf(canonicalId))
         : sameId(channel.canonicalId, canonicalId)))
     const ownerExact = ownerChannels.filter(channel => sameId(channel.model, requestedModel))
-    return this.uniqueEfforts(ownerExact.length > 0 ? ownerExact : ownerChannels)
+    return this.uniqueChannel(ownerExact.length > 0 ? ownerExact : ownerChannels)
   }
 
   /** Conflicting declarations are ambiguous; identical duplicates are equivalent. */
-  private uniqueEfforts(channels: readonly ParsedCatalog['channels'][number][]): readonly string[] | undefined {
+  private uniqueChannel(
+    channels: readonly ParsedCatalog['channels'][number][],
+  ): ParsedCatalog['channels'][number] | undefined {
     if (channels.length === 0) return undefined
-    const distinct = new Map(channels.map(channel => [
-      channel.efforts === undefined ? undefined : JSON.stringify([...channel.efforts].sort()),
-      channel.efforts,
-    ]))
+    const key = (channel: ParsedCatalog['channels'][number]): string => JSON.stringify({
+      control: channel.reasoningControl,
+      efforts: channel.efforts === undefined ? undefined : [...channel.efforts].sort(),
+      toggle: channel.toggle === true,
+      budget: channel.budget === true,
+    })
+    const distinct = new Map(channels.map(channel => [key(channel), channel]))
     return distinct.size === 1 ? distinct.values().next().value : undefined
   }
 
@@ -141,26 +186,58 @@ export class CatalogView implements ModelFactsView {
     // A qualified id is addressed exactly. Matching its basename instead
     // would answer with a different model that happens to share the name.
     if (request.model.includes('/')) {
-      return this.byId.get(request.model.toLowerCase()) ?? this.resolveChannelModel(request)
+      const exact = this.byId.get(request.model.toLowerCase())
+      return exact ?? this.resolveChannelModel(request) ?? undefined
     }
-    return this.byBasename.get(request.model.toLowerCase()) ?? this.resolveChannelModel(request)
+    const route = this.resolveChannelModel(request)
+    if (route === null) return undefined
+    if (route !== undefined) return route
+    return this.byBasename.get(request.model.toLowerCase())
   }
 
-  /** Resolve a provider model alias only when every matching entry names one canonical record. */
-  private resolveChannelModel(request: ModelFactsRequest): CanonicalRecord | undefined {
+  /** Resolve route, endpoint, and canonical-owner aliases without masking conflicts. */
+  private resolveChannelModel(request: ModelFactsRequest): CanonicalRecord | null | undefined {
     const matching = this.channels.filter(channel => sameId(channel.model, request.model)
       && channel.canonicalId !== undefined)
-    const ownedBy = request.ownedBy
-    const owned = ownedBy === undefined
-      ? []
-      : matching.filter(channel => sameId(channel.namespace, ownedBy))
-    const candidates = owned.length > 0 ? owned : matching
-    const ids = new Set(candidates
-      .map(channel => channel.canonicalId?.toLowerCase())
-      .filter((id): id is string => id !== undefined))
-    if (ids.size !== 1) return undefined
-    const [id] = ids
-    return id === undefined ? undefined : this.byId.get(id)
+    const byIdentity = (channels: typeof matching): CanonicalRecord | null | undefined => {
+      if (channels.length === 0) return undefined
+      const ids = new Set(channels.map(channel => channel.canonicalId?.toLowerCase())
+        .filter((id): id is string => id !== undefined))
+      if (ids.size !== 1) return null
+      const [id] = ids
+      return id === undefined ? null : this.byId.get(id) ?? null
+    }
+
+    // The configured route identity owns its own alias declaration. This
+    // takes precedence over a legacy canonical basename with the same id.
+    if (request.ownedBy !== undefined) {
+      const ownedBy = request.ownedBy
+      const exactRoute = matching.filter(channel => sameId(channel.namespace, ownedBy))
+      const resolved = byIdentity(exactRoute)
+      if (resolved !== undefined) return resolved
+    }
+
+    if (request.apiURL !== undefined) {
+      const endpoint = endpointIdentity(request.apiURL)
+      const endpointMatches = matching.filter((channel) => {
+        if (endpoint === undefined || channel.apiURL === undefined) return false
+        const channelEndpoint = endpointIdentity(channel.apiURL)
+        return channelEndpoint !== undefined && channelEndpoint === endpoint
+      })
+      const resolved = byIdentity(endpointMatches)
+      if (resolved !== undefined) return resolved
+    }
+
+    // The canonical owner's own provider entry can repair a renamed upstream
+    // alias without requiring a deployment mapping.
+    const ownerMatches = matching.filter(channel => channel.canonicalId !== undefined
+      && sameId(channel.namespace, channel.canonicalId.slice(0, channel.canonicalId.indexOf('/'))))
+    const ownerResolved = byIdentity(ownerMatches)
+    if (ownerResolved !== undefined) return ownerResolved
+
+    // A provider alias outside the route, endpoint, or canonical owner is
+    // useful only when all matching providers make the same claim.
+    return byIdentity(matching)
   }
 
   /**
@@ -184,6 +261,18 @@ export class CatalogView implements ModelFactsView {
     const [mapping] = applicable
     if (mapping === undefined) return undefined
     return this.byId.get(mapping.canonicalId.toLowerCase())
+  }
+}
+
+/** Normalize only the API path suffixes used by provider catalogs. */
+function endpointIdentity(value: string): string | undefined {
+  try {
+    const url = new URL(value)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined
+    const path = url.pathname.replace(/\/$/, '').replace(/\/(?:anthropic\/)?v1$/i, '').replace(/\/anthropic$/i, '')
+    return `${url.protocol.toLowerCase()}//${url.host.toLowerCase()}${path}${url.search}`
+  } catch {
+    return undefined
   }
 }
 

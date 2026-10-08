@@ -12,21 +12,23 @@ import type {
 } from './types.ts'
 
 /**
- * The effort rows one catalog entry offers.
+ * The reasoning rows one catalog entry offers.
  *
  * The rows are the exact-model resolution's own `efforts`, in adapter order, so
  * a selector offers only levels the route encodes; a level outside that set is
  * refused at request time with `UNSUPPORTED_REASONING_EFFORT` rather than shown
  * as a row. A resolution that declares no reasoning, or declares an empty
  * effort list, has no rows to offer, so its entry omits the field entirely.
- * `defaultEffort` is the resolution's own, because a request naming no effort
- * is materialized with it.
+ * Toggle controls retain their `control` kind so the selector can localize On
+ * and Off instead of presenting them as effort levels. `defaultEffort` is the
+ * resolution's own, because a request naming no effort is materialized with it.
  * @param resolved - the exact-model resolution this entry advertises.
  * @returns the reasoning metadata this selector renders, or `undefined` when the resolution declares no efforts.
  */
 function selectorReasoning(resolved: LlmResolvedModelInfo): ModelReasoning | undefined {
   if (resolved.reasoning === undefined || resolved.reasoning.efforts.length === 0) return undefined
   return {
+    ...resolved.reasoning.control === undefined ? {} : { control: resolved.reasoning.control },
     efforts: resolved.reasoning.efforts.map(effort => ({ id: effort.id, name: effort.name })),
     ...resolved.reasoning.defaultEffort === undefined
       ? {}

@@ -39,9 +39,16 @@ export function apply(ctx: Context, config: Config): void {
   registerDeepSeekProvider(ctx, PROVIDER, {
     options, providerName: 'DeepSeek',
     resolveAuth: async connection => ({ headers: { 'x-api-key': await resolveApiKey(connection) } }),
-    discoverModels: (provider) => {
+    discoverModels: async (provider) => {
       const connection = options()
-      return Promise.resolve(connection.models.map(model => catalogModelInfo(provider, model)))
+      try {
+        // Keep keyless defaults out of selectors while direct calls retain the missing-key diagnostic.
+        await resolveApiKey(connection)
+      } catch (error) {
+        if (error instanceof LlmError && error.code === 'MISSING_CREDENTIAL') return []
+        throw error
+      }
+      return connection.models.map(model => catalogModelInfo(provider, model))
     },
   })
 }

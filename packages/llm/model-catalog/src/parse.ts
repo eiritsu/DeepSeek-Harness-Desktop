@@ -30,7 +30,7 @@ export interface CanonicalRecord {
   readonly reasoning?: boolean
 }
 
-/** One provider model entry retained for canonical identity or declared efforts. */
+/** One provider model entry retained for canonical identity and route controls. */
 export interface ChannelEfforts {
   /** Channel namespace, the provider entry's own key. */
   readonly namespace: string
@@ -40,13 +40,21 @@ export interface ChannelEfforts {
   readonly canonicalId?: string
   /** Levels the channel declares; an empty list declares that it accepts none. */
   readonly efforts?: readonly string[]
+  /** Declared selectable controls; absent means the provider entry is silent. */
+  readonly reasoningControl?: 'none' | 'toggle' | 'effort'
+  /** Whether an effort declaration also provides a reasoning off switch. */
+  readonly toggle?: boolean
+  /** Whether the entry also declares a token budget control. */
+  readonly budget?: boolean
+  /** Provider API value published with the channel metadata, including templates. */
+  readonly apiURL?: string
 }
 
 /** Everything one accepted document yields. */
 export interface ParsedCatalog {
   /** Canonical records by qualified id. */
   readonly canonical: readonly CanonicalRecord[]
-  /** Provider entries that identify canonical models or declare effort vocabularies. */
+  /** Provider entries that identify canonical models, API endpoints, or reasoning controls. */
   readonly channels: readonly ChannelEfforts[]
 }
 
@@ -77,20 +85,44 @@ function inputModalities(value: unknown): readonly ModelModality[] | undefined {
  * @param options - its `reasoning_options` list.
  * @returns the declared levels, or undefined when the record is silent.
  */
-function channelEfforts(reasoning: unknown, options: unknown): readonly string[] | undefined {
-  if (reasoning === false) return []
+function channelControl(
+  reasoning: unknown,
+  options: unknown,
+): { readonly type: 'none' | 'toggle' | 'effort'; readonly efforts?: readonly string[]; readonly toggle?: boolean; readonly budget?: boolean } | undefined {
+  if (reasoning === false) return { type: 'none' }
   if (!Array.isArray(options)) return undefined
+  if (options.length === 0) return { type: 'none' }
   const values = new Set<string>()
   let declared = false
+  let toggle = false
+  let budget = false
   for (const option of options) {
     const entry = record(option)
-    if (entry?.type !== 'effort' || !Array.isArray(entry.values)) continue
+    if (entry?.type === 'toggle') {
+      toggle = true
+      declared = true
+      continue
+    }
+    if (entry?.type === 'budget') {
+      budget = true
+      continue
+    }
+    if (entry?.type !== 'effort' || !Array.isArray(entry.values)) {
+      continue
+    }
     declared = true
     for (const value of entry.values) {
       if (typeof value === 'string' && value.length > 0) values.add(value)
     }
   }
-  return declared ? [...values] : undefined
+  if (!declared) return undefined
+  const efforts = [...values]
+  if (efforts.length > 0) return {
+    type: 'effort', efforts,
+    ...(toggle ? { toggle: true } : {}),
+    ...(budget ? { budget: true } : {}),
+  }
+  return toggle ? { type: 'toggle', ...(budget ? { budget: true } : {}) } : { type: 'none' }
 }
 
 /**
@@ -133,11 +165,12 @@ export function parseCatalogDocument(document: unknown): ParsedCatalog {
   if (canonical.length === 0) throw new Error('the model catalog document carries no usable canonical model record')
   const channels: ChannelEfforts[] = []
   for (const [namespace, value] of Object.entries(providers)) {
-    const channelModels = record(record(value)?.models)
+    const provider = record(value)
+    const channelModels = record(provider?.models)
     if (channelModels === undefined) continue
     for (const [model, entry] of Object.entries(channelModels)) {
       const providerModel = record(entry)
-      const declared = channelEfforts(providerModel?.reasoning, providerModel?.reasoning_options)
+      const declared = channelControl(providerModel?.reasoning, providerModel?.reasoning_options)
       const canonicalId = typeof providerModel?.canonical_model_id === 'string'
         && providerModel.canonical_model_id.includes('/')
         ? providerModel.canonical_model_id
@@ -146,7 +179,15 @@ export function parseCatalogDocument(document: unknown): ParsedCatalog {
         channels.push({
           namespace,
           model,
-          ...(declared === undefined ? {} : { efforts: declared }),
+          ...declared === undefined ? {} : {
+            reasoningControl: declared.type,
+            ...(declared.toggle === true ? { toggle: true } : {}),
+            ...(declared.budget === true ? { budget: true } : {}),
+            ...(declared.efforts === undefined
+              ? declared.type === 'none' ? { efforts: [] } : {}
+              : { efforts: declared.efforts }),
+          },
+          ...(typeof provider?.api === 'string' && provider.api.length > 0 ? { apiURL: provider.api } : {}),
           ...(canonicalId === undefined ? {} : { canonicalId }),
         })
       }

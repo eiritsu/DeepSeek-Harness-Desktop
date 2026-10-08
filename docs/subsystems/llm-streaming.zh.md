@@ -535,7 +535,7 @@ interface LlmModelContext {
 }
 ```
 
-推理强度是另一项针对确切路由的能力。核心为标识符添加品牌类型，但不枚举其值；有序集合、展示名称和可选的部署默认值均由各适配器持有。
+推理控件是另一项针对确切路由的能力。核心为标识符添加品牌类型，但不枚举其值；有序值、展示名称、控件种类和可选的部署默认值均由各适配器持有。开关行使用 `on` 与 `off`，由适配器映射到对应协议。
 
 ```ts type-equiv
 /** Adapter-owned identifier for one model's selectable reasoning effort. */
@@ -557,8 +557,10 @@ interface LlmReasoningEffortInfo {
 ```ts type-equiv
 /** Selectable reasoning efforts for one exact provider/model route. */
 interface LlmModelReasoningInfo {
+  /** Control kind; absent keeps older adapters' effort-list behavior. */
+  control?: 'toggle' | 'effort'
   /**
-   * Efforts this exact route can encode on the wire, in adapter-preferred order.
+   * Values this exact route can encode on the wire, in adapter-preferred order.
    *
    * This is both the route's capability and the selector's rows: a surface
    * offers exactly these efforts and omits the reasoning control when the route
@@ -566,7 +568,8 @@ interface LlmModelReasoningInfo {
    * before the route changed — is refused by the runtime with
    * `UNSUPPORTED_REASONING_EFFORT`, never substituted by a neighboring level.
    * Absence of the enclosing reasoning metadata means the route encodes no
-   * effort at all, so any explicit one is refused.
+   * effort at all, so any explicit one is refused. Toggle controls use `on`
+   * and `off` ids; the adapter maps them to the provider's native protocol.
    */
   efforts: readonly LlmReasoningEffortInfo[]
   /**

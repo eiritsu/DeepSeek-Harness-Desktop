@@ -62,7 +62,7 @@ kind: "package-reference"
 
 ### 寻址一个模型
 
-三种入口，按优先级排序。配置的映射决定答案——包括它决定「没有答案」的情况，因此指向本代次未携带的规范 id 的映射，会解析为空而不是继续匹配同名模型。其后，带 `owner/model` 的 id 会被精确回答，裸 basename 只有在恰好有一个所有者发布它时才会被回答。provider 条目 id 也会通过其 `canonical_model_id` 解析；目录未知的路由 owner 只有在目录能唯一确定规范 owner 的 channel effort 声明时才继承该声明。每次拒绝都是 `undefined`：适配器保留它原有的事实。
+寻址依次尝试显式部署映射、精确限定 id、路由 provider alias、按端点关联的 alias、规范 owner alias，最后才尝试唯一 basename。映射即使指向本代次不存在的规范 id，也会决定答案。provider alias 使用 `canonical_model_id`；自定义路由可以通过已发布的 provider API URL 匹配，只要求路由与目录 URL 的 HTTP(S) 主机、去除版本后路径及查询参数相同。尾部的 `/v1`、`/anthropic` 与 `/anthropic/v1` 协议后缀兼容；其他部署路径保持不同。冲突的声明会解析为 `undefined`，因此旧 basename 不会覆盖当前 provider alias。
 
 ```ts
 import type { Context } from '@deepseek-ai/cordis'
@@ -74,7 +74,7 @@ const facts = ctx.modelCatalog.facts.facts({ model: 'gpt-5', ownedBy: 'openai' }
 // { canonicalId: 'openai/gpt-5', contextWindow: 400_000, maxOutputTokens: 128_000, ... }
 ```
 
-一条记录携带的内容是模型的属性，而不是服务它的通道的属性：可接受的模态、上下文窗口、输出上限，以及它是否进行推理。唯一与通道相关的部分是 `reasoningEfforts`——该通道声明自己接受的等级。缺失的列表意味着该通道什么都不说；空列表意味着它声明自己一个都不接受，从而拒绝所有显式等级。
+一条记录携带的内容是模型的属性，而不是服务它的通道的属性：可接受的模态、上下文窗口、输出上限，以及它是否进行推理。通道元数据会另外声明可选择的控件：未知、没有可选控件、二元开关或推理等级列表，也可以附带关闭开关。缺少声明时保留提供方默认行为；显式空 `reasoning_options` 列表不会虚构推理等级。单独的 `reasoning: true` 不是可选择控件。
 
 -----
 
@@ -102,7 +102,7 @@ const facts = ctx.modelCatalog.facts.facts({ model: 'gpt-5', ownedBy: 'openai' }
 
 ### 持久快照
 
-`model_catalog` 域的全局槽位保存最近一次被接受的文档以及它采集时所针对的 URL。新增的可选 channel identity 保持在现有 version-1 single-unit cache 中可读；缺少该字段的旧快照继续按旧 owner 与 model 关联方式读取。它的存在是为了让目录不可达时的冷启动仍然拥有事实。为另一个 URL 采集的已存文档会被丢弃，而不是在并非为它采集的配置下读取。持久化失败会被单独报告，并让已发布的事实保持不变：只有下一次冷启动会失去它们。
+`model_catalog` 域的全局槽位保存最近一次被接受的文档以及它采集时所针对的 URL。可选的通道控件、provider API 值与 alias 字段继续兼容现有 version-1 single-unit cache；`${NEON_AI_GATEWAY_BASE_URL}/v1` 这样的 provider API 模板会原样保留，但端点匹配只使用有效的 HTTP(S) URL。缺少新增字段的旧快照仍按旧 owner、model 关联方式与推理等级读取。它们让目录不可达时的冷启动仍可使用已采集声明。为另一个 URL 采集的已存文档会被丢弃，而不是在并非为它采集的配置下读取。持久化失败会被单独报告，并让已发布的事实保持不变：只有下一次冷启动会失去它们。
 
 -----
 

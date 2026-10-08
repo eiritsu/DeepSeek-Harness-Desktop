@@ -102,11 +102,11 @@ profile 的 `models` 列表会替换而非扩展路由的已安装目录；每�
 
 挂载 [`dsh-model-catalog`](../model-catalog/README.zh.md) 时，本适配器会把已接受的目录事实应用到 pi-ai 模型描述符，并由模型列表、模型描述和请求共用。目录对某模型声明的字段优先于路由配置和 pi-ai 已安装描述符；目录未声明的字段依次回退到路由配置和已安装描述符。路由本地模型 id 可以通过规范目录 id 或提供方通道的 `canonical_model_id` 解析。
 
-有效描述符会注册到 pi-ai，因此目录中的模态、上下文窗口和输出上限会同时用于发现和实际请求。通道推理等级只有在路由编码器能发送时才会提供；菜单隐藏无法编码的等级，显式请求这些等级会在提供方 I/O 前以 `UNSUPPORTED_REASONING_EFFORT` 失败。目录值 `none` 映射为选择器的 `off`，同时保留线上值 `none`；路由显式配置的映射（例如 `high: ultra`）保留原有线上拼写。`maxOutputTokens` 会限制超过上限的请求，失败时以 `UNSUPPORTED_OPTION` 同时报告两个数字；它不会替代部署配置的 `maxTokens` 请求默认值。目录刷新后会重建模型集合，正在进行的操作继续使用自己捕获的代次。
+有效描述符会注册到 pi-ai，因此目录中的模态、上下文窗口、输出上限与推理控件会同时用于发现和实际请求。通道控件区分未知、没有可选控件、二元开关和推理等级列表。未知状态保留提供方默认行为；显式空列表不会虚构等级。开关行使用本地化的开启与关闭标签；推理等级行保留已声明的值，只有通道同时声明开关时才提供关闭项。自定义路由可在 API URL 经协议后缀规范化后与已发布的 provider endpoint 匹配时使用其声明；冲突声明仍视为未知。显式请求不受支持的值会在提供方 I/O 前以 `UNSUPPORTED_REASONING_EFFORT` 失败。`maxOutputTokens` 会限制超过上限的请求，失败时以 `UNSUPPORTED_OPTION` 同时报告两个数字；它不会替代部署配置的 `maxTokens` 请求默认值。目录刷新后会重建模型集合，正在进行的操作继续使用自己捕获的代次。
 
 ### 带推理（reasoning）与协议兼容运行
 
-`reasoningEfforts` 声明模型可选择的 thinking 等级：每个键都是选择器提供的等级，其值是分派时在协议中发送的拼写，因此 `max: ultra` 可以为拥有自有词汇的网关重命名等级。省略该字段时保留已安装目录条目的能力；`false` 声明非推理模型。对于 pi-ai 无法识别的端点，`compat` 开关重塑请求——哪个角色携带系统提示词、哪个字段限制输出、thinking 等级如何传递——可逐路由、逐模型配置。条目与已安装目录都没有尺寸的模型，会采用路由的 `defaultContextWindow` 与 `defaultMaxTokens` 回退值。
+`reasoningEfforts` 声明 profile 可选择的 thinking 等级：每个键都是选择器行，其值是分派时在协议中发送的拼写。省略该字段时保留已安装目录条目的能力；`false` 声明非推理模型。目录中的开关控件会映射为所选协议的显式启用/禁用字段，等级控件使用声明的等级。开关的 Default 选项会省略这些字段，从而保留提供方默认行为。`compat` 开关保留 pi-ai 无法识别端点的已命名协议行为；适配器不会覆盖显式声明的原生 thinking 格式。条目与已安装目录都没有尺寸的模型，会采用路由的 `defaultContextWindow` 与 `defaultMaxTokens` 回退值。目录本身无法验证提供方是否接受某个字段。
 
 对于自托管 Chat Completions 端点，`thinkingTokenBudgetField` 选择推理预算参数，`vllmPriority` 在服务端启用优先级调度时设置整数调度优先级。模板参数接受 `$var: thinking.budget`。`openai-responses` 网关可设置 `supportsMaxOutputTokens: false` 来省略 `max_output_tokens`；Azure 与 Codex 传输会忽略这个共享兼容字段。这些控制均需显式启用；目录拥有的 Anthropic effort 和回退能力不是可配置开关。
 

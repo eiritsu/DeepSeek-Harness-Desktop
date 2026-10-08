@@ -62,7 +62,7 @@ A mapping whose `canonicalId` carries no owner, or whose `modelId` is empty, fai
 
 ### Address a model
 
-Three ways in, in precedence order. A configured mapping decides the answer — including when it decides there is none, so a mapping naming a canonical id this generation does not carry resolves to nothing rather than falling through to a same-named model. Failing that, a qualified `owner/model` id is answered exactly, and a bare basename is answered only when exactly one owner publishes it. Provider entry ids also resolve through their `canonical_model_id`; an unknown route owner inherits the canonical owner's channel efforts only when the catalog identifies one unambiguous declaration. Every refusal is `undefined`: the adapter keeps whatever facts it had.
+Addressing tries explicit deployment mappings first, then exact qualified ids, route-provider aliases, endpoint-associated aliases, canonical-owner aliases, and finally a unique basename. A mapping decides the answer even when its canonical id is absent in this generation. Provider aliases use `canonical_model_id`; custom routes can match a provider's published API URL when the route and catalog URL share an HTTP(S) host, the same non-version path, and query parameters. The trailing `/v1`, `/anthropic`, and `/anthropic/v1` protocol suffixes are compatible; other deployment paths remain distinct. Conflicting claims resolve to `undefined`, so an old basename cannot override a current provider alias.
 
 ```ts
 import type { Context } from '@deepseek-ai/cordis'
@@ -74,7 +74,7 @@ const facts = ctx.modelCatalog.facts.facts({ model: 'gpt-5', ownedBy: 'openai' }
 // { canonicalId: 'openai/gpt-5', contextWindow: 400_000, maxOutputTokens: 128_000, ... }
 ```
 
-What a record carries is a property of the model, not of the channel serving it: the accepted modalities, the context window, the output ceiling, and whether it reasons at all. The one channel-specific part is `reasoningEfforts` — the levels this channel declares it accepts. An absent list means the channel says nothing; an empty list means it declares that it accepts none, which refuses every explicit level.
+What a record carries is a property of the model, not of the channel serving it: the accepted modalities, the context window, the output ceiling, and whether it reasons at all. Channel metadata separately declares selectable controls: unknown, no selectable controls, a binary toggle, or an effort list, optionally with an off switch. An absent declaration preserves the provider default; an explicit empty `reasoning_options` list does not invent effort levels. `reasoning: true` alone is not a selectable control.
 
 -----
 
@@ -102,7 +102,7 @@ The byte limit is applied while the body streams, so an oversized or endless res
 
 ### The durable snapshot
 
-The `model_catalog` domain's global slot holds the last accepted document and the URL it was collected for. The additive optional channel identity remains readable in the existing version-1 single-unit cache; old snapshots without it retain their legacy owner-and-model association. It exists so a cold start with no reachable catalog still has facts. A stored document naming another URL is discarded rather than read under configuration it was not collected for. A persistence failure is reported on its own and leaves the published facts in place: the next cold start is the only thing that loses.
+The `model_catalog` domain's global slot holds the last accepted document and the URL it was collected for. Optional channel control, provider API value, and alias fields remain readable in the existing version-1 single-unit cache; provider API templates such as `${NEON_AI_GATEWAY_BASE_URL}/v1` are preserved verbatim, while endpoint matching uses only valid HTTP(S) URLs. Old snapshots without the added fields retain their legacy owner-and-model association and efforts. They let a cold start with no reachable catalog keep the declarations it collected. A stored document naming another URL is discarded rather than read under configuration it was not collected for. A persistence failure is reported on its own and leaves the published facts in place: the next cold start is the only thing that loses.
 
 -----
 

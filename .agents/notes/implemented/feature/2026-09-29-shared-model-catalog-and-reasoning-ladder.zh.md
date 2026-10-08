@@ -14,13 +14,13 @@ Status: implemented
 
 **事实属于模型，编码属于渠道。** `packages/llm/model-catalog` 通过 `ctx.modelCatalog` 发布一代来自 models.dev 目录（`https://models.dev/catalog.json?type=all`）的、按规范模型划分的事实。该文档按间隔读取、在字节上限内解析，最近一次被接受的世代还会保存在持久存储中，因此启动时会先发布 URL 匹配的快照，再在后台重新验证，即使快照仍然新鲜也会验证。失败的刷新保持已发布的世代不动：不可达的目录只损失新鲜度，别无其他；而解析不出任何内容的文档会被拒绝，而不是被发布。每次被接受的发布都会通过 `model-catalog/updated` 携带其代次编号发出通知。
 
-把路由本地的模型 id 寻址到规范记录有三种形式，优先级依次是——部署方显式的映射、精确的限定 `owner/model` id、以及裸 basename——每一种都是拒绝而不是猜测。provider 模型条目通过 `canonical_model_id` 关联到规范记录；只有匹配条目都指向同一规范记录时，路由本地别名才会解析。channel efforts 跟随该身份并优先采用请求渠道的声明；自定义路由没有目录渠道时，只有一个无歧义的规范 owner 声明能提供 effort。两个 owner 发布的同名 basename 会解析为空，除非 provider 条目能唯一确定它；两条声称同一 id 的映射也解析为空；为另一个 `catalogURL` 收集的已存快照会被丢弃，而不是在它并非为此收集的配置下读取。可选缓存 channel identity 保持现有 version-1 single-unit cache 可读；旧条目继续使用 owner 与 model 寻址。
+寻址依次尝试显式部署映射、精确限定 id、路由 provider alias、按端点关联的 alias、规范 owner alias 和唯一 basename；冲突时拒绝，不会任意挑选 provider。provider 条目通过 `canonical_model_id` 关联别名；自定义路由的 HTTP(S) 端点与已发布 provider API 的主机、非版本路径和查询参数相同时，可以匹配该 provider。尾部 `/v1`、`/anthropic` 与 `/anthropic/v1` 后缀表示同一 API 根下的协议端点；其他路径保持不同。路由 identity 和端点声明优先于旧 basename，因此旧 provider model id 不会遮蔽其已重命名的规范 id。为另一个 `catalogURL` 收集的快照会被丢弃。provider API 值（包括环境变量模板）会保存在 version-1 cache 中；只有有效的 HTTP(S) URL 才参与端点匹配。新增的通道控件与 provider API 字段保持现有 version-1 single-unit cache 可读；旧条目继续通过 owner 与 model 关联其 effort。
 
-等级词汇是唯一不属于事实的部分，因为它就是渠道能放到线路上的东西。目录按渠道报告它，适配器再与自身传输能力取交集，然后才报告自己能编码什么。`ModelFacts.maxOutputTokens` 是请求默认值可以主张的上限，而绝不是请求默认值：部署配置的输出预算由部署自己决定。
+通道推理声明区分沉默、没有可选控件、二元开关和等级列表；等级列表也可以带关闭开关。单独的 `reasoning: true` 不会指定控件。目录保留通道选择的控件种类，适配器只公开自身可编码的值。开关使用协议原生的启用与禁用值；等级列表保留已声明的拼写。含有不受支持的预算元数据的声明仍走提供方原有路径，不会被猜成等级控件。`ModelFacts.maxOutputTokens` 是请求默认值可以主张的上限，而绝不是请求默认值：部署配置的输出预算由部署自己决定。
 
 **目录优先，其次是显式配置，最后是适配器已安装的目录。** `dsh-llm-pi-ai` 先读取共享事实，只对记录未覆盖的字段保留 profile 条目自己声明的内容（`declaredFacts`），因此部署方自己的值在目录没有该字段时作答。需要两次得到同一答案的消费者——在选择器里描述一个模型，再据此编码一个请求——在整个操作期间持有一个 `ModelFactsView`；刷新会发布新的 view 对象，绝不修改已发布的对象。
 
-**阶梯是 harness 的决定，对 Session 选择器已被取代。** `dsh-llm` 中的 `modelReasoningEfforts()` 按升级顺序公布 `minimal`、`low`、`medium`、`high`、`xhigh`、`max`，每个选择器过去都为每个模型渲染这些行，而不是路由自己的那一份。`Default` 不是一个等级：它表示不发送任何等级的决定，从而保留提供商自身的默认值——或 `prepareCall` 物化的路由配置默认值。Session 选择器不再渲染这些行：它按适配器顺序列出已解析的路由与模型所报告的确切等级，并在缺少该元数据时完全不渲染等级控件（[精确路由推理选择](../bug-fix/2026-10-01-exact-route-reasoning-selection.zh.md)）。
+**阶梯是 harness 的决定，对 Session 选择器已被取代。** `dsh-llm` 中的 `modelReasoningEfforts()` 按升级顺序公布 `minimal`、`low`、`medium`、`high`、`xhigh`、`max`，每个选择器过去都为每个模型渲染这些行，而不是路由自己的那一份。`Default` 不发送显式选择，因此保留提供方默认行为。Session 选择器改用确切路由元数据：开关显示本地化的开启与关闭行，等级控件列出已解析的值，未知或显式空控件不会虚构等级（[精确路由推理选择](../bug-fix/2026-10-01-exact-route-reasoning-selection.zh.md)）。
 
 **选择保存意图，请求判断能力。** `SessionController.selectModel` 只校验确切的模型已被公布，`ACP` 的 `setSessionConfigOption` 解析路由时不带上它旁边保存的等级。路由无法编码的等级会作为选择保留下来、作为当前值回报，并由携带它的请求以 `UNSUPPORTED_REASONING_EFFORT` 拒绝，记录为该轮的错误——路由在存储之后改变了它所声明的内容时也包括在内。`Default` 完全不保存等级，因此物化出的默认值绝不会被写回成有人选过的值。
 
@@ -39,7 +39,7 @@ Status: implemented
 ## Consequences
 
 - 提供同一模型的两条路由会报出相同的模态、上下文窗口和输出上限，即使其中一条路由的配置声明了冲突的值；本地条目只在共享记录未覆盖的字段上作答。
-- Session 选择器按适配器顺序列出已解析的路由与模型所报告的确切等级，并在缺少该元数据时不显示等级控件。路由不接受的等级——路由改变之前存下的选择，或伪造的值——会让一轮以 `UNSUPPORTED_REASONING_EFFORT` 失败，而不是改变答案。
+- Session 选择器按适配器顺序列出已解析路由与模型所报告的确切推理控件。开关使用本地化的开启与关闭行；没有可选控件或元数据未知时，不会虚构等级。路由不接受的等级——路由改变之前存下的选择，或伪造的值——会让一轮以 `UNSUPPORTED_REASONING_EFFORT` 失败，而不是改变答案。
 - 错误或不可达的目录只降低元数据的新鲜度：请求执行、适配器声明的等级词汇，以及目录中没有的每条路由都照常工作；目录从未听说过的模型继续使用自身配置声明的事实。
 - 选择器显示的是单条路由当前接受的内容，因此人无法从菜单看出另一条路由、或者适配器后续版本会接受哪些等级；配置参考与该轮的错误会指明路由接受什么。
 - 持久快照是某一个 `catalogURL` 的缓存：把 URL 指向别处的部署在读到新文档之前没有事实，而不是带着上一个端点的事实。

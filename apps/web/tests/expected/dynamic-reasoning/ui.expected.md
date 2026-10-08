@@ -1,0 +1,4 @@
+- menu "模型与推理等级":
+  - menuitemradio "Default" [checked]
+  - menuitemradio "关闭"
+  - menuitemradio "开启"

@@ -1,34 +1,29 @@
 /** Fixed models.dev response for the keyless dynamic-reasoning Session scenario. */
 import { applyLoopbackServerEffect } from '../loopback-fixture-server.mjs'
 
-/** Model facts and the canonical provider effort declaration used by replay. */
+/** Model facts and the canonical provider controls used by replay. */
 const CATALOG = {
   models: {
-    'deepseek/deepseek-v4-flash': {
-      id: 'deepseek/deepseek-v4-flash',
+    'minimax/MiniMax-M3': {
+      id: 'minimax/MiniMax-M3',
       modalities: { input: ['text'] },
       limit: { context: 1_000_000, output: 256_000 },
       reasoning: true,
     },
-    'deepseek/deepseek-v4-pro': {
-      id: 'deepseek/deepseek-v4-pro',
+    'minimax/MiniMax-M2.7-highspeed': {
+      id: 'minimax/MiniMax-M2.7-highspeed',
       modalities: { input: ['text'] },
       limit: { context: 1_000_000, output: 256_000 },
       reasoning: true,
     },
   },
   providers: {
-    deepseek: {
-      id: 'deepseek',
+    'minimax-cn': {
+      id: 'minimax-cn',
+      api: 'https://api.minimax.cn/anthropic/v1',
       models: {
-        'deepseek-v4-flash': {
-          canonical_model_id: 'deepseek/deepseek-v4-flash',
-          reasoning_options: [{ type: 'effort', values: ['low', 'high', 'max'] }],
-        },
-        'deepseek-v4-pro': {
-          canonical_model_id: 'deepseek/deepseek-v4-pro',
-          reasoning_options: [{ type: 'effort', values: ['low', 'high', 'max'] }],
-        },
+        'MiniMax-M3': { reasoning_options: [{ type: 'toggle' }] },
+        'MiniMax-M2.7-highspeed': { reasoning_options: [] },
       },
     },
   },

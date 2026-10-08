@@ -52,6 +52,13 @@ const cacheSchema = z.object({
     model: z.string().min(1),
     canonicalId: z.string().min(1).optional(),
     efforts: z.array(z.string().min(1)).optional(),
+    reasoningControl: z.enum(['none', 'toggle', 'effort']).optional(),
+    toggle: z.boolean().optional(),
+    budget: z.boolean().optional(),
+    // models.dev publishes environment templates such as
+    // `${NEON_AI_GATEWAY_BASE_URL}/v1`; keep them in the cache verbatim. The
+    // resolver validates HTTP(S) URLs before using endpoint identity.
+    apiURL: z.string().min(1).optional(),
   })),
 })
 type Cache = z.infer<typeof cacheSchema>
@@ -118,18 +125,31 @@ function documentOf(cache: Cache): unknown {
     // An empty level list reloads as an empty declaration, which is the same
     // refusal the live document produced: a channel that declared no level
     // stays a channel that accepts none.
+    const control = channel.reasoningControl
+      ?? (channel.efforts === undefined ? undefined : channel.efforts.length === 0 ? 'none' : 'effort')
+    const reasoningOptions = [
+      ...(control === 'toggle' || channel.toggle === true ? [{ type: 'toggle' }] : []),
+      ...(channel.budget === true ? [{ type: 'budget' }] : []),
+      ...(control === 'effort' && channel.efforts !== undefined
+        ? [{ type: 'effort', values: [...channel.efforts] }]
+        : []),
+    ]
     models[channel.model] = {
       ...(channel.canonicalId === undefined ? {} : { canonical_model_id: channel.canonicalId }),
-      ...(channel.efforts === undefined
+      ...(control === undefined
         ? {}
-        : { reasoning_options: [{ type: 'effort', values: [...channel.efforts] }] }),
+        : { reasoning_options: control === 'none' ? [] : reasoningOptions }),
     }
     modelsByNamespace.set(channel.namespace, models)
   }
   return {
     models: Object.fromEntries(cache.models.map(model => [model.id, model])),
     providers: Object.fromEntries(
-      [...modelsByNamespace].map(([namespace, models]) => [namespace, { id: namespace, models }]),
+      [...modelsByNamespace].map(([namespace, models]) => [namespace, {
+        id: namespace,
+        models,
+        api: cache.channels.find(channel => channel.namespace === namespace)?.apiURL,
+      }]),
     ),
   }
 }
@@ -158,6 +178,10 @@ function cacheOf(catalog: ReturnType<typeof parseCatalogDocument>, catalogURL: s
       model: channel.model,
       ...channel.canonicalId === undefined ? {} : { canonicalId: channel.canonicalId },
       ...channel.efforts === undefined ? {} : { efforts: [...channel.efforts] },
+      ...channel.reasoningControl === undefined ? {} : { reasoningControl: channel.reasoningControl },
+      ...channel.toggle === undefined ? {} : { toggle: channel.toggle },
+      ...channel.budget === undefined ? {} : { budget: channel.budget },
+      ...channel.apiURL === undefined ? {} : { apiURL: channel.apiURL },
     })),
   }
 }

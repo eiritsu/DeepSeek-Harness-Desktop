@@ -89,6 +89,125 @@ async function firstChunk(options: GenerateOptions, adapter: PiAiAdapter): Promi
 }
 
 describe('shared model facts', () => {
+  it.each([
+    ['openai-completions', 'https://api.minimax.cn/v1', 'completions'],
+    ['openai-responses', 'https://api.minimax.cn/v1', 'responses'],
+    ['anthropic-messages', 'https://api.minimax.cn/anthropic', 'anthropic'],
+  ] as const)('serializes dynamic MiniMax toggle controls for %s and leaves Default untouched', async (api, _upstream, protocol) => {
+    const server = await mockServer([
+      { status: 401, body: '{}' },
+      { status: 401, body: '{}' },
+      { status: 401, body: '{}' },
+    ])
+    const route = {
+      'minimax-cn-custom': {
+        api,
+        baseURL: protocol === 'anthropic' ? `${server.url}/anthropic` : `${server.url}/v1`,
+        apiKeyEnv: 'PI_TEST_KEY',
+        models: [{ id: 'MiniMax-M3' }],
+      },
+    }
+    const facts = (): ModelFactsView => ({
+      generation: 1,
+      facts: request => request.model === 'MiniMax-M3'
+        ? {
+          canonicalId: 'minimax/MiniMax-M3',
+          reasoning: true,
+          reasoningControl: { type: 'toggle' },
+        }
+        : undefined,
+    })
+    const adapter = adapterOf(route, facts)
+    const described = await adapter.resolveModel('minimax-cn-custom', 'MiniMax-M3')
+    expect(described.reasoning).toMatchObject({
+      control: 'toggle',
+      efforts: [
+        { id: ReasoningEffortId('off') },
+        { id: ReasoningEffortId('on'), name: 'Enabled' },
+      ],
+    })
+    const send = async (reasoningEffort?: string, maxTokens?: number): Promise<void> => {
+      await firstChunk({
+        provider: 'minimax-cn-custom',
+        model: 'MiniMax-M3',
+        messages: [],
+        ...(maxTokens === undefined ? {} : { maxTokens }),
+        ...(reasoningEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(reasoningEffort) }),
+      }, adapter)
+    }
+    await send()
+    await send('on', 256)
+    await send('off')
+    const requests = requestsOf(server)
+    if (protocol === 'anthropic') {
+      expect(requests[0]).not.toHaveProperty('thinking')
+      expect(requests[1]).toMatchObject({ thinking: { type: 'adaptive' } })
+      expect(requests[1]).not.toHaveProperty('output_config')
+      expect(requests[1]).not.toHaveProperty('thinking_budget_tokens')
+      expect(requests[1]).not.toHaveProperty('thinking.budget_tokens')
+      expect(requests[1]).toHaveProperty('max_tokens', 256)
+      expect(requests[2]).toMatchObject({ thinking: { type: 'disabled' } })
+    } else if (protocol === 'completions') {
+      expect(requests[0]).not.toHaveProperty('thinking')
+      expect(requests[0]).not.toHaveProperty('reasoning_effort')
+      expect(requests[1]).toMatchObject({ thinking: { type: 'adaptive' } })
+      expect(requests[1]).not.toHaveProperty('reasoning_effort')
+      expect(requests[2]).toMatchObject({ thinking: { type: 'disabled' } })
+      expect(requests[2]).not.toHaveProperty('reasoning_effort')
+    } else {
+      expect(requests[0]).not.toHaveProperty('reasoning')
+      expect(requests[0]).not.toHaveProperty('reasoning_effort')
+      expect(requests[1]).toMatchObject({ reasoning: { effort: 'high' } })
+      expect(requests[2]).toMatchObject({ reasoning: { effort: 'none' } })
+    }
+  })
+
+  it('serializes dynamic MiniMax M3.1 effort declarations without Off on all three APIs', async () => {
+    const efforts = ['low', 'medium', 'high', 'xhigh', 'max'] as const
+    for (const api of ['openai-completions', 'openai-responses', 'anthropic-messages'] as const) {
+      const server = await mockServer([{ status: 401, body: '{}' }, { status: 401, body: '{}' }])
+      const adapter = adapterOf({
+        'minimax-cn-plan': {
+          api,
+          baseURL: api === 'anthropic-messages' ? `${server.url}/anthropic` : `${server.url}/v1`,
+          apiKeyEnv: 'PI_TEST_KEY',
+          models: [{ id: 'MiniMax-M3.1-Flash-Preview' }],
+        },
+      }, () => ({
+        generation: 1,
+        facts: request => request.model === 'MiniMax-M3.1-Flash-Preview'
+          ? {
+            canonicalId: 'minimax/MiniMax-M3.1-Flash-Preview',
+            reasoning: true,
+            reasoningEfforts: efforts,
+            reasoningControl: { type: 'effort', efforts },
+          }
+          : undefined,
+      }))
+      const described = await adapter.resolveModel('minimax-cn-plan', 'MiniMax-M3.1-Flash-Preview')
+      expect(described.reasoning?.efforts.map(effort => effort.id)).toEqual(efforts.map(ReasoningEffortId))
+      await expect(firstChunk({
+        provider: 'minimax-cn-plan', model: 'MiniMax-M3.1-Flash-Preview', messages: [],
+        reasoningEffort: ReasoningEffortId('on'),
+      }, adapter)).rejects.toMatchObject({ code: 'UNSUPPORTED_REASONING_EFFORT' })
+      expect(server.requests).toHaveLength(0)
+      await firstChunk({
+        provider: 'minimax-cn-plan', model: 'MiniMax-M3.1-Flash-Preview', messages: [],
+      }, adapter)
+      await firstChunk({
+        provider: 'minimax-cn-plan', model: 'MiniMax-M3.1-Flash-Preview', messages: [],
+        reasoningEffort: ReasoningEffortId('max'),
+      }, adapter)
+      const requests = requestsOf(server)
+      expect(requests[0]).not.toHaveProperty('thinking')
+      expect(requests[0]).not.toHaveProperty('output_config')
+      expect(requests[0]).not.toHaveProperty('reasoning')
+      if (api === 'openai-completions') expect(requests[1]).toMatchObject({ reasoning_effort: 'max' })
+      else if (api === 'openai-responses') expect(requests[1]).toMatchObject({ reasoning: { effort: 'max' } })
+      else expect(requests[1]).toMatchObject({ thinking: { type: 'adaptive' }, output_config: { effort: 'max' } })
+    }
+  })
+
   it('describes a model from the shared record, narrowed by what the transport encodes', async () => {
     // The installed catalog entry takes images and reasons at low, high, and
     // max. The shared record says text only, a smaller window, and the two
@@ -151,6 +270,75 @@ describe('shared model facts', () => {
       provider: 'deepseek', model: 'deepseek-v4-flash',
       messages: [], reasoningEffort: ReasoningEffortId('high'),
     }, adapter)).rejects.toMatchObject({ code: 'UNSUPPORTED_REASONING_EFFORT' })
+  })
+
+  it('does not turn an explicit empty control declaration into generic reasoning levels', async () => {
+    const server = await mockServer([])
+    const adapter = adapterOf(gateway(`${server.url}/v1`, {
+      id: 'MiniMax-M2.7-highspeed',
+      contextWindow: 65_536,
+      maxTokens: 4_096,
+      input: ['text'],
+    }), () => generation({
+      'acme-gateway/MiniMax-M2.7-highspeed': {
+        canonicalId: 'minimax/MiniMax-M2.7-highspeed',
+        reasoning: true,
+        reasoningEfforts: [],
+        reasoningControl: { type: 'none' },
+      },
+    }))
+
+    expect((await adapter.resolveModel('acme-gateway', 'MiniMax-M2.7-highspeed')).reasoning).toBeUndefined()
+  })
+
+  it('keeps native SDK budget levels and does not label them as catalog controls', async () => {
+    const server = await mockServer([{ status: 401, body: '{}' }])
+    const adapter = adapterOf({
+      'acme-gateway': {
+        apiKeyEnv: 'PI_TEST_KEY',
+        api: 'anthropic-messages',
+        baseURL: `${server.url}/anthropic`,
+        reasoning: 'high',
+        models: [{
+          id: 'claude-budget',
+          reasoningEfforts: { high: 'high' },
+        }],
+      },
+    }, () => generation({
+      'acme-gateway/claude-budget': {
+        canonicalId: 'anthropic/claude-budget',
+        reasoning: true,
+        reasoningEfforts: ['low', 'high'],
+        reasoningControl: { type: 'effort', efforts: ['low', 'high'], budget: true },
+      },
+    }))
+
+    const info = await adapter.resolveModel('acme-gateway', 'claude-budget')
+    expect(info.reasoning?.control).toBeUndefined()
+    expect(info.reasoning?.efforts.map(effort => effort.id)).toEqual(['high'])
+    await firstChunk({
+      provider: 'acme-gateway', model: 'claude-budget', messages: [],
+      reasoningEffort: ReasoningEffortId('high'),
+    }, adapter)
+    expect(requestsOf(server)[0]).toMatchObject({ thinking: { type: 'enabled' } })
+  })
+
+  it('does not invent a budget control for an unknown custom model', async () => {
+    const server = await mockServer([])
+    const adapter = adapterOf(gateway(`${server.url}/v1`, {
+      id: 'unknown-budget',
+      contextWindow: 65_536,
+      maxTokens: 4_096,
+      input: ['text'],
+    }), () => generation({
+      'acme-gateway/unknown-budget': {
+        canonicalId: 'acme/unknown-budget',
+        reasoning: true,
+        reasoningControl: { type: 'toggle', budget: true },
+      },
+    }))
+
+    expect((await adapter.resolveModel('acme-gateway', 'unknown-budget')).reasoning).toBeUndefined()
   })
 
   it('overrides a conflicting local declaration with the shared record', async () => {

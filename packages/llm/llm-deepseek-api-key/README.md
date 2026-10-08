@@ -25,7 +25,7 @@ Authentication resolution returns the validated API key in `x-api-key` for both 
 <a id="use-this-package"></a>
 ## Use this package
 
-`apiKeyEnv` defaults to `DEEPSEEK_API_KEY` and resolves per request. When the credentials service exists, its precedence applies; only compositions without that service read the launch environment directly. Requests with missing credentials fail with `MISSING_CREDENTIAL`; malformed credentials fail with `INVALID_CREDENTIAL`. Model discovery returns the configured catalog regardless of credentials.
+`apiKeyEnv` defaults to `DEEPSEEK_API_KEY` and resolves per request. When the credentials service exists, its precedence applies; only compositions without that service read the launch environment directly. Requests with missing credentials fail with `MISSING_CREDENTIAL`; malformed credentials fail with `INVALID_CREDENTIAL`. Model discovery returns an empty catalog while the key is missing, so selectors omit the route until a key is available; invalid credentials still fail discovery explicitly.
 
 ```yaml
 - id: llm-deepseek

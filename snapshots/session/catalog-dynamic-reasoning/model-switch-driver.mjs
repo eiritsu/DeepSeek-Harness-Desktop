@@ -1,12 +1,12 @@
-/** Test-only selection driver that chooses an effort from the live catalog view. */
+/** Test-only selection driver that chooses a live catalog toggle. */
 
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 
-const SELECTED = { provider: 'deepseek-official', model: 'deepseek-v4-pro' }
+const SELECTED = { provider: 'minimax-cn-custom', model: 'MiniMax-M3' }
 const selections = new WeakMap()
 
 export const name = 'model-switch-driver'
-export const inject = ['agents', 'modelCatalog']
+export const inject = ['agents', 'llm', 'modelCatalog']
 
 /**
  * Install the real selection helper and change its input after `todo_write`.
@@ -40,16 +40,22 @@ export function apply(ctx) {
     if (selected === undefined) return resolved
 
     await ctx.modelCatalog.refresh()
-    const facts = ctx.modelCatalog.facts.facts({ model: selected.model, ownedBy: selected.provider })
-    const advertised = facts?.reasoningEfforts?.at(-1)
+    const emptyModel = await ctx.llm.resolveModelInfo('minimax-cn-custom', 'MiniMax-M2.7-highspeed')
+    if (emptyModel.reasoning !== undefined) {
+      throw new Error('model-switch driver received selectable controls for MiniMax M2.7 highspeed')
+    }
+    const selectedModel = await ctx.llm.resolveModelInfo(selected.provider, selected.model)
+    const advertised = selectedModel.reasoning?.control === 'toggle'
+      ? 'on'
+      : selectedModel.reasoning?.efforts.at(-1)?.id
     if (advertised === undefined) {
-      throw new Error(`model-switch driver found no advertised effort for ${selected.provider}/${selected.model}`)
+      throw new Error(`model-switch driver found no reasoning control for ${selected.provider}/${selected.model}`)
     }
     const { reasoningEffort: _inheritedEffort, ...withoutInheritedEffort } = resolved
     return {
       ...withoutInheritedEffort,
       ...selected,
-      reasoningEffort: advertised === 'none' ? 'off' : advertised,
+      reasoningEffort: advertised,
     }
   })
 }

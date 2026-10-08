@@ -529,7 +529,7 @@ interface LlmModelContext {
 }
 ```
 
-Reasoning effort is another exact-route capability. The core brands identifiers but does not enumerate their values; each adapter owns the ordered set, display names, and optional deployment default.
+Reasoning controls are another exact-route capability. The core brands identifiers but does not enumerate their values; each adapter owns the ordered values, display names, control kind, and optional deployment default. Toggle rows use `on` and `off`; the adapter maps them to its protocol.
 
 ```ts type-equiv
 /** Adapter-owned identifier for one model's selectable reasoning effort. */
@@ -551,8 +551,10 @@ interface LlmReasoningEffortInfo {
 ```ts type-equiv
 /** Selectable reasoning efforts for one exact provider/model route. */
 interface LlmModelReasoningInfo {
+  /** Control kind; absent keeps older adapters' effort-list behavior. */
+  control?: 'toggle' | 'effort'
   /**
-   * Efforts this exact route can encode on the wire, in adapter-preferred order.
+   * Values this exact route can encode on the wire, in adapter-preferred order.
    *
    * This is both the route's capability and the selector's rows: a surface
    * offers exactly these efforts and omits the reasoning control when the route
@@ -560,7 +562,8 @@ interface LlmModelReasoningInfo {
    * before the route changed — is refused by the runtime with
    * `UNSUPPORTED_REASONING_EFFORT`, never substituted by a neighboring level.
    * Absence of the enclosing reasoning metadata means the route encodes no
-   * effort at all, so any explicit one is refused.
+   * effort at all, so any explicit one is refused. Toggle controls use `on`
+   * and `off` ids; the adapter maps them to the provider's native protocol.
    */
   efforts: readonly LlmReasoningEffortInfo[]
   /**

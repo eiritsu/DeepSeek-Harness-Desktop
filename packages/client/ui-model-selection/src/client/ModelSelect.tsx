@@ -63,6 +63,8 @@ interface EffortChoice {
  * closed set; an id outside it keeps the catalog's own caption.
  */
 const EFFORT_LABEL_KEYS: Readonly<Record<string, ModelKey | undefined>> = {
+  on: 'effort.on',
+  off: 'effort.off',
   minimal: 'effort.minimal',
   low: 'effort.low',
   medium: 'effort.medium',
@@ -526,7 +528,7 @@ export function ModelSelect(
               </button>
               {(reasoning !== undefined || unsupportedEffort) && (
                 <button ref={itemRef()} type="button" role="menuitem" className={css.cell} onClick={() => { drill('effort') }}>
-                  <span className={css.cellLabel}>{t('menu.effort')}</span>
+                  <span className={css.cellLabel}>{t(reasoning?.control === 'toggle' ? 'menu.reasoning' : 'menu.effort')}</span>
                   <span className={css.cellValue}>{effortLabel}</span>
                   <IconChevronRightOutlineRegular className={css.cellChevron} />
                 </button>
