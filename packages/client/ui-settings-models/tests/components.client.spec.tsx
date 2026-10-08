@@ -1787,19 +1787,19 @@ describe('ModelsSection', () => {
 
   it('removes only the managed official key and preserves its base settings', async () => {
     let keyStored = false
-    const scripted = scriptedFace()
+    const unset = vi.fn(async () => {
+      keyStored = false
+      return remoteOk(undefined)
+    })
+    const scripted = scriptedFace({ unset })
     scripted.face.credentials.describe.mockImplementation((refs: string[]) => Promise.resolve(remoteOk(
       Object.fromEntries(refs.map(ref => [ref, {
         configured: ref === 'DEEPSEEK_API_KEY' ? keyStored : ref === 'OPENAI_API_KEY',
         writable: true,
       }])),
     )))
-    const { face, controller, mutate, unset } = await mountFace(scripted)
+    const { face, controller, mutate } = await mountFace(scripted)
     keyStored = true
-    unset.mockImplementation(() => {
-      keyStored = false
-      return Promise.resolve(remoteOk(undefined))
-    })
     await act(async () => { await controller.load() })
 
     fireEvent.click(screen.getByRole('button', { name: deepSeekCopy(en.removeProvider) }))
