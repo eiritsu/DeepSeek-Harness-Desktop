@@ -45,11 +45,6 @@
   pointer-events: none;
 }
 
-.editBar {
-  height: auto;
-  min-height: 36px;
-}
-
 .goalGlyph {
   display: inline-flex;
   flex: none;
@@ -90,10 +85,14 @@
 
 /* ---- Inline edit form ---- */
 
-.objectiveInput {
-  flex: 1;
-  min-width: 0;
-  align-self: center;
+/* The edit strip grows with a multi-line objective; actions stay on the last line. */
+.editBar {
+  height: auto;
+  min-height: 36px;
+  align-items: flex-end;
+  /* The editor scrolls inside this elevated menu-surface strip. */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
 /* ---- Icon actions ---- */

@@ -207,7 +207,7 @@ export function QueueDock({ useSession, useProjection, updateQueue, notify, load
                       onChange={(text) => { setEditing({ id: row.id, text }) }}
                       onSave={() => { void saveEdit() }}
                       onCancel={() => { setEditing(null) }}
-                      className={css.editor}
+                      className={css.editor ?? ''}
                     />
                   )
                   : (

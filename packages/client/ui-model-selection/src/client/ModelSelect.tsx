@@ -148,11 +148,13 @@ export function ModelSelect(
     if (key !== undefined) return t(key)
     return catalogName ?? id
   }
-  const effortLabel = effectiveEffort !== undefined && unsupportedEffort
-    ? t('effort.unsupported', { effort: effortName(effectiveEffort) })
-    : reasoning === undefined
-      ? (state.retainedEffort === undefined ? undefined : effortName(state.retainedEffort))
-      : effectiveEffort === undefined ? t('effort.default') : effortName(effectiveEffort)
+  const effortLabel = currentChoice === undefined
+    ? undefined
+    : effectiveEffort !== undefined && unsupportedEffort
+      ? t('effort.unsupported', { effort: effortName(effectiveEffort) })
+      : reasoning === undefined
+        ? (state.retainedEffort === undefined ? undefined : effortName(state.retainedEffort))
+        : effectiveEffort === undefined ? t('effort.default') : effortName(effectiveEffort)
   const effortChoices = useMemo<readonly EffortChoice[]>(() => {
     if (reasoning === undefined) {
       // No route metadata to list, but a stale stored effort still needs the
@@ -169,7 +171,7 @@ export function ModelSelect(
         label: effortName(effort.id, effort.name),
       })),
     ]
-  }, [reasoning, t, unsupportedEffort])
+  }, [reasoning, unsupportedEffort, t])
   const { pending } = state
   const busy = pending !== null
 
@@ -278,8 +280,8 @@ export function ModelSelect(
     triggerRef.current?.focus()
     setQuery('')
     setHighlightedIndex(null)
-    if (state.current === null) paneFocus.current = 'drill'
-    setPane(state.current === null ? 'model' : 'root')
+    if (currentChoice === undefined) paneFocus.current = 'drill'
+    setPane(currentChoice === undefined ? 'model' : 'root')
     setOpen(true)
     reload()
   }
@@ -331,7 +333,7 @@ export function ModelSelect(
     if (event.key === 'Escape' && open) {
       event.preventDefault()
       // Escape backs out of a drilled pane first, then closes.
-      if (pane !== 'root' && state.current !== null) back(pane)
+      if (pane !== 'root' && currentChoice !== undefined) back(pane)
       else close(true)
       return
     }
@@ -359,7 +361,7 @@ export function ModelSelect(
     if (event.key === 'Tab') {
       if (event.shiftKey) {
         event.preventDefault()
-        if (pane !== 'root' && state.current !== null) back(pane)
+        if (pane !== 'root' && currentChoice !== undefined) back(pane)
         else close(true)
         return
       }
@@ -445,15 +447,15 @@ export function ModelSelect(
     submit(selection)
   }
 
-  const waiting = state.current === null && state.status === 'loading'
+  const waiting = currentChoice === undefined && state.status === 'loading'
   const modelLabel = waiting
     ? t('trigger.loading')
     : currentChoice?.model.name
-      ?? (state.current === null ? t('trigger.fallback') : `${state.current.provider}/${state.current.model}`)
+      ?? t('trigger.fallback')
   const triggerLabel = effortLabel === undefined ? modelLabel : `${modelLabel} · ${effortLabel}`
   const triggerAria = waiting
     ? t('trigger.loading')
-    : state.current === null
+    : currentChoice === undefined
       ? t('trigger.selectAria')
       : effortLabel === undefined
         ? t('trigger.aria', { model: modelLabel })

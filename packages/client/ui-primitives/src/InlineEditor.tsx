@@ -23,20 +23,20 @@ export function InlineEditor({ value, label, onChange, onSave, onCancel, classNa
   onChange: (value: string) => void
   onSave: () => void
   onCancel: () => void
-  className?: string | undefined
+  className?: string
 }) {
   const ref = useRef<HTMLTextAreaElement>(null)
 
   useLayoutEffect(() => {
-    const node = ref.current
-    if (node === null) return
+    // The textarea mounts before layout effects run.
+    const node = ref.current as HTMLTextAreaElement
     const fit = (): void => {
       node.style.height = 'auto'
       // scrollHeight excludes the border that the border-box height includes.
       node.style.height = `${node.scrollHeight + node.offsetHeight - node.clientHeight}px`
     }
     fit()
-    if (typeof ResizeObserver !== 'function') return
+    // A width change rewraps the text; the refit height leaves the width unchanged.
     const observer = new ResizeObserver(fit)
     observer.observe(node)
     return () => { observer.disconnect() }
@@ -47,6 +47,7 @@ export function InlineEditor({ value, label, onChange, onSave, onCancel, classNa
       onCancel()
       return
     }
+    // keyCode 229 is the legacy IME-composition signal engines emit without isComposing.
     const composing = event.nativeEvent.isComposing || Reflect.get(event.nativeEvent, 'keyCode') === 229
     if (event.key !== 'Enter' || event.shiftKey || composing) return
     event.preventDefault()

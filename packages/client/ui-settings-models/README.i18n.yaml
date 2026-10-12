@@ -15,8 +15,8 @@
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
 /deepseek-ai-dsh-client-ui-settings-models/use-this-package:
-  en: bfeabc0fc8cb4751
-  zh: 0c55dc0e6688bdcd
+  en: c939d4ecc5007370
+  zh: 7a16bf0fa3e067f9
 /deepseek-ai-dsh-client-ui-settings-models/use-this-package/api-keys:
   en: c2f2a5c06ef20d5b
   zh: 49a7eb0b66b4ed53
@@ -39,8 +39,8 @@
   en: 74948a88fe1f9aac
   zh: 8ad2200fa74c12c9
 /deepseek-ai-dsh-client-ui-settings-models/understand-the-implementation/concurrency-and-credentials:
-  en: f040b9762ad459fd
-  zh: b71f8e783f6dacdb
+  en: 303171e40854896a
+  zh: dac5f1018a959c5d
 /deepseek-ai-dsh-client-ui-settings-models/understand-the-implementation/onboarding-coordinator:
   en: 46dea666dffe8813
   zh: 6f56fdc365fa3642
@@ -57,5 +57,5 @@
   en: cc69c9934bf22302
   zh: 4ea896f4b54aa203
 /deepseek-ai-dsh-client-ui-settings-models/known-limitations-and-deferred-work/dev-note:
-  en: 4f6749870e661a48
-  zh: 4953f3ea814546a4
+  en: e67f633dc6fe7773
+  zh: 3bb0c20c93f16f98

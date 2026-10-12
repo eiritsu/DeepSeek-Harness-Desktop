@@ -41,7 +41,8 @@ export const zh = {
   'search.placeholder': '搜索模型…',
   'search.clear': '清除搜索',
   'search.empty': '没有匹配的模型。',
-  'empty.models': '没有可用的模型。',
+  'empty.models': '暂无可用模型',
+  'empty.efforts': '当前模型未提供推理等级。',
 } satisfies Record<string, string>
 
 /** The model namespace key union. */
@@ -81,4 +82,5 @@ export const en = {
   'search.clear': 'Clear search',
   'search.empty': 'No matching models.',
   'empty.models': 'No models available.',
+  'empty.efforts': 'This model provides no reasoning effort levels.',
 } satisfies Record<ModelKey, string>

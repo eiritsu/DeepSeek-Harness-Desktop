@@ -1,4 +1,4 @@
-/** API-key authentication and discovery for the official DeepSeek route. */
+/** API-key authentication and credential-gated discovery for the official DeepSeek route. */
 import type { Context } from '@deepseek-ai/cordis'
 import { assertUsableApiKey, LlmError } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/cordis-plugin-loader'

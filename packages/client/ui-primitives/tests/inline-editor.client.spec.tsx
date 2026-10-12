@@ -27,7 +27,7 @@ describe('InlineEditor', () => {
 
   it('saves on plain Enter only, and cancels on Escape', () => {
     const { box, onSave, onCancel } = renderEditor()
-    fireEvent.keyDown(box, { key: 'Enter', shiftKey: true })
+    expect(fireEvent.keyDown(box, { key: 'Enter', shiftKey: true })).toBe(true)
     fireEvent.keyDown(box, { key: 'Enter', isComposing: true })
     fireEvent.keyDown(box, { key: 'Enter', keyCode: 229 })
     fireEvent.keyDown(box, { key: 'a' })
@@ -43,14 +43,19 @@ describe('InlineEditor', () => {
     expect(onSave).toHaveBeenCalledTimes(1)
   })
 
-  it('fits its content and refits when its width changes', () => {
+  it('sizes to its content plus border, and refits when its width changes', () => {
     class FakeResizeObserver implements ResizeObserver {
       static latest: FakeResizeObserver | undefined
       readonly observe = vi.fn()
       readonly unobserve = vi.fn()
       readonly disconnect = vi.fn()
-      constructor(private readonly callback: ResizeObserverCallback) { FakeResizeObserver.latest = this }
-      fire(): void { this.callback([], this) }
+      constructor(private readonly callback: ResizeObserverCallback) {
+        FakeResizeObserver.latest = this
+      }
+
+      fire(): void {
+        this.callback([], this)
+      }
     }
     vi.stubGlobal('ResizeObserver', FakeResizeObserver)
     let scrollHeight = 20

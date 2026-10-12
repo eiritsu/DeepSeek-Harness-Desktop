@@ -2,7 +2,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
 import { createLaunchEnvironmentSnapshot, DSH_LAUNCH_ENVIRONMENT_KEY } from '@deepseek-ai/dsh-launch-environment'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import * as ApiKey from '../src/index.ts'
 
 it('omits models without a key and reflects credentials added or removed at runtime', async () => {
@@ -37,6 +37,19 @@ it('uses a valid launch-environment key for discovery', async () => {
   try {
     await ctx.plugin(LlmRuntime)
     await ctx.plugin(ApiKey, {})
+    expect(await ctx.llm.listModels('deepseek-official')).toEqual([])
+  } finally {
+    await ctx.fiber.dispose()
+    vi.unstubAllEnvs()
+  }
+})
+
+it('advertises configured models with an API key', async () => {
+  vi.stubEnv('DEEPSEEK_API_KEY', 'fixture-api-key')
+  const ctx = new Context()
+  try {
+    await ctx.plugin(LlmRuntime)
+    await ctx.plugin(ApiKey, {})
     expect(await ctx.llm.listModels('deepseek-official')).toEqual(expect.arrayContaining([
       expect.objectContaining({ provider: 'deepseek-official', id: 'deepseek-flash' }),
     ]))
@@ -56,5 +69,18 @@ it('keeps invalid configured credentials explicit during discovery', async () =>
     await expect(ctx.llm.listModels('deepseek-official')).rejects.toMatchObject({ code: 'INVALID_CREDENTIAL' })
   } finally {
     await ctx.fiber.dispose()
+  }
+})
+
+it('reports malformed credentials during discovery', async () => {
+  vi.stubEnv('DEEPSEEK_API_KEY', 'invalid\nheader')
+  const ctx = new Context()
+  try {
+    await ctx.plugin(LlmRuntime)
+    await ctx.plugin(ApiKey, {})
+    await expect(ctx.llm.listModels('deepseek-official')).rejects.toMatchObject({ code: 'INVALID_CREDENTIAL' })
+  } finally {
+    await ctx.fiber.dispose()
+    vi.unstubAllEnvs()
   }
 })

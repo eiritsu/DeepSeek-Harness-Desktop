@@ -95,7 +95,6 @@ export function GoalBar({ goal, activation, onEdit, onPause, onResume, onClear, 
             onChange={setDraft}
             onSave={() => { void handleEdit() }}
             onCancel={() => { setEditing(false) }}
-            className={css.objectiveInput}
           />
           {actionError !== null && <span className={css.error} role="alert">{actionError}</span>}
           <div className={css.actions}>

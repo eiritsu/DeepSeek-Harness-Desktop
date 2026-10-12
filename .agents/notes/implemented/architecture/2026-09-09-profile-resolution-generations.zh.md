@@ -8,7 +8,7 @@ Status: implemented
 
 profile 从自己的包项目加载插件配置项，而 Harness 包和所选 bundle 携带的包可能位于该项目普通依赖树之外。通过共享 symlink、profile 自有链接或打包可执行文件的代理包连接两棵依赖树，会让选包结果跨进程和安装版本持续存在。这些文件需要协调和锁来维护，并向元数据读取方暴露生成的代理 manifest（元数据清单），也无法原子表示进程内变更。
 
-运行时设计保留安装优先、有序 bundle 和本地包优先于 fallback 的顺序。它覆盖插件模块内部的 import 以及 Loader 配置项的 import，并在主线程和 Harness 自有 Worker 中工作。generation 替换保持 installation 映射不变，可删除 profile 映射和本地包名，允许调整 linked root 集合，不会逐项修改正在使用的表。
+运行时设计保留安装优先、有序 bundle 和本地包优先于 fallback 的顺序。它覆盖插件模块内部的 import 以及 Loader 配置项的 import，并在主线程和 Harness 自有 Worker 中工作。generation 替换保持保留包的身份不变，允许移除 profile 包和调整 linked root 集合，不会逐项修改正在使用的表。
 
 ## Decision
 
@@ -75,7 +75,7 @@ linked root 集合在一个 generation 内不可变。后继 generation 可以�
 
 解析器在自身生命周期内保留每个已成功发布的 link 名称对应的真实目标，仅用于校验后继 generation。移除 root 不会抹掉该记录，也不会让其目录继续被拦截。同名、同目标可以重新加入；不同目标会被拒绝，因为 Node 缓存真实路径。发布失败时，当前 generation 和已记录目标均不变。
 
-launcher 构造启动 generation。`PluginPackages` 保留来源参数，并根据磁盘上的 profile 目录重算后继 generation。Plugin Manager 在包操作提交点发布已接受的 generation；[包操作决策](2026-10-05-profile-package-operation-publication.zh.md)记录其时序。
+launcher 只构造启动 generation。`ProfileRuntimeResolution` 仅保留安装锚点、Harness home 和可选的 profile 目录作为重算输入；后继代重新读取磁盘上的选择与配置层，不继承传入 profile 的合成层。没有 profile 目录的 generation 可以重算安装包。[包操作刷新决策](2026-09-30-profile-package-refresh-and-manifest-invalidation.zh.md)规定由 Plugin Manager 的操作发布后继代。
 
 ### ESM 与 CommonJS 共用规则
 
@@ -103,11 +103,11 @@ runtime resolution 列出它提供的包；Loader entries 组成活动插件列�
 
 新 Worker 继承最新发布的 generation。已运行的 Worker 保留启动时继承的 generation，因此发布后继 generation 的调用方必须重启它们。ESM bootstrap 无法影响其执行前已链接的静态依赖，因此 Worker bundle 必须保证 bootstrap 之前的静态 import 可由原生 Node 解析，需要 profile resolver 的业务入口在 bootstrap 后通过 dynamic import 启动。
 
-### 后继版本校验
+### 只增加包的变更
 
-后继版本保留每个 installation 包名、规范化目录、版本、作用域和声明锚点。在相关插件停止后，可以移除 profile 作用域条目和本地包名。保留的 profile 条目维持规范化目录、版本和作用域，但若另一个选中 bundle 仍提供同一个包，可以记录该 bundle 作为声明方。新的本地名称不能覆盖已映射包名。
+添加包的调用方先完成 pnpm 事务，再构造下一代。替换操作会拒绝改变任何保留包的目录或版本。Plugin Manager 先发布后继 generation，再挂载新的 Loader 配置项。挂载失败可以留下已安装但未启用的包。
 
-替换或删除 installation 映射、改变包目录或版本、改变 profile 作用域都需要重启，因为 Node 的 ESM Module Map、CommonJS cache、现存对象引用和运行中的 Worker 都可能保留旧模块 identity。删除 profile 映射只影响后续查询；generation 换代不会卸载模块，因此调用方需在发布删除前停止相关插件。
+保留包的规范化目录、版本和作用域必须不变；安装条目还必须保留声明锚点，且不能移除。违反这些限制需要重启，因为 Node 的 ESM Module Map、CommonJS cache、现存对象引用和运行中的 Worker 都可能保留旧模块 identity。profile 条目可以改变声明锚点：取消选入最先找到共享依赖的组合包后，另一个组合包仍可能选中同一物理包。profile 范围的映射和 profile 本地包名可以移除；调用方在删除包文件之前先停止相关插件。这些限制不禁止从拦截范围移除 linked root。generation 换代不声称卸载模块。
 
 ### 文件系统与运行时载体
 
@@ -142,7 +142,7 @@ generation 构造发生在启动或显式更新阶段，不属于单次 resolve�
 ## Verification
 
 - 一次 eager 计算供应 runtime resolution；启动既不写入也不退休模块解析数据。
-- [Generation 测试](../../../../packages/boot/app-boot/tests/profile-resolution.spec.ts)覆盖普通目录和递归软链接下的安装图与所选 bundle 图，包括逻辑锚点和真实锚点旁存在不同依赖版本的情况。测试还覆盖 linked root 移除、同目标恢复、重叠 root、原生缺包、已加载模块的新请求，以及移除后重新链接不同目标时的拒绝。
+- [Generation 测试](../../../../packages/boot/app-boot/tests/profile-resolution.spec.ts)覆盖普通目录和递归软链接下的安装图与所选 bundle 图，包括逻辑锚点和真实锚点旁存在不同依赖版本的情况。测试还覆盖同包 profile 声明者变更、保留包身份变更拒绝、捕获目录后的重算、linked root 移除、同目标恢复、重叠 root、原生缺包、已加载模块的新请求，以及移除后重新链接不同目标时的拒绝。
 - [源码启动测试](../../../../apps/cli/tests/source-launch.compat.spec.ts)与[构建入口测试](../../../../apps/cli/tests/built-bin.e2e.ts)通过真实 CLI 运行两种 profile 布局，断言 ESM/CJS 版本、加载路径、各模块格式内的依赖身份，以及一致的 Tools/AgentLoop 模块实例和可访问的 scheduler 键。
 - pkg 与 Electron 载体选择 runtime 解析；Electron 以 Node 模式从 ASAR 承载的 dsh 依赖树执行 Host，原生可执行条目保持 unpacked。
 - ESM 与 CommonJS 适配器共享同一个路由器，并把最终解析委托给 Node，不使用 `module.registerHooks` 或替换 `_findPath`。
@@ -152,4 +152,4 @@ generation 构造发生在启动或显式更新阶段，不属于单次 resolve�
 
 ## Consequences
 
-runtime 启动避免磁盘修改和代理 manifest，同时保留包优先级规则。真实目录锚点让依赖发现对齐 Node 默认加载与 tsx workspace 映射，也覆盖软链接逻辑路径会选中另一版本的情况。实现需要持续维护 Node Internal 兼容测试，并在每个自有 Worker 中尽早执行自包含 bootstrap；它不提供纯磁盘后端或 dual 对比模式。Installation 映射保持不变；相关插件停止后，可移除 profile 映射和本地包名；linked root 集合也可在不卸载模块的情况下改变。
+runtime 启动避免磁盘修改和代理 manifest，同时保留包优先级规则。真实目录锚点让依赖发现对齐 Node 默认加载与 tsx workspace 映射，也覆盖软链接逻辑路径会选中另一版本的情况。实现需要持续维护 Node Internal 兼容测试，并在每个自有 Worker 中尽早执行自包含 bootstrap；它不提供纯磁盘后端或 dual 对比模式。profile 包记录和 linked root 集合可以移除，而不卸载模块；保留包的身份保持不变。

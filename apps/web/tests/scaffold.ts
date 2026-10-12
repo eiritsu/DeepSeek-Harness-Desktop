@@ -388,7 +388,7 @@ export interface LaunchOptions {
    * yml default. The PTC runtime row is always in the tree, so no extra
    * insertion is needed.
    */
-  toolsMode?: 'native' | 'ptc' | 'both'
+  toolsMode?: 'native' | 'ptc'
   /**
    * Keep the shipped DeepSeek adapter mounted while masking the process
    * environment's DEEPSEEK_API_KEY for this scaffold lifetime. This is the
@@ -741,6 +741,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
       patchPath: join(profileDir, 'cordis.patch.yml'),
       patches: [],
     }
+    const resolutionOptions = { installAnchor: INSTALL_ANCHOR, home: harnessHome, profile }
     await mkdir(profileDir, { recursive: true })
     const rootConfig = join(profileDir, 'cordis.yml')
     await writeFile(rootConfig, '[]\n')
@@ -796,6 +797,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
         throw new Error(`web e2e scaffold: the web app requested exit ${String(code)} with no arguments to reject`)
       },
     })
+    resolution = await createRuntimeResolution(resolutionOptions)
     await ctx.plugin(PluginPackages, {
       resolution,
     })

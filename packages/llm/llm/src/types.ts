@@ -381,7 +381,8 @@ export interface LlmModelReasoningInfo {
   /** Control kind; absent keeps older adapters' effort-list behavior. */
   control?: 'toggle' | 'effort'
   /**
-   * Values this exact route can encode on the wire, in adapter-preferred order.
+   * Values this exact route can encode on the wire, in adapter-preferred order
+   * from least to greatest selectable reasoning effort.
    *
    * This is both the route's capability and the selector's rows: a surface
    * offers exactly these efforts and omits the reasoning control when the route
@@ -559,8 +560,8 @@ export interface GenerateOptions {
   sessionId?: Branded<'SessionId'>
   /**
    * Provider-neutral classification for an auxiliary model call. Adapters may
-   * map the purpose to model-hidden transport metadata or purpose-specific
-   * generation policy. Ordinary conversation requests leave it unset.
+   * map the purpose to model-hidden transport metadata. Ordinary conversation
+   * requests leave it unset.
    */
   purpose?: 'compaction' | 'session-title'
 }
