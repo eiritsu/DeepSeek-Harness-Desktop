@@ -27,7 +27,7 @@
 - id: session-query-sqlite
   config:
     path: ':memory:'
-    openAt: never
+    openAt: first-search
 
 - id: tools
   config:

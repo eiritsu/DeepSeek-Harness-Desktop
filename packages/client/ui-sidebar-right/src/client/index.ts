@@ -24,6 +24,7 @@ import type {} from '@deepseek-ai/dsh-client-shortcuts/client'
 import { observeSidebarFocus } from './focus.ts'
 import { registerSidebarShortcuts } from './shortcuts.ts'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-client-resources/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
@@ -47,6 +48,7 @@ import { GUIDE_ID, guideDefinition } from './tabs/guide/definition.ts'
 import { guideTabInfoFactory, tabInfoFactory } from './tab-info.ts'
 import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
 import { defaultSeed } from './contract/seed.ts'
+import { fileAddressFor } from '@deepseek-ai/dsh-util-workspace-path'
 
 export type { SidebarRightTarget } from './focus.ts'
 export type { RightbarSeatProps, SidebarRightInjected, SidebarRightPresentation } from './shell/SidebarRight.tsx'
@@ -106,9 +108,10 @@ export function apply(ctx: ClientContext): void {
   // still the active scope stalls browser boot with no error at all. The
   // template this follows (ui-conversation's definition registry) is built at
   // its own apply top level for the same reason.
+  const sessions = ctx.reflect.get('sessions') as ISessions
   const t = ctx.locale.bind(NS)
   const tabs = new SidebarRightTabRegistry(ctx)
-  const views = new SidebarSessionViews(ctx.sessions)
+  const views = new SidebarSessionViews(sessions)
   ctx.effect(() => {
     const current = ctx.uiSession.adapter.current
     const sync = (): void => { views.select(current.getSnapshot().key as SessionId | undefined) }
@@ -164,6 +167,57 @@ export function apply(ctx: ClientContext): void {
     void ctx.shortcuts.closeWindow().catch((error: unknown) => { console.error('Window close failed', error) })
   }), 'ui-sidebar-right: shortcuts')
   if (typeof document !== 'undefined') ctx.effect(() => observeSidebarFocus(document), 'ui-sidebar-right: focus')
+
+  ctx.effect(() => {
+    const current = ctx.uiSession.adapter.current
+    let unsubscribeEventSource: (() => void) | undefined
+    const handledCalls = new Set<string>()
+
+    const attach = (sessionId: SessionId | undefined): void => {
+      unsubscribeEventSource?.()
+      unsubscribeEventSource = undefined
+      if (sessionId === undefined) return
+      const binding = typeof sessions?.binding === 'function' ? sessions.binding(sessionId) : undefined
+      if (binding === undefined || binding.eventSource === undefined) return
+
+      const onWindowChange = (): void => {
+        const window = binding.eventSource.getSnapshot()
+        if (window.change.kind !== 'append') return
+        for (const entry of window.change.entries) {
+          if (entry.type !== 'event') continue
+          const event = entry.event
+          if (event.type === 'tool/call') {
+            const data = event.data as { callId: string; name: string; arguments: string }
+            if (data.name !== 'sidebar_open' || handledCalls.has(data.callId)) continue
+            if (handledCalls.size > 1000) handledCalls.clear()
+            handledCalls.add(data.callId)
+            triggerSidebarOpen(controller, sessionId, parseArguments(data.arguments))
+          } else if (event.type === 'tool/ptc-dispatch-start') {
+            const data = event.data as { subCallId: string; name: string; arguments: unknown }
+            if (data.name !== 'sidebar_open' || handledCalls.has(data.subCallId)) continue
+            if (handledCalls.size > 1000) handledCalls.clear()
+            handledCalls.add(data.subCallId)
+            triggerSidebarOpen(controller, sessionId, parseArguments(data.arguments))
+          }
+        }
+      }
+
+      unsubscribeEventSource = binding.eventSource.subscribe(onWindowChange)
+    }
+
+    const onCurrentChange = (): void => {
+      const sessionId = current.getSnapshot().key as SessionId | undefined
+      attach(sessionId)
+    }
+
+    const unsubscribeCurrent = current.subscribe(onCurrentChange)
+    onCurrentChange()
+
+    return () => {
+      unsubscribeCurrent()
+      unsubscribeEventSource?.()
+    }
+  }, 'ui-sidebar-right: live sidebar_open tool call listener')
 
   ctx.effect(() => {
     const handle = createSidebarRightStore(() => defaultSeed(tabs))
@@ -276,4 +330,48 @@ export function apply(ctx: ClientContext): void {
       adoptions.clear()
     }
   }, 'ui-sidebar-right: seats and shipped tab type')
+}
+
+/** Parse arguments from a raw tool call or PTC dispatch string/object. */
+function parseArguments(raw: unknown): { tab?: string; target?: string } {
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw) as unknown
+      return typeof parsed === 'object' && parsed !== null ? parsed as { tab?: string; target?: string } : {}
+    } catch {
+      return {}
+    }
+  }
+  if (typeof raw === 'object' && raw !== null) {
+    return raw as { tab?: string; target?: string }
+  }
+  return {}
+}
+
+/** Open or reveal the requested right sidebar tab or resource for one session. */
+function triggerSidebarOpen(
+  controller: SidebarRightController,
+  sessionId: SessionId,
+  args: { tab?: string; target?: string },
+): void {
+  try {
+    const tab = args.tab
+    const target = args.target
+    if (tab === 'session-inspector' || tab === 'session-inspector-log') {
+      controller.openTabIn(sessionId, 'session-inspector-log')
+    } else if (tab === 'terminal') {
+      controller.openTabIn(sessionId, 'terminal')
+    } else if (tab === 'browser') {
+      controller.openTabIn(sessionId, 'browser', target ? { params: { url: target } } as never : {})
+    } else if (tab === 'files') {
+      if (target !== undefined && target !== '') {
+        const address = fileAddressFor(sessionId, undefined, target)
+        controller.openResourceIn(sessionId, address)
+      } else {
+        controller.openTabIn(sessionId, 'files')
+      }
+    }
+  } catch (error) {
+    console.error('Sidebar open on tool call failed:', error)
+  }
 }

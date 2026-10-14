@@ -49,6 +49,12 @@
     },
     {
       "path": "../../util/brand"
+    },
+    {
+      "path": "../../core/tools"
+    },
+    {
+      "path": "../../util/workspace-path"
     }
   ]
 }
