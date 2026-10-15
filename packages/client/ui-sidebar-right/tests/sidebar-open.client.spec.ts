@@ -148,6 +148,24 @@ describe('ui-sidebar-right sidebar_open live event listener', () => {
     })
     expect(openTabInSpy).toHaveBeenCalledWith(SESSION, 'files')
 
+    // 5b. Native tool/call for browser_open
+    eventSource.append({
+      type: 'event',
+      event: {
+        type: 'tool/call',
+        seq: 51,
+        time: 550,
+        data: {
+          turn: 1,
+          step: 1,
+          callId: 'call-51',
+          name: 'browser_open',
+          arguments: JSON.stringify({ url: 'https://deepseek.com' }),
+        },
+      } as never,
+    })
+    expect(openTabInSpy).toHaveBeenCalledWith(SESSION, 'browser', { params: { url: 'https://deepseek.com' } })
+
     // 6. PTC mode tool/ptc-dispatch-start
     eventSource.append({
       type: 'event',

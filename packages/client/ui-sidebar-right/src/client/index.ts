@@ -176,28 +176,35 @@ export function apply(ctx: ClientContext): void {
     const attach = (sessionId: SessionId | undefined): void => {
       unsubscribeEventSource?.()
       unsubscribeEventSource = undefined
-      if (sessionId === undefined) return
-      const binding = typeof sessions?.binding === 'function' ? sessions.binding(sessionId) : undefined
-      if (binding === undefined || binding.eventSource === undefined) return
+      if (sessionId === undefined || typeof sessions.binding !== 'function') return
+      const binding = sessions.binding(sessionId)
+      if (binding === undefined || !binding.eventSource) return
 
       const onWindowChange = (): void => {
         const window = binding.eventSource.getSnapshot()
         if (window.change.kind !== 'append') return
         for (const entry of window.change.entries) {
           if (entry.type !== 'event') continue
-          const event = entry.event
-          if (event.type === 'tool/call') {
-            const data = event.data as { callId: string; name: string; arguments: string }
-            if (data.name !== 'sidebar_open' || handledCalls.has(data.callId)) continue
+          const rawEvent = entry.event as {
+            type: string
+            data?: { callId?: string; subCallId?: string; name?: string; arguments?: unknown }
+          }
+          if (rawEvent.type === 'tool/call') {
+            const data = rawEvent.data
+            if (data?.name !== 'sidebar_open' && data?.name !== 'browser_open') continue
+            const callId = data.callId
+            if (!callId || handledCalls.has(callId)) continue
             if (handledCalls.size > 1000) handledCalls.clear()
-            handledCalls.add(data.callId)
-            triggerSidebarOpen(controller, sessionId, parseArguments(data.arguments))
-          } else if (event.type === 'tool/ptc-dispatch-start') {
-            const data = event.data as { subCallId: string; name: string; arguments: unknown }
-            if (data.name !== 'sidebar_open' || handledCalls.has(data.subCallId)) continue
+            handledCalls.add(callId)
+            triggerSidebarOpen(controller, sessionId, data.name, parseArguments(data.arguments))
+          } else if (rawEvent.type === 'tool/ptc-dispatch-start') {
+            const data = rawEvent.data
+            if (data?.name !== 'sidebar_open' && data?.name !== 'browser_open') continue
+            const subCallId = data.subCallId
+            if (!subCallId || handledCalls.has(subCallId)) continue
             if (handledCalls.size > 1000) handledCalls.clear()
-            handledCalls.add(data.subCallId)
-            triggerSidebarOpen(controller, sessionId, parseArguments(data.arguments))
+            handledCalls.add(subCallId)
+            triggerSidebarOpen(controller, sessionId, data.name, parseArguments(data.arguments))
           }
         }
       }
@@ -332,29 +339,49 @@ export function apply(ctx: ClientContext): void {
   }, 'ui-sidebar-right: seats and shipped tab type')
 }
 
-/** Parse arguments from a raw tool call or PTC dispatch string/object. */
-function parseArguments(raw: unknown): { tab?: string; target?: string } {
+interface ToolSidebarArgs {
+  tab?: string | undefined
+  target?: string | undefined
+  url?: string | undefined
+}
+
+function parseArguments(raw: unknown): ToolSidebarArgs {
   if (typeof raw === 'string') {
     try {
-      const parsed = JSON.parse(raw) as unknown
-      return typeof parsed === 'object' && parsed !== null ? parsed as { tab?: string; target?: string } : {}
+      const parsed: unknown = JSON.parse(raw)
+      return extractArgs(parsed)
     } catch {
       return {}
     }
   }
-  if (typeof raw === 'object' && raw !== null) {
-    return raw as { tab?: string; target?: string }
+  return extractArgs(raw)
+}
+
+function extractArgs(val: unknown): ToolSidebarArgs {
+  if (typeof val !== 'object' || val === null) {
+    return {}
   }
-  return {}
+  const rec = val as Record<string, unknown>
+  return {
+    tab: typeof rec.tab === 'string' ? rec.tab : undefined,
+    target: typeof rec.target === 'string' ? rec.target : undefined,
+    url: typeof rec.url === 'string' ? rec.url : undefined,
+  }
 }
 
 /** Open or reveal the requested right sidebar tab or resource for one session. */
 function triggerSidebarOpen(
   controller: SidebarRightController,
   sessionId: SessionId,
-  args: { tab?: string; target?: string },
+  toolName: string,
+  args: ToolSidebarArgs,
 ): void {
   try {
+    if (toolName === 'browser_open') {
+      const url = args.url ?? args.target
+      controller.openTabIn(sessionId, 'browser', url ? { params: { url } } as never : {})
+      return
+    }
     const tab = args.tab
     const target = args.target
     if (tab === 'session-inspector' || tab === 'session-inspector-log') {
