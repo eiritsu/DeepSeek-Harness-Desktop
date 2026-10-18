@@ -1,0 +1,65 @@
+/* In-place body editor: it takes the edited user message's place in the
+   transcript row and borrows the bubble's own surface, radius, type, and
+   spacing, so editing reads as that message enlarged rather than as a
+   different control dropped into the transcript. Only the width and height
+   grow with the draft. */
+.root {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* The message column's own cap, right-aligned like the bubble it replaces,
+     so growth moves only the card's width and height. */
+  margin-left: auto;
+  width: 100%;
+  max-width: min(calc(var(--dsh-chat-content-width, 748px) * 0.702), 82%);
+  padding: 10px 16px;
+  border: 0;
+  border-radius: var(--dsw-radius-xl);
+  background: var(--dsw-specific-bubble);
+  color: var(--dsw-alias-label-primary);
+  font-size: var(--dsh-content-font-size, 14px);
+  line-height: calc(22px + var(--dsh-content-font-delta, 0px));
+}
+
+.editor {
+  /* One bubble line at rest; the layout effect grows the element to its
+     content up to the cap below, so only height moves as text is added. */
+  min-height: calc(22px + var(--dsh-content-font-delta, 0px));
+  max-height: 336px;
+  resize: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  outline: none;
+  overflow-y: auto;
+  caret-color: var(--dsw-alias-state-business-primary);
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+/* The tool disclosure stays one compact line inside the bubble surface, so the
+   card keeps the message's proportions. */
+.warning {
+  padding: 4px 8px;
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.failure {
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.controls {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
