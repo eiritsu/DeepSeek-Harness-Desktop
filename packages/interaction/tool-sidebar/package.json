@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-tool-sidebar",
   "description": "Model-facing sidebar_open and browser_open tools for controlling the right sidebar and built-in browser",
-  "version": "0.2.1-alpha.2",
+  "version": "0.2.1-rc.2",
   "publishConfig": {
     "access": "public"
   },

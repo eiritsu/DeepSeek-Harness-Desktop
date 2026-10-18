@@ -27,7 +27,7 @@
 - id: session-query-sqlite
   config:
     path: ':memory:'
-    openAt: never
+    openAt: first-search
 
 - id: tools
   config:
@@ -153,6 +153,10 @@
     # Workspace commands and reconnect-safe projection over Typert Remote.
     - id: workspace-controller
       name: '@deepseek-ai/dsh-api-workspace-controller'
+
+    # Turn edit-and-resend admission service over Typert Remote.
+    - id: session-turn-edit-resend
+      name: '@deepseek-ai/dsh-session-turn-edit-resend'
 
     - id: cordis-host-runner
       name: '@deepseek-ai/dsh-cordis-host-runner'
@@ -412,6 +416,10 @@
     - id: ui-model-selection
       name: '@deepseek-ai/dsh-client-ui-model-selection'
 
+    # Turn edit-and-resend client action.
+    - id: ui-turn-edit-resend
+      name: '@deepseek-ai/dsh-client-ui-turn-edit-resend'
+
     - id: ui-deepseek-model-label-1017
       name: '@deepseek-ai/dsh-client-ui-deepseek-model-label-1017'
 
@@ -437,6 +445,11 @@
     # Host serves the namespace.
     - id: ui-settings-shell
       name: '@deepseek-ai/dsh-client-ui-settings-shell'
+
+    # The Archived sessions settings section: the navigation entry and the
+    # page of archived Sessions, grouped by the Workspace that holds them.
+    - id: ui-settings-archived-sessions
+      name: '@deepseek-ai/dsh-client-ui-settings-archived-sessions'
 
     - id: ui-settings-agent-loop
       name: '@deepseek-ai/dsh-client-ui-settings-agent-loop'

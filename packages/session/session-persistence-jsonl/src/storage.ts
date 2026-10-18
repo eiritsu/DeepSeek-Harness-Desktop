@@ -440,6 +440,24 @@ export class JsonlBackendTracker {
   }
 
   /**
+   * Claim an id for deletion, excluding local creates and write opens.
+   * @param id - the session to claim for deletion.
+   * @throws {SessionAlreadyOwnedError} when an active write handle exists.
+   */
+  claimDelete(id: SessionId): void {
+    if (this.writers.has(id)) throw new SessionAlreadyOwnedError(id)
+    this.writers.set(id, null)
+  }
+
+  /**
+   * Release an id after deletion or a failed delete.
+   * @param id - the session whose deletion claim is dropped.
+   */
+  releaseDelete(id: SessionId): void {
+    this.writers.delete(id)
+  }
+
+  /**
    * The pending entry for a created-but-unmaterialized session, if any.
    * @param id - the session to look up.
    * @returns the pending header and in-memory revision.

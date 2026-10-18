@@ -78,7 +78,6 @@ export function DeleteArchivedDialog({
           : t('deleteAll.pending', { done: progress.done, total: count })}
         acknowledged={acknowledged}
         disabled={pending}
-        cancelDisabled={pending}
         onAcknowledgedChange={setAcknowledged}
         onCancel={onCancel}
         onConfirm={() => { onConfirm(scope) }}

@@ -129,6 +129,7 @@ export interface ModelReasoningEffort {
 
 /** Selectable reasoning metadata for one exact model route. */
 export interface ModelReasoning {
+  readonly control?: 'toggle' | 'effort'
   readonly efforts: readonly ModelReasoningEffort[]
   readonly defaultEffort?: string
 }
@@ -181,6 +182,8 @@ export interface SessionSummary {
   /** Current for attached Sessions; otherwise the persistence format status when reported. */
   readonly formatStatus?: 'current' | 'migration-required'
   readonly sessionId: SessionId
+  /** Creation time read from the durable Session header. */
+  readonly createdAt?: number | undefined
   readonly updatedAt: number
   readonly running: boolean
   readonly blank: boolean

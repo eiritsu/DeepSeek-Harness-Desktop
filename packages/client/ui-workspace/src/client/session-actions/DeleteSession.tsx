@@ -10,7 +10,7 @@ import type {
 } from '../contract/slots.ts'
 import css from '../rows/WorkspaceBrowser.module.css'
 
-/** Menu row (order 500): close the menu and request permanent deletion. */
+/** Menu row (order 480): close the menu and request permanent deletion. */
 export function DeleteSessionMenuItem({
   sessionId, displayTitle, useMenuOpenState, requestSessionDelete, t,
 }: SessionMenuItemProps<DeleteSessionInjected>) {

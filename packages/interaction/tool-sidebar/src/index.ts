@@ -22,21 +22,22 @@ const SIDEBAR_PROMPT =
   + '- Built-in Web Browser: Call `browser_open(url="https://...")` or `sidebar_open(tab="browser", target="https://...")` to open and navigate the built-in browser tab in the right sidebar for the user to view web pages.\n'
   + '- Workspace Files: Call `sidebar_open(tab="files", target="path/to/file")` to open and reveal workspace files or directories in the sidebar file tree/preview.\n'
   + '- Terminal: Call `sidebar_open(tab="terminal")` to switch the right sidebar to the interactive persistent terminal.\n'
-  + '- Session Inspector: Call `sidebar_open(tab="session-inspector")` to switch the right sidebar to the session diagnostics and raw event log inspector.'
+  + '- Session Inspector: Call `sidebar_open(tab="session-inspector")` to switch the right sidebar to the session diagnostics and raw event log inspector.\n'
+  + '- Other Sidebar Panels: Call `sidebar_open(tab="<panel-id>", target="<resource-uri>")` to open and display interactive plugin panels or sidecars in the right sidebar.'
 
 /** Supported sidebar tab identifiers. */
-export type SidebarTab = 'browser' | 'files' | 'terminal' | 'session-inspector'
+export type SidebarTab = 'browser' | 'files' | 'terminal' | 'session-inspector' | (string & {})
 
 /** Tool input arguments for sidebar_open. */
 export interface SidebarOpenArgs {
-  tab: SidebarTab
+  tab: string
   target?: string
 }
 
 /** Tool output result for sidebar_open. */
 export interface SidebarOpenResult {
   success: boolean
-  tab: SidebarTab
+  tab: string
   target?: string
   message: string
 }
@@ -67,13 +68,12 @@ export function apply(ctx: Context): void {
 
   ctx.tools.register(defineTool({
     name: 'sidebar_open',
-    description: 'Open or switch to a right sidebar tab to present it to the user. Supported tabs: "browser" (built-in web browser, target=URL), "files" (workspace files tree or file preview, target=path), "terminal" (interactive terminal), "session-inspector" (session diagnostic log).',
+    description: 'Open or switch to a right sidebar tab to present it to the user. Supported tabs: "browser" (built-in web browser, target=URL), "files" (workspace files tree or file preview, target=path), "terminal" (interactive terminal), "session-inspector" (session diagnostic log), or any registered sidebar panel/viewer.',
     parameters: {
       tab: {
         type: 'string',
         required: true,
-        description: 'The sidebar tab to open or reveal. Supported values: "browser", "files", "terminal", "session-inspector".',
-        enum: ['browser', 'files', 'terminal', 'session-inspector'],
+        description: 'The sidebar tab or panel to open or reveal. Supported values: "browser", "files", "terminal", "session-inspector", or any registered sidebar panel ID.',
       },
       target: {
         type: 'string',

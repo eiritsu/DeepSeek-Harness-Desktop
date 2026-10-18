@@ -21,6 +21,10 @@
               readImage: true
               write: false
               edit: false
+          - id: tool-session-query
+            name: '@deepseek-ai/dsh-tool-session-query'
+          - id: tool-sidebar
+            name: '@deepseek-ai/dsh-tool-sidebar'
           - id: compaction
             name: cordis:group
             group: true

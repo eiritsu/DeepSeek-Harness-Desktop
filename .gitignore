@@ -30,6 +30,7 @@ tmp/
 .idea
 mise.toml
 dist-exe/
+release-dist*/
 /dist/
 apps/desktop/.desktop-build/
 python/sdk-runtime/src/deepseek_harness_runtime/runtime/

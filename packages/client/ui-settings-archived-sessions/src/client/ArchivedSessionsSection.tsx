@@ -307,7 +307,6 @@ export function ArchivedSessionsSection({
         confirmLabel={t('delete.confirm')}
         acknowledged={deleteAcknowledged}
         disabled={deleteRunning}
-        cancelDisabled={deleteRunning}
         onAcknowledgedChange={setDeleteAcknowledged}
         onCancel={() => {
           setDeleteTarget(undefined)

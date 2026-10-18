@@ -14,6 +14,8 @@ import type {
   InboxTarget,
   PreStepDecision,
   RequestErrorAction,
+  SurfaceReplacement,
+  SurfaceReplacements,
 } from '@deepseek-ai/dsh-agent'
 import { agentEvents, assembleContextFor } from '@deepseek-ai/dsh-agent'
 import type { GenerateOptions, LlmCallConfig, Message, PreparedLlmCall } from '@deepseek-ai/dsh-llm'
@@ -58,6 +60,8 @@ type PreparedStep =
     messages: UserMessage[]
     startsRequestSeries?: true
     assembly: PromptAssembly
+    /** Surface ranges the claimed resends carry, keyed by claimed message identity. */
+    replacements: SurfaceReplacements
   }
 
 /** Remove adapter-derived values before plugins propose the next request config. */
@@ -98,6 +102,7 @@ function abortedCancelCause(signal: AbortSignal): AgentCancelCause | undefined {
 export class ReactLoopAgent implements Agent {
   readonly inbox: ReactLoopInbox
   private phase: Phase
+  private acceptingInput = true
   private activityDone: Promise<void> = Promise.resolve()
 
   /** The agent-scoped registration boundary; the lifecycle owner unwinds it after the driver exits. */
@@ -152,6 +157,7 @@ export class ReactLoopAgent implements Agent {
   }
 
   send(message: UserMessage, target: InboxTarget, wakeup: boolean): void {
+    if (!this.acceptingInput) throw new Error(`agent "${this.id}" is closing`)
     // Waking input cannot join an aborted activity, so it starts the next turn.
     // Captured before the insertion so a reentrant cancel from a splice observer cannot reclassify it.
     const wakingAfterAbort = wakeup && this.phase.kind !== 'idle' && this.phase.abort.signal.aborted
@@ -160,8 +166,23 @@ export class ReactLoopAgent implements Agent {
     if (wakeup) this.wakeDriver(wakingAfterAbort)
   }
 
-  followup(input: UserMessage): void {
-    this.send(input, 'next-turn', true)
+  /** Atomically reject future input only when no active or queued work exists. */
+  sealIfIdle(): boolean {
+    if (!this.acceptingInput || this.phase.kind !== 'idle' || this.inbox.hasPending) return false
+    this.acceptingInput = false
+    return true
+  }
+
+  followup(input: UserMessage, replacement?: SurfaceReplacement): void {
+    if (replacement === undefined) {
+      this.send(input, 'next-turn', true)
+      return
+    }
+    // A shadowing message always opens its own turn, exactly as a follow-up
+    // does, and is never reclassified into an aborted activity: it must replace
+    // the range it names, not append after it.
+    this.inbox.splice('next-turn', Infinity, 0, [input], { [input.id]: replacement })
+    this.wakeDriver(false)
   }
 
   steer(input: UserMessage): void {
@@ -268,7 +289,8 @@ export class ReactLoopAgent implements Agent {
     /* v8 ignore next -- private callers establish the running phase before proposing a step */
     if (this.phase.kind !== 'running') throw new Error(`agent "${this.id}": pre-step outside running phase`)
     const signal = this.phase.abort.signal
-    const claimed = this.inbox.claim(target, position.turn)
+    const claim = this.inbox.claim(target, position.turn)
+    const claimed = claim.messages
     const assembly = await this.loopCtx.systemPrompt.assemble(assembleContextFor(this, signal))
     signal.throwIfAborted()
     const decision = await this.dispatch.waterfall(
@@ -284,7 +306,7 @@ export class ReactLoopAgent implements Agent {
     )
     signal.throwIfAborted()
     if (decision.kind === 'reject') return decision
-    return { ...decision, assembly }
+    return { ...decision, assembly, replacements: claim.replacements }
   }
 
   /** Whether the assembled tool schemas differ from the logged request header's. */
@@ -431,7 +453,13 @@ export class ReactLoopAgent implements Agent {
               contextAdmitted = true
             }
           } else {
-            this.session.append('user/message', message, { surfaceOp: 'append' })
+            const replacement = decision.replacements[message.id]
+            this.session.append('user/message', message, replacement === undefined
+              ? { surfaceOp: 'append' }
+              : {
+                surfaceOp: { op: 'replace', startSeq: replacement.startSeq, endSeq: replacement.endSeq },
+                sourceEventSeqs: [...replacement.sourceEventSeqs],
+              })
           }
         }
       }

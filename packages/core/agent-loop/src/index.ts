@@ -251,6 +251,7 @@ declare module '@deepseek-ai/cordis' {
 }
 
 export { DEFAULT_MAX_PARALLEL_TOOL_CALLS }
+export type { ClaimedInput } from './inbox.ts'
 
 /**
  * One launcher-selected session identity for a configured agent. `resume`
@@ -642,6 +643,7 @@ export class AgentLoop extends Service implements AgentFactory {
       /* v8 ignore next -- a synchronous effect exhausts the generator before returning */
       if (machine === undefined) throw new Error(`agent "${id}" lifecycle did not construct its driver`)
       const agent = machine
+      const lifecycle = machine
       assertLive()
 
       return {
@@ -659,7 +661,15 @@ export class AgentLoop extends Service implements AgentFactory {
             assertLive()
             await loopCtx.agents.announce(agent, source, abort.signal)
             assertLive()
-            return { agent, dispose }
+            return {
+              agent,
+              dispose,
+              disposeIfIdle: async () => {
+                if (!lifecycle.sealIfIdle()) return false
+                await dispose()
+                return true
+              },
+            }
           } finally {
             publication.resolve()
             publication = undefined

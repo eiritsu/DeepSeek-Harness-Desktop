@@ -1,7 +1,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import { agentEvents, type Agent } from '@deepseek-ai/dsh-agent'
 import { createUserMessage, freezeMessage } from '@deepseek-ai/dsh-llm'
-import SessionStore, { Session, SessionId } from '@deepseek-ai/dsh-session'
+import SessionStore, { Session, SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { UserMessage } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { describe, expect, it, onTestFinished } from 'vitest'
@@ -274,5 +274,89 @@ describe('ReactLoopInbox', () => {
 
     agent.inbox.clear()
     expect(session.snapshotEvents()).toHaveLength(beforeClear + 2)
+  })
+})
+
+describe('ReactLoopInbox resend replacements', () => {
+  const range = { startSeq: SessionSeq(4), endSeq: SessionSeq(6), sourceEventSeqs: [SessionSeq(4), SessionSeq(5), SessionSeq(6)] }
+
+  it('records a resend range with the splice that queues it', async () => {
+    const { ctx, session, agent } = await inboxAgent('resend-splice')
+    const resent = createUserMessage({ content: [{ type: 'text', text: 'edited' }], source: { kind: 'user' } })
+
+    agent.inbox.splice('next-turn', Infinity, 0, [resent], { [resent.id]: range })
+
+    expect(ctx.sessionProjections.stateOf(session, 'inbox')?.replacements).toEqual({ [resent.id]: range })
+    expect(session.snapshotEvents().at(-1)).toMatchObject({
+      type: 'agent/inbox/spliced',
+      data: { replacements: { [resent.id]: range } },
+    })
+  })
+
+  it('refuses a range that names a message the splice did not insert', async () => {
+    const { agent } = await inboxAgent('resend-unknown-identity')
+    const resent = createUserMessage({ content: [{ type: 'text', text: 'edited' }], source: { kind: 'user' } })
+    const other = createUserMessage({ content: [{ type: 'text', text: 'other' }], source: { kind: 'user' } })
+
+    expect(() => { agent.inbox.splice('next-turn', 0, 0, [resent], { [other.id]: range }) })
+      .toThrow(`resend "${other.id}" is not an inserted message`)
+  })
+
+  it('rejects a persisted splice whose range names an uninserted identity', async () => {
+    const pending = createUserMessage({ content: [{ type: 'text', text: 'persisted' }], source: { kind: 'user' } })
+    const absent = createUserMessage({ content: [{ type: 'text', text: 'absent' }], source: { kind: 'user' } })
+    const error = await reconstructPersistedInbox('resend-persisted-unknown', (session) => {
+      session.append('agent/inbox/spliced', {
+        target: 'next-turn', start: 0, inserted: [pending],
+        replacements: { [absent.id]: range },
+      })
+    })
+    expect(error.message).toBe('invalid persisted inbox splice at session seq 0')
+    expect((error.cause as Error).message).toBe(`resend "${absent.id}" is not an inserted message`)
+  })
+
+  it('hands the range to the claiming driver and leaves none pending', async () => {
+    const { ctx, session, agent, inbox } = await inboxAgent('resend-claim')
+    const steering = createUserMessage({ content: [{ type: 'text', text: 'steering' }], source: { kind: 'user' } })
+    const resent = createUserMessage({ content: [{ type: 'text', text: 'edited' }], source: { kind: 'user' } })
+    agent.inbox.append('next-step', steering)
+    agent.inbox.splice('next-turn', Infinity, 0, [resent], { [resent.id]: range })
+
+    const claimed = inbox.claim('next-turn', 1)
+
+    expect(claimed.messages).toEqual([steering, resent])
+    expect(claimed.replacements).toEqual({ [resent.id]: range })
+    expect(ctx.sessionProjections.stateOf(session, 'inbox')?.replacements).toEqual({})
+  })
+
+  it('drops a queued range when its message is canceled or removed', async () => {
+    const { ctx, session, agent } = await inboxAgent('resend-cancel')
+    const resent = createUserMessage({ content: [{ type: 'text', text: 'edited' }], source: { kind: 'user' } })
+    agent.inbox.splice('next-turn', Infinity, 0, [resent], { [resent.id]: range })
+
+    expect(agent.inbox.remove(resent.id)).toBe(true)
+    expect(ctx.sessionProjections.stateOf(session, 'inbox')?.replacements).toEqual({})
+
+    agent.inbox.splice('next-turn', Infinity, 0, [resent], { [resent.id]: range })
+    agent.inbox.clear()
+    expect(ctx.sessionProjections.stateOf(session, 'inbox')?.replacements).toEqual({})
+    expect(session.snapshotEvents().map(event => event.type === 'agent/inbox/spliced'
+      ? event.data.replacements
+      : event.type)).toEqual([
+      { [resent.id]: range }, undefined, { [resent.id]: range }, undefined,
+    ])
+  })
+
+  it('replays a persisted resend range from a log written before the field existed', async () => {
+    const { ctx, session, agent } = await inboxAgent('resend-legacy-log')
+    const legacy = createUserMessage({ content: [{ type: 'text', text: 'legacy' }], source: { kind: 'user' } })
+    session.append('agent/inbox/spliced', { target: 'next-turn', start: 0, inserted: [legacy] })
+    const resent = createUserMessage({ content: [{ type: 'text', text: 'edited' }], source: { kind: 'user' } })
+    agent.inbox.splice('next-turn', Infinity, 0, [resent], { [resent.id]: range })
+    expect(ctx.sessionProjections.stateOf(session, 'inbox')?.replacements).toEqual({ [resent.id]: range })
+
+    expect(legacy.id).toBe((agent.inbox as ReactLoopInbox).claim('next-turn', 1).messages[0]?.id)
+    expect((agent.inbox as ReactLoopInbox).claim('next-turn', 2).replacements)
+      .toEqual({ [resent.id]: range })
   })
 })

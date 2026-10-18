@@ -1,13 +1,15 @@
 import { memo, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { PendingSubmission } from '@deepseek-ai/dsh-api-session-controller/client'
-import type { PropsRenderFactories } from '@deepseek-ai/dsh-client-ui-slots'
+import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
+import type { InjectFace, PropsRenderFactories, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import type { UserTextFacts } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { JsonBlock, StateDot, TextShimmer } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
   ChatNodeOwnerProps, ChatNodeViewProps, ChatViewSlotProps, UserContentAttachment, UserContentData, UserContentInput,
 } from '../contract/slots.ts'
 import type { ModelRetryNode, TurnErrorNode, UserMessageNode } from '../contract/snapshot.ts'
+import type { MessageBodyClaimSet } from '../message-claims.ts'
 import { CompactionItem } from './CompactionItem.tsx'
 import { ContextInjectionRow } from './ContextInjectionRow.tsx'
 import { MessageIconActions } from './MessageIconActions.tsx'
@@ -294,10 +296,57 @@ export function PendingSubmissionBubble({ submission, loadImage, renderFactorySl
   )
 }
 
-/** User and admitted-steering keyed Chat renderer. */
+/** Props of the user-message renderer, which is the only declarer of the action seat and body chain. */
+type UserMessageNodeViewProps =
+  ChatNodeViewProps<'user'>
+  & Partial<InjectFace<{ hooks: { messageClaims: ObservableSnapshot<MessageBodyClaimSet> } }>>
+  & { renderSlot?: PropsRenderSlots<'conversation.chat.user-actions'>['renderSlot'] }
+  & { renderSlotChain?: PropsRenderSlots<'conversation.chat.user-body'>['renderSlotChain'] }
+
+/** User keyed Chat renderer carrying the message action seat and body chain. */
 export const UserMessageNodeView = memo(function UserMessageNodeView({
+  node, renderFactorySlot, loadImage, renderSlot, renderSlotChain, useMessageClaims, t,
+}: UserMessageNodeViewProps) {
+  const data = node.data
+  const location = node.location
+  const turn = location.kind === 'turn' || location.kind === 'step' ? location.turn.turn : undefined
+  const claimed = useMessageClaims !== undefined
+    ? useMessageClaims(claims => claims.has(data.seq))
+    : false
+  const bubble = (
+    <UserStyleBubble
+      content={data.content}
+      interactive
+      renderFactorySlot={renderFactorySlot}
+      loadImage={loadImage}
+      {...data.referenceLabels === undefined ? {} : { referenceLabels: data.referenceLabels }}
+      {...data.skillNames === undefined ? {} : { skillNames: data.skillNames }}
+      actions={text => (
+        <MessageIconActions
+          text={text}
+          time={data.time}
+          clock="start"
+          className={css.actions}
+          {...renderSlot !== undefined
+            ? { extraActions: renderSlot('conversation.chat.user-actions', { seq: data.seq, turn }) }
+            : {}}
+          t={t}
+        />
+      )}
+    />
+  )
+  if (renderSlotChain === undefined) return bubble
+  return renderSlotChain(
+    'conversation.chat.user-body',
+    { seq: data.seq, turn, claimed },
+    { fallback: bubble, overlay: true },
+  )
+})
+
+/** Admitted-steering keyed Chat renderer; the action seat belongs to the user key alone. */
+export const SteeringMessageNodeView = memo(function SteeringMessageNodeView({
   node, renderFactorySlot, loadImage, t,
-}: ChatNodeViewProps<'user' | 'steering'>) {
+}: ChatNodeViewProps<'steering'>) {
   const data = node.data
   return (
     <UserStyleBubble

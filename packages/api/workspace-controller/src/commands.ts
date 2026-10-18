@@ -1,6 +1,7 @@
 /** Workspace command implementation and stable Remote failure mapping. */
 
 import type { Context } from '@deepseek-ai/cordis'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { Workspace } from '@deepseek-ai/dsh-workspace'
 import {
   WorkspaceActiveSessionError,
@@ -8,6 +9,7 @@ import {
   WorkspaceId,
   WorkspaceMoveInvalidError,
   WorkspaceOrderInvalidError,
+  WorkspaceSessionDeleteBusyError,
   WorkspaceUnknownSessionError,
 } from '@deepseek-ai/dsh-workspace'
 import { RemoteError, remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
@@ -19,6 +21,8 @@ import type {
   WorkspaceCreateValue,
   WorkspaceDeleteRequest,
   WorkspaceDeleteValue,
+  WorkspaceDeleteSessionRequest,
+  WorkspaceDeleteSessionValue,
   WorkspaceInsertBeforeRequest,
   WorkspaceInsertSessionBeforeRequest,
   WorkspaceOrderValue,
@@ -170,12 +174,7 @@ export class WorkspaceCommands {
         throw new RemoteError('session/not-found', error.message, { sessionId: request.sessionId }, { cause: error })
       }
       if (error instanceof WorkspaceActiveSessionError) {
-        throw new RemoteError(
-          'workspace/session-active',
-          error.message,
-          { sessionId: request.sessionId, activity: error.activity },
-          { cause: error },
-        )
+        throw sessionActiveError(error, request.sessionId)
       }
       throw error
     }
@@ -226,6 +225,34 @@ export class WorkspaceCommands {
     return { pinnedSessionIds: [...this.ctx.workspaceRegistry.pinnedSessionIds] }
   }
 
+  /**
+   * Physically delete one Session and clear its Workspace references.
+   * @param request - Session identity to delete.
+   * @returns deletion confirmation after durable cleanup.
+   */
+  async deleteSession(request: WorkspaceDeleteSessionRequest): Promise<WorkspaceDeleteSessionValue> {
+    try {
+      await this.ctx.workspaceRegistry.deleteSession(request.sessionId)
+    } catch (error: unknown) {
+      if (error instanceof WorkspaceUnknownSessionError) {
+        throw new RemoteError('session/not-found', error.message, { sessionId: request.sessionId }, { cause: error })
+      }
+      if (error instanceof WorkspaceActiveSessionError) {
+        throw sessionActiveError(error, request.sessionId)
+      }
+      if (error instanceof WorkspaceSessionDeleteBusyError) {
+        throw new RemoteError(
+          'workspace/session-delete-blocked',
+          error.message,
+          { sessionId: request.sessionId, reason: 'writer' },
+          { cause: error },
+        )
+      }
+      throw error
+    }
+    return { deleted: true }
+  }
+
   private requireWorkspace(workspaceId: WorkspaceId): Workspace {
     const workspace = this.ctx.workspaceRegistry.get(WorkspaceId(workspaceId))
     if (workspace === undefined) throw workspaceNotFound(workspaceId)
@@ -237,6 +264,24 @@ export class WorkspaceCommands {
     this.operationTail = result.then(() => undefined, () => undefined)
     return result
   }
+}
+
+/**
+ * Map an active-Session refusal to its stable Remote failure.
+ * @param error - registry refusal naming the work that must stop first.
+ * @param sessionId - Session the refused archive or deletion targeted.
+ * @returns the `workspace/session-active` Remote failure.
+ */
+function sessionActiveError(
+  error: WorkspaceActiveSessionError,
+  sessionId: SessionId,
+): RemoteError<'workspace/session-active'> {
+  return new RemoteError(
+    'workspace/session-active',
+    error.message,
+    { sessionId, activity: error.activity },
+    { cause: error },
+  )
 }
 
 function workspaceNotFound(workspaceId: WorkspaceId): RemoteError<'workspace/not-found'> {

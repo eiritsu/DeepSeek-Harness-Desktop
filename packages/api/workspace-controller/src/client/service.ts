@@ -31,6 +31,16 @@ export class WorkspaceArchiveError extends Error {
   }
 }
 
+/** Physical Session deletion failed on the Host. */
+export class WorkspaceSessionDeleteError extends Error {
+  override readonly name = 'WorkspaceSessionDeleteError'
+
+  /** @param rpcError - Host business or folded carrier failure. */
+  constructor(readonly rpcError: RemoteFailure) {
+    super(`workspace session delete failed: ${rpcError.code}: ${rpcError.message}`)
+  }
+}
+
 /** Bare observable source for the Workspace Controller snapshot. */
 export interface WorkspaceSource {
   /** Read the identity-stable current snapshot. */
@@ -100,6 +110,12 @@ export interface IWorkspaces {
    * @param sessionId - Session to unpin.
    */
   unpinSession(sessionId: SessionId): Promise<void>
+  /**
+   * Physically delete a Session and its Workspace references.
+   * @param sessionId - Session to delete.
+   * @throws {WorkspaceSessionDeleteError} when active work, a writer lock, or a storage failure prevents deletion.
+   */
+  deleteSession(sessionId: SessionId): Promise<void>
   /**
    * Move a Session within one Workspace account.
    * @param workspaceId - owning Workspace.
@@ -173,6 +189,11 @@ export class WorkspaceController extends Service implements IWorkspaces {
   async unpinSession(sessionId: SessionId): Promise<void> {
     const result = await this.model.unpinSession(sessionId)
     if (!result.ok) throw commandError('session unpin', result.error)
+  }
+
+  async deleteSession(sessionId: SessionId): Promise<void> {
+    const result = await this.model.deleteSession(sessionId)
+    if (!result.ok) throw new WorkspaceSessionDeleteError(result.error)
   }
 
   async insertSessionBefore(

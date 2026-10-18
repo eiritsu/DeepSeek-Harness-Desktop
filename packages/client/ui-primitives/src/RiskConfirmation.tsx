@@ -43,14 +43,14 @@ export function RiskConfirmation({
   return (
     <Modal
       open={open}
-      onClose={onCancel}
+      onClose={disabled ? () => {} : onCancel}
       title={title}
       closeLabel={closeLabel}
       className={css.confirmation ?? ''}
       contentClassName={css.confirmationContent ?? ''}
       footer={(
         <>
-          <Button variant="outline" className={css.modalAction} onClick={onCancel}>
+          <Button variant="outline" className={css.modalAction} disabled={disabled} onClick={onCancel}>
             {cancelLabel}
           </Button>
           <Button

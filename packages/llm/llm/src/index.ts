@@ -50,6 +50,7 @@ export * from './content.ts'
 export * from './assistant-stream.ts'
 export * from './message.ts'
 export * from './retry-policy.ts'
+export * from './reasoning.ts'
 export { BlockAssembler } from './assembler.ts'
 export { callConfigEquals, isAgentLoopRequest, markAgentLoopRequest } from './call-config.ts'
 export type { ConfigureCall, LlmCallConfig, LlmCallConfigAdapterDefaults, LlmCallControls } from './call-config.ts'
@@ -875,6 +876,7 @@ export class LlmRuntime extends TypertRemoteService {
     return {
       ...info,
       reasoning: {
+        ...reasoning.control === undefined ? {} : { control: reasoning.control },
         efforts,
         ...reasoning.defaultEffort === undefined ? {} : { defaultEffort: reasoning.defaultEffort },
       },

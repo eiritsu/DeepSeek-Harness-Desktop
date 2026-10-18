@@ -207,6 +207,19 @@ export interface ChatNodeInjected {
   }
 }
 
+/** Owner share delivered to user-message actions. */
+export interface UserActionOwnerProps {
+  seq: number
+  turn: number | undefined
+}
+
+/** Owner share delivered to user-message body chain replacements. */
+export interface UserMessageBodyOwnerProps {
+  seq: number
+  turn: number | undefined
+  claimed: boolean
+}
+
 /** Stable owner currency delivered to a keyed Chat renderer. */
 export interface ChatNodeOwnerProps {
   /** Renderer-owned Node portion selected by the grouping Definition. */
@@ -439,6 +452,21 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * that entry. With no entries, the standard action row remains unchanged.
      */
     'conversation.chat.assistant-actions': { kind: 'list'; scope: 'session'; owner: AssistantActionOwnerProps }
+    /**
+     * Ordered actions for one settled user or steering message. Each entry
+     * receives the message seq and its resolved Turn; a fresh `id` adds an
+     * action. The declaring renderer places them inside the message's standard
+     * IconActions row, between copy and branch.
+     */
+    'conversation.chat.user-actions': { kind: 'list'; scope: 'session'; owner: UserActionOwnerProps }
+    /**
+     * Selector-routed replacement for one settled user message's body. The
+     * elected entry renders in place of the shipped bubble while its owner
+     * holds that message's body claim; the bubble stays mounted underneath and
+     * returns when the claim is released. An entry that declines leaves the
+     * shipped bubble.
+     */
+    'conversation.chat.user-body': { kind: 'chain'; scope: 'session'; owner: UserMessageBodyOwnerProps }
     /**
      * Frame-wide quota notice chain. The Chat-owned host in `shell.overlay`
      * offers the one live notice; the first entry whose selector claims its

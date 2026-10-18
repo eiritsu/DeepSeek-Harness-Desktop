@@ -1,27 +1,7 @@
 /**
- * Generic pi-ai-backed implementation of the Harness LLM seam.
- *
- * Each resolution produces one **immutable** snapshot — the profiles plus a
- * `Models` collection holding the `Provider` each route built — and an
- * operation captures a whole snapshot before its first `await`. A
- * configuration change builds a *new* collection rather than mutating the one
- * in use, because `Models.streamSimple()` is lazy: it resolves the provider
- * when the stream is first consumed, which is after the credential await, so a
- * mutated collection would let a request that started under one configuration
- * finish under another — or fail with a provider that no longer exists. This is
- * what makes the seam's per-step call freeze (`llm.prepareCall()`) hold all the
- * way down: switching models mid-reply takes effect on the next step, never
- * inside the one in flight.
- *
- * A route naming a credential reference still resolves it through the harness
- * seam and passes it as the request's `apiKey` option, which pi-ai treats as
- * the highest-priority auth override — that is what keeps the fail-loud
- * reference semantics. Everything that override does not cover reaches pi-ai
- * through the collection's own auth: the credential store holds the records a
- * login wrote and a refresh rotates, and the auth context answers the ambient
- * questions a provider asks while resolving. Both are stable across snapshots,
- * so a configuration change rebuilds the collection without forgetting who is
- * signed in.
+ * pi-ai-backed implementation of {@link LlmAdapter}. Adapts pi-ai's
+ * `streamSimple` to Cordis-style streaming chunks and turns
+ * {@link GenerateOptions} into pi-ai's multi-provider request model.
  *
  * @module dsh-llm-pi-ai/adapter
  */
@@ -35,6 +15,7 @@ import type {
   ModelThinkingLevel,
   MutableModels,
   SimpleStreamOptions,
+  ThinkingLevelMap,
   ThinkingLevel,
 } from '@earendil-works/pi-ai'
 import {
@@ -56,12 +37,33 @@ import type {
   StreamChunk,
   ToolSchema,
 } from '@deepseek-ai/dsh-llm'
-import type { AttachmentStore, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
+import type { AttachmentStore, ImageAttachmentRef, ImageRequestTarget } from '@deepseek-ai/dsh-attachment'
+// Type-only: the Context merge behind `ctx.get('modelCatalog')`, plus the fact
+// vocabulary this adapter reads one generation of.
+import type {} from '@deepseek-ai/dsh-model-catalog'
+import type { ModelFacts, ModelFactsView } from '@deepseek-ai/dsh-model-catalog'
 import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import type { ResolvedPiAiProviderProfile } from './config.ts'
 import { requestImageTarget, toPiContext } from './context.ts'
+import type { DeclaredModelFacts, PiAiModality } from './catalog.ts'
+import { THINKING_LEVELS } from './catalog.ts'
 import { conversationUpdates, createModels, getSupportedThinkingLevels } from './models.ts'
 import { toStreamChunks } from './stream.ts'
+
+/** Narrow the SDK model union to the protocol whose compat owns these fields. */
+function isOpenAICompletionsModel(model: Model<Api>): model is Model<'openai-completions'> {
+  return model.api === 'openai-completions'
+}
+
+/** Whether a selectable declaration also contains an unsupported budget control. */
+function hasBudgetControl(control: ModelFacts['reasoningControl']): boolean {
+  return (control?.type === 'toggle' || control?.type === 'effort') && control.budget === true
+}
+
+/** Narrow one SDK JSON payload record without assuming an arbitrary object is indexable. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
 
 /**
  * Initially active declaration added to an Anthropic request whose projected
@@ -73,12 +75,19 @@ const ANTHROPIC_TOOL_UPDATE_PLACEHOLDER: ToolSchema = {
   parameters: { type: 'object', properties: {} },
 }
 
-/** One resolution's frozen view: the profiles and the collection built from them. */
+/** One resolution's frozen view: the profiles, the collection built from them, and the catalog generation. */
 interface PiAiSnapshot {
   /** The resolved profiles this collection was built from, used as its identity. */
   profiles: ReadonlyMap<string, ResolvedPiAiProviderProfile>
   /** Providers for exactly those profiles; never mutated once published. */
   models: Models
+  /**
+   * The shared catalog generation this collection was built under, or
+   * undefined when no catalog is mounted. Part of the snapshot's identity, so
+   * a refresh rebuilds the collection rather than leaving an operation to
+   * describe a model from one generation and encode it from the next.
+   */
+  facts: ModelFactsView | undefined
 }
 
 /** Constructor options for {@link PiAiAdapter}: the two resolution hooks the plugin owns. */
@@ -113,6 +122,14 @@ export interface PiAiAdapterOptions {
    * conversion because its stored replay state is unusable by this build.
    */
   onReplayDegrade?: (detail: { provider: string; model: string; reason: string }) => void
+  /**
+   * The shared catalog generation in force, or undefined when no catalog is
+   * mounted. Called once per operation and compared by identity: a refresh
+   * returns a new view, which rebuilds the collection so that one operation
+   * describes a model and encodes it from the same facts. Absent, every model
+   * keeps exactly the facts pi-ai's installed catalog carries.
+   */
+  modelFacts?: () => ModelFactsView | undefined
 }
 
 /** The two auth injectables a pi-ai collection is built with. */
@@ -128,11 +145,72 @@ function profileOptions(
   profile: ResolvedPiAiProviderProfile,
   reasoning: ModelThinkingLevel | undefined,
   apiKey: string | undefined,
+  model: Model<Api>,
+  control: ModelFacts['reasoningControl'],
 ): SimpleStreamOptions {
   const enabledReasoning: ThinkingLevel | undefined = reasoning === 'off' ? undefined : reasoning
+  const toggleControl = control?.type === 'toggle'
+    || (control?.type === 'effort' && control.toggle === true)
+  const budgetControl = hasBudgetControl(control)
+  const updateNested = (
+    payload: Record<string, unknown>,
+    key: string,
+    field: string,
+    value: unknown,
+  ): Record<string, unknown> => {
+    const current = payload[key]
+    const nested = isRecord(current)
+      ? { ...current }
+      : {}
+    const updated = Object.fromEntries(Object.entries(nested).filter(([name]) => name !== field))
+    if (value !== undefined) updated[field] = value
+    if (Object.keys(updated).length === 0) {
+      return Object.fromEntries(Object.entries(payload).filter(([name]) => name !== key))
+    }
+    return { ...payload, [key]: updated }
+  }
   return {
     ...apiKey === undefined ? {} : { apiKey },
     ...enabledReasoning === undefined ? {} : { reasoning: enabledReasoning },
+    ...!toggleControl || budgetControl ? {} : {
+      onPayload: (payload: unknown): unknown => {
+        if (!isRecord(payload)) return payload
+        let next = { ...payload }
+        if (model.api === 'anthropic-messages') {
+          if (reasoning === undefined) {
+            next = updateNested(next, 'output_config', 'effort', undefined)
+            delete next.thinking_budget_tokens
+            next = updateNested(next, 'thinking', 'type', undefined)
+            next = updateNested(next, 'thinking', 'budget_tokens', undefined)
+          } else if (reasoning === 'off') {
+            next = updateNested(next, 'output_config', 'effort', undefined)
+            delete next.thinking_budget_tokens
+            next = updateNested(next, 'thinking', 'budget_tokens', undefined)
+            next = updateNested(next, 'thinking', 'type', 'disabled')
+          } else if (control.type === 'toggle') {
+            next = updateNested(next, 'output_config', 'effort', undefined)
+            delete next.thinking_budget_tokens
+            next = updateNested(next, 'thinking', 'budget_tokens', undefined)
+            next = updateNested(next, 'thinking', 'type', 'adaptive')
+          }
+        } else if (isOpenAICompletionsModel(model) && model.compat?.thinkingFormat === undefined) {
+          if (reasoning === undefined) {
+            delete next.reasoning_effort
+            next = updateNested(next, 'thinking', 'type', undefined)
+          } else if (reasoning === 'off') {
+            delete next.reasoning_effort
+            next = updateNested(next, 'thinking', 'type', 'disabled')
+          } else if (control.type === 'toggle') {
+            delete next.reasoning_effort
+            next = updateNested(next, 'thinking', 'type', 'adaptive')
+          }
+        } else if (model.api === 'openai-responses' && reasoning === undefined) {
+          next = updateNested(next, 'reasoning', 'effort', undefined)
+          delete next.reasoning_effort
+        }
+        return next
+      },
+    },
     ...profile.thinkingBudgets === undefined ? {} : { thinkingBudgets: profile.thinkingBudgets },
     ...profile.cacheRetention === undefined ? {} : { cacheRetention: profile.cacheRetention },
     ...profile.transport === undefined ? {} : { transport: profile.transport },
@@ -141,6 +219,158 @@ function profileOptions(
     // The agent recovery layer owns visible attempts; one adapter call is one SDK attempt.
     maxRetries: 0,
   }
+}
+
+/**
+ * The request modalities this exact route can carry, in descriptor order.
+ *
+ * The shared record describes the model and overrides a local declaration for
+ * every field it carries; a field it leaves unset falls back to what this
+ * profile declaration, then to the installed catalog. The effective descriptor
+ * is registered with pi-ai, so discovery and requests use the same modality list.
+ * @param model - the resolved model descriptor.
+ * @param facts - the shared facts for this route and model, when a catalog is mounted.
+ * @param declared - the facts this profile declared for the model, when any.
+ * @returns the modalities to describe the model with.
+ */
+function effectiveModalities(
+  model: Model<Api>,
+  facts: ModelFacts | undefined,
+  declared: DeclaredModelFacts | undefined,
+): readonly PiAiModality[] {
+  // The route profile supplies a fallback when the shared record is silent;
+  // it does not narrow a model capability the current record names.
+  if (facts?.inputModalities !== undefined) return [...facts.inputModalities]
+  if (declared?.inputModalities !== undefined) return [...declared.inputModalities]
+  return [...model.input]
+}
+
+/** Whether pi-ai's selected protocol encoder accepts an explicit effort. */
+function canEncodeReasoningEffort(model: Model<Api>): boolean {
+  if (!isOpenAICompletionsModel(model)) return true
+  if (model.compat === undefined) return true
+  return model.compat.supportsReasoningEffort !== false
+    || model.compat.thinkingFormat === 'openrouter'
+    || model.compat.thinkingFormat === 'ant-ling'
+    || model.compat.thinkingFormat === 'string-thinking'
+}
+
+/** The accepted model facts applied to the descriptor pi-ai uses for this call. */
+function modelWithFacts(
+  model: Model<Api>,
+  facts: ModelFacts | undefined,
+  declared: DeclaredModelFacts | undefined,
+): Model<Api> {
+  const input = effectiveModalities(model, facts, declared)
+  const contextWindow = facts?.contextWindow ?? declared?.contextWindow ?? model.contextWindow
+  const maxTokens = facts?.maxOutputTokens === undefined
+    ? model.maxTokens
+    : Math.min(model.maxTokens, facts.maxOutputTokens)
+  if (facts?.reasoning === false || facts?.reasoningControl?.type === 'none') {
+    if (facts.reasoning === false) {
+      return { ...model, input: [...input], contextWindow, maxTokens, reasoning: false }
+    }
+    const thinkingLevelMap: ThinkingLevelMap = Object.fromEntries(THINKING_LEVELS.map(level => [level, null]))
+    return { ...model, input: [...input], contextWindow, maxTokens, thinkingLevelMap }
+  }
+  if (facts?.reasoningControl?.budget === true) {
+    return { ...model, input: [...input], contextWindow, maxTokens }
+  }
+  if (facts?.reasoningControl?.type === 'toggle') {
+    const thinkingLevelMap: ThinkingLevelMap = Object.fromEntries(
+      THINKING_LEVELS.map(level => [level, level === 'off' ? 'none' : level === 'high' ? 'high' : null]),
+    )
+    const compat = model.api === 'anthropic-messages'
+      ? { ...model.compat, forceAdaptiveThinking: true }
+      : model.compat
+    return {
+      ...model,
+      input: [...input],
+      contextWindow,
+      maxTokens,
+      reasoning: true,
+      thinkingLevelMap,
+      ...(compat === undefined ? {} : { compat }),
+    }
+  }
+  if (facts?.reasoningEfforts === undefined) return { ...model, input: [...input], contextWindow, maxTokens }
+
+  const wireValues = new Map<ModelThinkingLevel, string>()
+  for (const value of facts.reasoningEfforts) {
+    const level: ModelThinkingLevel = value === 'none' ? 'off' : value as ModelThinkingLevel
+    if (value !== 'none' && !THINKING_LEVELS.includes(value as ModelThinkingLevel)) continue
+    const existing = model.thinkingLevelMap?.[level]
+    if (model.thinkingLevelMap !== undefined && existing === null) continue
+    wireValues.set(level, typeof existing === 'string' ? existing : value)
+  }
+  if (facts.reasoningControl?.type === 'effort' && facts.reasoningControl.toggle === true) {
+    wireValues.set('off', 'none')
+  }
+  const thinkingLevelMap: ThinkingLevelMap = Object.fromEntries(
+    THINKING_LEVELS.map(level => [level, wireValues.get(level) ?? null]),
+  )
+  const profileDenied = declared?.reasoning === false
+  const compat = model.api === 'anthropic-messages' && facts.reasoningControl?.type === 'effort'
+    ? { ...model.compat, forceAdaptiveThinking: true }
+    : isOpenAICompletionsModel(model)
+      && facts.reasoningControl?.type === 'effort'
+      && model.compat?.supportsReasoningEffort !== false
+      ? { ...model.compat, supportsReasoningEffort: true }
+      : model.compat
+  return {
+    ...model,
+    input: [...input],
+    contextWindow,
+    maxTokens,
+    reasoning: !profileDenied && (model.reasoning || canEncodeReasoningEffort(model)),
+    thinkingLevelMap,
+    ...(compat === undefined ? {} : { compat }),
+  }
+}
+
+/**
+ * The reasoning levels this exact route can put on the wire.
+ *
+ * The shared record outranks a local declaration: what the channel serving this
+ * model declares it accepts replaces a vocabulary the profile wrote, and a
+ * record that says the model does not reason denies every level. A field the
+ * record leaves unset falls back to the profile's own declaration, then to what
+ * the transport encodes. The transport always has the last word, so the answer
+ * is an intersection with pi-ai's encodable set: a level neither side takes is
+ * never offered and never sent, and a channel's declared list can only narrow
+ * what the protocol already allows.
+ * @param model - the resolved model descriptor.
+ * @param facts - the shared facts for this route and model, when a catalog is mounted.
+ * @param declared - the facts this profile declared for the model, when any.
+ * @returns the encodable levels in pi-ai's escalation order.
+ */
+function encodableLevels(
+  model: Model<Api>,
+  facts: ModelFacts | undefined,
+  declared: DeclaredModelFacts | undefined,
+): ModelThinkingLevel[] {
+  const effective = modelWithFacts(model, facts, declared)
+  if (facts?.reasoning === false) return []
+  if (hasBudgetControl(facts?.reasoningControl)) {
+    if (!effective.reasoning) return []
+    const nativeLevels = getSupportedThinkingLevels(effective)
+    if (declared?.reasoningEfforts === undefined) return nativeLevels
+    const declaredLevels = new Set(declared.reasoningEfforts)
+    return nativeLevels.filter(level => declaredLevels.has(level))
+  }
+  if (!effective.reasoning) return []
+  const levels = getSupportedThinkingLevels(effective)
+  if (facts?.reasoningEfforts !== undefined) return levels
+  if (declared?.reasoningEfforts !== undefined) {
+    const own = new Set(declared.reasoningEfforts)
+    return levels.filter(level => own.has(level))
+  }
+  if (!canEncodeReasoningEffort(effective)) return []
+  // A shared positive reasoning flag carries no selectable level list. Keep
+  // a custom route's local `false` descriptor from turning that flag into a
+  // generic menu of levels the directory never advertised.
+  if (facts?.reasoning === true && !model.reasoning) return []
+  return levels
 }
 
 /**
@@ -153,27 +383,37 @@ function profileOptions(
  * belongs: describing what a model can do must not fail because a deployment
  * asked it for something it cannot.
  * @param model - the resolved model descriptor.
+ * @param levels - the levels this route can encode.
  * @param effort - the profile's configured level, if any.
- * @returns the level when this model supports it, otherwise undefined.
+ * @returns the level when this model encodes it, otherwise undefined.
  */
 function describableReasoningLevel(
-  model: Model<Api>,
+  levels: readonly ModelThinkingLevel[],
   effort: ReasoningEffortIdType | ModelThinkingLevel | undefined,
+  control: ModelFacts['reasoningControl'],
 ): ModelThinkingLevel | undefined {
   if (effort === undefined) return undefined
-  return getSupportedThinkingLevels(model).some(level => level === effort)
-    ? effort as ModelThinkingLevel
-    : undefined
+  if (effort === 'on' && control?.type === 'toggle' && levels.includes('high')) return 'high'
+  return levels.includes(effort as ModelThinkingLevel) ? effort as ModelThinkingLevel : undefined
 }
 
-/** Validate an explicit Harness/profile effort without invoking pi-ai's clamp. */
+/**
+ * Validate an explicit Harness/profile effort without invoking pi-ai's clamp.
+ * @param model - the resolved model descriptor, for the refusal message.
+ * @param levels - the levels this route can encode.
+ * @param effort - the requested level, if any.
+ * @returns the level to send, or undefined when the caller named none.
+ * @throws when the caller named a level this route cannot encode.
+ */
 function resolveReasoningLevel(
   model: Model<Api>,
+  levels: readonly ModelThinkingLevel[],
   effort: ReasoningEffortIdType | ModelThinkingLevel | undefined,
+  control: ModelFacts['reasoningControl'],
 ): ModelThinkingLevel | undefined {
   if (effort === undefined) return undefined
-  const supported = getSupportedThinkingLevels(model)
-  if (supported.some(level => level === effort)) return effort as ModelThinkingLevel
+  if (effort === 'on' && control?.type === 'toggle' && levels.includes('high')) return 'high'
+  if (levels.includes(effort as ModelThinkingLevel)) return effort as ModelThinkingLevel
   throw new LlmError(
     `pi-ai provider "${model.provider}" model "${model.id}" does not support reasoning effort "${effort}"`,
     'UNSUPPORTED_REASONING_EFFORT',
@@ -193,22 +433,50 @@ function resolveReasoningLevel(
  * capability is unavailable, which leaves the surface offering only the
  * provider's default.
  * @param model - the resolved model descriptor.
+ * @param facts - the shared facts for this route and model, when a catalog is mounted.
+ * @param declared - the facts this profile declared for the model, when any.
+ * @param levels - the levels this route can encode.
  * @param defaultLevel - the profile's configured effort, already validated.
  * @returns the `reasoning` field, or an empty object when none can be offered.
  */
 function reasoningInfo(
   model: Model<Api>,
+  facts: ModelFacts | undefined,
+  declared: DeclaredModelFacts | undefined,
+  levels: readonly ModelThinkingLevel[],
   defaultLevel: ModelThinkingLevel | undefined,
 ): Pick<LlmResolvedModelInfo, 'reasoning'> | Record<string, never> {
-  if (!model.reasoning) return {}
-  const levels = getSupportedThinkingLevels(model)
+  // The shared record outranks the installed catalog and a profile's own
+  // declaration: a model the record says does not reason offers no level at
+  // all, whatever the transport could encode or the profile declared, while a
+  // record that leaves the capability open falls back to the declaration and
+  // then to what pi-ai knows.
+  if (!(facts?.reasoning ?? declared?.reasoning ?? model.reasoning)) return {}
+  // The shared record and the transport can name disjoint sets. The runtime
+  // rejects an empty effort list, and no offered level would be encodable, so
+  // the model reports no reasoning control at all.
+  if (levels.length === 0) return {}
   return {
     reasoning: {
-      efforts: levels.map(level => ({
+      ...!hasBudgetControl(facts?.reasoningControl)
+        && (facts?.reasoningControl?.type === 'toggle' || facts?.reasoningControl?.type === 'effort')
+        ? { control: facts.reasoningControl.type }
+        : {},
+      efforts: (facts?.reasoningControl?.type === 'toggle' && !hasBudgetControl(facts.reasoningControl)
+        ? levels.map(level => level === 'high' ? 'on' : level)
+        : levels).map(level => ({
         id: ReasoningEffortId(level),
-        name: `${level.charAt(0).toUpperCase()}${level.slice(1)}`,
+        name: level === 'on' ? 'Enabled' : `${level.charAt(0).toUpperCase()}${level.slice(1)}`,
       })),
-      ...defaultLevel === undefined ? {} : { defaultEffort: ReasoningEffortId(defaultLevel) },
+      ...defaultLevel === undefined ? {} : {
+        defaultEffort: ReasoningEffortId(
+          facts?.reasoningControl?.type === 'toggle'
+            && !hasBudgetControl(facts.reasoningControl)
+            && defaultLevel === 'high'
+            ? 'on'
+            : defaultLevel,
+        ),
+      },
     },
   }
 }
@@ -235,7 +503,7 @@ export class PiAiAdapter extends LlmAdapter {
     super()
   }
 
-  override imageRequestTarget(provider: string, model: string, image: ImageAttachmentRef) {
+  override imageRequestTarget(provider: string, model: string, image: ImageAttachmentRef): ImageRequestTarget {
     const snapshot = this.current()
     this.modelOf(snapshot, provider, model)
     const profile = this.profileOf(snapshot, provider)
@@ -243,20 +511,52 @@ export class PiAiAdapter extends LlmAdapter {
   }
 
   /**
-   * The snapshot for the current profiles. Resolution memoizes its result, so
-   * an unchanged configuration is recognized by identity; a changed one gets a
+   * The snapshot for the current profiles and catalog generation. Resolution
+   * memoizes its result, so an unchanged configuration and an unchanged
+   * generation are recognized by identity; either one changing gets a
    * brand-new collection, leaving any snapshot an operation already captured
    * untouched for as long as that operation holds it.
    */
   private current(): PiAiSnapshot {
     const profiles = this.config.profiles()
-    if (this.snapshot?.profiles === profiles) return this.snapshot
+    const facts = this.config.modelFacts?.()
+    if (this.snapshot?.profiles === profiles && this.snapshot.facts === facts) return this.snapshot
     const models: MutableModels = createModels(this.config.auth)
-    for (const profile of profiles.values()) {
-      if (profile.piProvider !== undefined) models.setProvider(profile.piProvider)
+    for (const [provider, profile] of profiles) {
+      const source = profile.piProvider
+      if (source === undefined) continue
+      const entries = source.getModels().map(model => modelWithFacts(
+        model,
+        facts?.facts({
+          model: model.id,
+          ownedBy: provider,
+          apiURL: model.baseUrl,
+        }),
+        profile.declaredFacts.get(model.id),
+      ))
+      models.setProvider({ ...source, getModels: () => entries })
     }
-    this.snapshot = { profiles, models }
+    this.snapshot = { profiles, models, facts }
     return this.snapshot
+  }
+
+  /**
+   * The shared facts for one exact route and model, or undefined when no
+   * catalog is mounted or the catalog has no unambiguous record. The route id
+   * selects exact provider aliases, and the descriptor's API URL lets a custom
+   * route match an unambiguous published provider endpoint.
+   * @param snapshot - the frozen view this operation captured.
+   * @param provider - the route id.
+   * @param model - the route-local model id.
+   * @returns the facts, or undefined.
+   */
+  private factsOf(snapshot: PiAiSnapshot, provider: string, model: string): ModelFacts | undefined {
+    const descriptor = snapshot.models.getModel(provider, model)
+    return snapshot.facts?.facts({
+      model,
+      ownedBy: provider,
+      ...descriptor?.baseUrl === undefined ? {} : { apiURL: descriptor.baseUrl },
+    })
   }
 
   /** The profile for one route within one snapshot, or the not-owned failure. */
@@ -302,11 +602,17 @@ export class PiAiAdapter extends LlmAdapter {
         if (error instanceof LlmError && error.code === 'MISSING_CREDENTIAL') return []
         throw error
       }
+      // Listed from the same facts `resolveModel` describes, so a picker never
+      // offers a modality the exact-model lookup would then refuse.
       return snapshot.models.getModels(provider).map(model => ({
         provider,
         id: model.id,
         name: model.name,
-        inputModalities: [...model.input],
+        inputModalities: effectiveModalities(
+          model,
+          this.factsOf(snapshot, provider, model.id),
+          profile.declaredFacts.get(model.id),
+        ),
       }))
     })
   }
@@ -325,7 +631,10 @@ export class PiAiAdapter extends LlmAdapter {
   private modelInfo(snapshot: PiAiSnapshot, provider: string, model: string): LlmResolvedModelInfo {
     const profile = this.profileOf(snapshot, provider)
     const resolvedModel = this.modelOf(snapshot, provider, model)
-    const defaultLevel = describableReasoningLevel(resolvedModel, profile.reasoning)
+    const facts = this.factsOf(snapshot, provider, model)
+    const declared = profile.declaredFacts.get(model)
+    const levels = encodableLevels(resolvedModel, facts, declared)
+    const defaultLevel = describableReasoningLevel(levels, profile.reasoning, facts?.reasoningControl)
     // Only a cap the deployment configured is a request default; the
     // catalog's `maxTokens` sizes the model and stops there.
     const configuredMaxTokens = profile.configuredMaxTokens.get(model)
@@ -333,10 +642,10 @@ export class PiAiAdapter extends LlmAdapter {
       provider,
       id: model,
       name: resolvedModel.name,
-      inputModalities: [...resolvedModel.input],
+      inputModalities: resolvedModel.input,
       context: { contextWindow: resolvedModel.contextWindow },
       ...configuredMaxTokens === undefined ? {} : { defaultMaxTokens: configuredMaxTokens },
-      ...reasoningInfo(resolvedModel, defaultLevel),
+      ...reasoningInfo(resolvedModel, facts, declared, levels, defaultLevel),
       ...conversationUpdates(resolvedModel),
     }
   }
@@ -367,6 +676,9 @@ export class PiAiAdapter extends LlmAdapter {
     // the one it started with and the next call picks up the new one.
     const profile = this.profileOf(snapshot, options.provider)
     const model = this.modelOf(snapshot, options.provider, options.model)
+    const facts = this.factsOf(snapshot, options.provider, options.model)
+    const declared = profile.declaredFacts.get(options.model)
+    const requestedReasoning = options.reasoningEffort ?? profile.reasoning
     const updates = conversationUpdates(model)
     // pi-ai collapses Anthropic tool updates without an initially active declaration.
     const tools = options.tools ?? []
@@ -379,8 +691,22 @@ export class PiAiAdapter extends LlmAdapter {
       : options
     const reasoning = resolveReasoningLevel(
       model,
-      options.reasoningEffort ?? profile.reasoning,
+      encodableLevels(model, facts, declared),
+      requestedReasoning,
+      facts?.reasoningControl,
     )
+    // The catalog's output ceiling is a capability, not a request default: it
+    // never becomes one here. It does bound what a default may claim, and
+    // refusing says which model would have rejected the request instead of
+    // leaving the provider to answer with an opaque error.
+    const ceiling = facts?.maxOutputTokens
+    if (ceiling !== undefined && options.maxTokens !== undefined && options.maxTokens > ceiling) {
+      throw new LlmError(
+        `pi-ai provider "${model.provider}" model "${model.id}" produces at most ${ceiling} output`
+        + ` tokens, and the request asks for ${options.maxTokens}`,
+        'UNSUPPORTED_OPTION',
+      )
+    }
     const apiKey = await this.config.resolveApiKey(options.provider, profile)
 
     const consumer = new AbortController()
@@ -414,7 +740,7 @@ export class PiAiAdapter extends LlmAdapter {
           },
         }, onReplayDegrade)
       const events = snapshot.models.streamSimple(model, context, {
-        ...profileOptions(profile, reasoning, apiKey),
+        ...profileOptions(profile, reasoning, apiKey, model, facts?.reasoningControl),
         ...options.temperature === undefined ? {} : { temperature: options.temperature },
         ...options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens },
         ...options.sessionId === undefined ? {} : { sessionId: String(options.sessionId) },

@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-client-ui-turn-edit-resend",
   "description": "The Web edit-and-resend surface: a per-message Edit & resend action on the latest user turn and the inline composer-style edit card, backed by the turnResend Host Remote",
-  "version": "0.2.1-alpha.2",
+  "version": "0.2.1-rc.2",
   "publishConfig": {
     "access": "public"
   },
@@ -65,8 +65,6 @@
     "@deepseek-ai/dsh-typert-protocol": "workspace:*",
     "@deepseek-ai/dsh-util-crypto": "workspace:*",
     "@testing-library/react": "^16.1.0",
-    "@types/react": "~18.3.1",
-    "@types/react-dom": "~18.3.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

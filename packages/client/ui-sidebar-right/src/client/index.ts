@@ -31,6 +31,7 @@ import type { ILayout } from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import { fileAddressFor } from '@deepseek-ai/dsh-util-workspace-path'
 import type {} from './contract/slots.ts'
 import { GuideBody, type GuideInjected } from './tabs/guide/GuideBody.tsx'
 import { GuideTitle } from './tabs/guide/GuideTitle.tsx'
@@ -200,6 +201,63 @@ export function apply(ctx: ClientContext): void {
       },
     }
 
+    const sessions = ctx.sessions
+    const handledCalls = new Set<string>()
+    let unsubscribeEventSource: (() => void) | undefined
+    const attach = (sessionId: SessionId | undefined): void => {
+      unsubscribeEventSource?.()
+      unsubscribeEventSource = undefined
+      if (sessionId === undefined || typeof sessions.binding !== 'function') return
+      const binding = sessions.binding(sessionId)
+      if (binding === undefined) {
+        const view = views.source.getSnapshot().find(v => v.sessionId === sessionId)
+        if (view) {
+          void view.reference.ready.then(() => {
+            if (ctx.uiSession.adapter.current.getSnapshot().key === sessionId) {
+              attach(sessionId)
+            }
+          })
+        }
+        return
+      }
+
+      const onWindowChange = (): void => {
+        const window = binding.eventSource.getSnapshot()
+        if (window.change.kind !== 'append') return
+        for (const entry of window.change.entries) {
+          if (entry.type !== 'event') continue
+          const rawEvent = entry.event as {
+            type: string
+            data?: { callId?: string; subCallId?: string; name?: string; arguments?: unknown }
+          }
+          if (rawEvent.type === 'tool/call') {
+            const data = rawEvent.data
+            if (data?.name !== 'sidebar_open' && data?.name !== 'browser_open') continue
+            const callId = data.callId
+            if (!callId || handledCalls.has(callId)) continue
+            if (handledCalls.size > 1000) handledCalls.clear()
+            handledCalls.add(callId)
+            triggerSidebarOpen(controller, sessionId, data.name, parseArguments(data.arguments))
+          } else if (rawEvent.type === 'tool/ptc-dispatch-start') {
+            const data = rawEvent.data
+            if (data?.name !== 'sidebar_open' && data?.name !== 'browser_open') continue
+            const subCallId = data.subCallId
+            if (!subCallId || handledCalls.has(subCallId)) continue
+            if (handledCalls.size > 1000) handledCalls.clear()
+            handledCalls.add(subCallId)
+            triggerSidebarOpen(controller, sessionId, data.name, parseArguments(data.arguments))
+          }
+        }
+      }
+      unsubscribeEventSource = binding.eventSource.subscribe(onWindowChange)
+      onWindowChange()
+    }
+
+    const unsubscribeCurrent = ctx.uiSession.adapter.current.subscribe(() => {
+      attach(ctx.uiSession.adapter.current.getSnapshot().key as SessionId | undefined)
+    })
+    attach(ctx.uiSession.adapter.current.getSnapshot().key as SessionId | undefined)
+
     const disposeTypes = [tabs.register(guideDefinition(t))]
     const disposeSeat = ctx.slots.inject('rightbar', function* () {
       yield ctx.slots.register({
@@ -267,6 +325,8 @@ export function apply(ctx: ClientContext): void {
       GuideTitle,
     ))
     return () => {
+      unsubscribeCurrent()
+      unsubscribeEventSource?.()
       disposeGuideTitle()
       disposeGuide()
       disposeExpand()
@@ -276,4 +336,72 @@ export function apply(ctx: ClientContext): void {
       adoptions.clear()
     }
   }, 'ui-sidebar-right: seats and shipped tab type')
+}
+
+interface ToolSidebarArgs {
+  tab?: string | undefined
+  target?: string | undefined
+  url?: string | undefined
+}
+
+function parseArguments(raw: unknown): ToolSidebarArgs {
+  if (typeof raw === 'string') {
+    try {
+      const parsed: unknown = JSON.parse(raw)
+      return extractArgs(parsed)
+    } catch {
+      return {}
+    }
+  }
+  return extractArgs(raw)
+}
+
+function extractArgs(val: unknown): ToolSidebarArgs {
+  if (typeof val !== 'object' || val === null) {
+    return {}
+  }
+  const rec = val as Record<string, unknown>
+  return {
+    tab: typeof rec.tab === 'string' ? rec.tab : undefined,
+    target: typeof rec.target === 'string' ? rec.target : undefined,
+    url: typeof rec.url === 'string' ? rec.url : undefined,
+  }
+}
+
+/** Open or reveal the requested right sidebar tab or resource for one session. */
+function triggerSidebarOpen(
+  controller: SidebarRightController,
+  sessionId: SessionId,
+  toolName: string,
+  args: ToolSidebarArgs,
+): void {
+  try {
+    if (toolName === 'browser_open') {
+      const url = args.url ?? args.target
+      controller.openTabIn(sessionId, 'browser', url ? { params: { url } } as never : {})
+      return
+    }
+    const tab = args.tab
+    const target = args.target
+    if (tab === 'session-inspector' || tab === 'session-inspector-log') {
+      controller.openTabIn(sessionId, 'session-inspector-log')
+    } else if (tab === 'terminal') {
+      controller.openTabIn(sessionId, 'terminal')
+    } else if (tab === 'browser') {
+      controller.openTabIn(sessionId, 'browser', target ? { params: { url: target } } as never : {})
+    } else if (tab === 'files') {
+      if (target !== undefined && target !== '') {
+        const address = fileAddressFor(sessionId, undefined, target)
+        controller.openResourceIn(sessionId, address)
+      } else {
+        controller.openTabIn(sessionId, 'files')
+      }
+    } else if (target && (target.startsWith('http://') || target.startsWith('https://') || target.startsWith('sidecar://') || target.startsWith('dsh-resource://'))) {
+      controller.openResourceIn(sessionId, target)
+    } else if (tab) {
+      controller.openTabIn(sessionId, tab as never, target ? { params: { target } } as never : {})
+    }
+  } catch (error) {
+    console.error('Sidebar open on tool call failed:', error)
+  }
 }

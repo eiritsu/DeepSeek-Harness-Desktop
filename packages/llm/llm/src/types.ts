@@ -396,6 +396,8 @@ export interface LlmReasoningEffortInfo {
 
 /** Selectable reasoning efforts for one exact provider/model route. */
 export interface LlmModelReasoningInfo {
+  /** Control kind; absent keeps older adapters' effort-list behavior. */
+  control?: 'toggle' | 'effort'
   /** Supported efforts from least to greatest selectable reasoning effort, not predicted token use or latency. */
   efforts: readonly LlmReasoningEffortInfo[]
   /**

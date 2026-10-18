@@ -28,7 +28,7 @@ export function CopySessionIdMenuItem({ sessionId, useMenuOpenState, reportCopyR
         copy(sessionId)
       }}
     >
-      {t('menu.copySessionId')}
+      {t('menu.sessionId')}
     </MenuItemButton>
   )
 }

@@ -38,9 +38,11 @@ export type {
   ChatFlowDataInjected, ChatFlowHookContext, ChatFlowInjected, ChatFlowOwnerProps, ChatFlowSlotProps, UseGroupHeaderAction,
   CommandRowOwnerProps, CommandRowProps, MessageImagesProps, OpenFileOptions, PresentationInjected,
   QuotaNoticeCode, QuotaNoticeHostProps, QuotaNoticeInjected, QuotaNoticeOwnerProps, QuotaNoticeState,
-  ReasoningBodyOwnerProps, ReasoningContentInput, UserContentAttachment, UserContentData, UserContentInput,
+  ReasoningBodyOwnerProps, ReasoningContentInput, UserActionOwnerProps, UserContentAttachment, UserContentData, UserContentInput,
+  UserMessageBodyOwnerProps,
   TurnProcessOwnerProps, TurnTailOwnerProps, UseChat, UseChatNodeTurnData, UseDisclosure, UsePresentation, UseGroupAction,
 } from './contract/slots.ts'
+export type { MessageBodyClaimSet, UiChatService } from './message-claims.ts'
 export type {
   TurnProcessSpec,
 } from './contract/turn-process.ts'

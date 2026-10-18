@@ -126,6 +126,10 @@
               mode: ptc
           - id: present
             name: '@deepseek-ai/dsh-tool-present'
+          - id: tool-session-query
+            name: '@deepseek-ai/dsh-tool-session-query'
+          - id: tool-sidebar
+            name: '@deepseek-ai/dsh-tool-sidebar'
           - id: tool-plugin-manager
             name: '@deepseek-ai/dsh-plugin-manager/tools'
             disabled: true

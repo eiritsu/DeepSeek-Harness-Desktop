@@ -42,7 +42,7 @@ import { en, zh } from '../src/client/locale.ts'
 import { AssistantNodeView } from '../src/client/chat/AssistantNodeView.tsx'
 import { CommandNodeView, ManualCompactionNodeView } from '../src/client/chat/CommandNodeView.tsx'
 import {
-  CompactionNodeView, ContextMessageNodeView, RetryNodeView, TurnErrorNodeView,
+  CompactionNodeView, ContextMessageNodeView, RetryNodeView, SteeringMessageNodeView, TurnErrorNodeView,
   TurnMaxTokensNodeView, UnknownNodeView, UserMessageNodeView,
 } from '../src/client/chat/MessageItem.tsx'
 import { TurnTailNodeView } from '../src/client/chat/TurnTailNodeView.tsx'
@@ -314,7 +314,7 @@ function HarnessChatNode({ standard, owner, hookContext, usePerformanceUsage, to
     case 'user':
       return <UserMessageNodeView {...nodeProps} node={owner.node} />
     case 'steering':
-      return <UserMessageNodeView {...nodeProps} node={owner.node} />
+      return <SteeringMessageNodeView {...nodeProps} node={owner.node} />
     case 'context':
       return <ContextMessageNodeView {...nodeProps} node={owner.node} />
     case 'assistant-step':
