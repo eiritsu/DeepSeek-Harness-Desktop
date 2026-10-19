@@ -147,17 +147,22 @@ function renderProviderEditor({ target, row, ...props }: ProviderEditorRenderPro
  * namespace from a partial view.
  * @param operations - the page's Host operations.
  * @param controller - the page store to refresh.
- * @param target - the provider's settings address and optional managed credential.
+ * @param target - the provider's settings address and optional managed credential; omitting
+ *   `settingsPath` removes only that credential and keeps the provider's base configuration.
  * @returns the failure message, or undefined once the write and reload landed.
  */
 export async function removeProviderProfile(
   operations: ModelsOperations,
   controller: ModelsSettingsStore,
-  target: { settingsNs: string; settingsPath: readonly string[]; credentialRef?: string },
+  target: { settingsNs: string; settingsPath?: readonly string[]; credentialRef?: string },
 ): Promise<string | undefined> {
   if (target.credentialRef !== undefined) {
     const credential = await operations.removeCredential(target.credentialRef)
     if (credential !== undefined) return credential
+  }
+  if (target.settingsPath === undefined) {
+    await controller.load()
+    return undefined
   }
   const written = await operations.writeSettings(
     target.settingsNs,
@@ -198,7 +203,9 @@ function keyConfiguredOf(row: ProviderRow): boolean {
 }
 
 function targetOf(row: ProviderRow): EditorTarget {
-  const managedRef = deriveKeyRef(row.entry.provider)
+  const managedRef = row.entry.provider === 'deepseek-official'
+    ? 'DEEPSEEK_API_KEY'
+    : deriveKeyRef(row.entry.provider)
   const credentialRef = row.apiKeyEnv === managedRef
     && row.credential?.configured === true
     && row.credential.writable
@@ -318,7 +325,11 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
     if (deleteTarget === undefined || deleting) return
     setDeleting(true)
     setDeleteFailure(undefined)
-    void removeProviderProfile(operations, controller, deleteTarget)
+    void removeProviderProfile(operations, controller, {
+      settingsNs: deleteTarget.settingsNs,
+      ...(deleteTarget.provider === 'deepseek-official' ? {} : { settingsPath: deleteTarget.settingsPath }),
+      ...deleteTarget.credentialRef === undefined ? {} : { credentialRef: deleteTarget.credentialRef },
+    })
       .then((failure) => {
         if (failure !== undefined) {
           setDeleteFailure(failure)
@@ -370,7 +381,8 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
   const addable: AddableRow[] = state.rows.flatMap((row) => {
     const namespace = state.namespaces.get(row.entry.settingsNs)
     return namespace === undefined || row.configured ? [] : [{ row, namespace }]
-  })
+  }).toSorted((left, right) => Number(left.row.entry.provider === 'deepseek-official')
+    - Number(right.row.entry.provider === 'deepseek-official'))
   // Hand-declared routes live in the pi-ai namespace, which is also the only
   // one whose schema names the protocols one may speak; without it mounted
   // there is nothing to declare and the mode is not offered.
@@ -721,16 +733,18 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
       <Modal
         open={deleteTarget !== undefined}
         onClose={closeDelete}
-        title={deleteTarget === undefined ? '' : providerCopy(t('deleteTitle'), deleteTarget)}
+        title={deleteTarget === undefined ? '' : providerCopy(
+          deleteTarget.provider === 'deepseek-official' ? t('removeOfficialKeyTitle') : t('deleteTitle'),
+          deleteTarget,
+        )}
         closeLabel={t('close')}
         description={deleteTarget === undefined
           ? ''
-          : providerCopy(
-            deleteTarget.credentialRef === undefined
+          : providerCopy(deleteTarget.provider === 'deepseek-official'
+            ? t('deleteOfficialKeyDescription')
+            : deleteTarget.credentialRef === undefined
               ? t('deleteDescription')
-              : t('deleteDescriptionWithCredential'),
-            deleteTarget,
-          )}
+              : t('deleteDescriptionWithCredential'), deleteTarget)}
         className={styles['deleteDialog'] as string}
         footer={(
           <>
@@ -745,7 +759,12 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
             >
               {deleteTarget === undefined
                 ? ''
-                : providerCopy(deleting ? t('deleting') : t('deleteConfirm'), deleteTarget)}
+                : providerCopy(
+                  deleteTarget.provider === 'deepseek-official'
+                    ? deleting ? t('removingOfficialKey') : t('removeOfficialKeyConfirm')
+                    : deleting ? t('deleting') : t('deleteConfirm'),
+                  deleteTarget,
+                )}
             </Button>
           </>
         )}
