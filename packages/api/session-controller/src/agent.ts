@@ -5,7 +5,8 @@ import { mkdir } from 'node:fs/promises'
 import type { Context } from '@deepseek-ai/cordis'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import type {
-  Agent, AgentOptions, AgentSetup, ModelSelection as AgentModelSelection, ModelSelectionRef,
+  Agent, AgentHandle, AgentOptions, AgentSetup, CreateAgentOptions,
+  ModelSelection as AgentModelSelection, ModelSelectionRef,
 } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
@@ -16,6 +17,11 @@ import type { SessionInspection } from '@deepseek-ai/dsh-session-persistence'
 import { SessionQueryError, type SessionObservation } from '@deepseek-ai/dsh-session-query'
 import { RemoteError, remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-typert-registry'
+import {
+  type SessionDeleteAdmission,
+  WorkspaceActiveSessionError,
+  WorkspaceSessionDeleteBusyError,
+} from '@deepseek-ai/dsh-workspace'
 import type { ModelSelection } from './types.ts'
 
 /** Cold Session identity absent from persistence. */
@@ -169,12 +175,19 @@ export async function inspectApiSession(
 /** Owns every operation that may create, resume, or configure a Web Agent. */
 export class ApiSessionAgentController {
   private readonly resumes = new Map<SessionId, Promise<Agent>>()
+  private readonly creations = new Map<SessionId, Promise<Agent>>()
   private readonly claims = new Map<SessionId, Promise<void>>()
   private readonly selections = new WeakMap<Agent, InstalledSelection>()
   private readonly imageAdmissionChains = new WeakMap<Agent, Promise<void>>()
+  private readonly ownedHandles = new Map<SessionId, AgentHandle>()
+  private readonly deleting = new Set<SessionId>()
+  private readonly deleted = new Set<SessionId>()
 
   /** @param ctx - Host context carrying Agent, model, persistence, and Typert services. */
   constructor(private readonly ctx: Context) {
+    ctx.on('agent/disposed', ({ agent }) => {
+      if (this.ownedHandles.get(agent.id)?.agent === agent) this.ownedHandles.delete(agent.id)
+    })
     ctx.typert.lookups.configure('agent', async (sessionId: SessionId) => {
       const found = await this.resolveAgent(sessionId)
       if ('error' in found) throw found.error
@@ -198,6 +211,7 @@ export class ApiSessionAgentController {
    * @returns the live Agent or a stable Session-domain failure.
    */
   async resolveAgent(sessionId: SessionId): Promise<ApiSessionAgentResult> {
+    if (this.deleting.has(sessionId) || this.deleted.has(sessionId)) return this.unavailable(sessionId)
     return this.resolve(sessionId)
   }
 
@@ -207,7 +221,88 @@ export class ApiSessionAgentController {
    * @returns the live Agent or a stable Session-domain failure.
    */
   async resolveObservedAgent(observation: SessionObservation): Promise<ApiSessionAgentResult> {
+    if (this.deleting.has(observation.header.id) || this.deleted.has(observation.header.id)) {
+      return this.unavailable(observation.header.id)
+    }
     return this.resolve(observation.header.id, observation)
+  }
+
+  /**
+   * Reserve one Session against new API resolves and close only its owned idle handle.
+   * @param sessionId - Session whose Workspace deletion is being admitted.
+   * @returns a Workspace admission released with the physical-delete outcome.
+   */
+  admitDelete(sessionId: SessionId): SessionDeleteAdmission {
+    if (this.deleting.has(sessionId)) throw new Error(`session "${sessionId}" is already being deleted`)
+    this.deleting.add(sessionId)
+    let closed = false
+    return {
+      close: async () => {
+        await Promise.allSettled([
+          ...(this.resumes.has(sessionId) ? [this.resumes.get(sessionId)] : []),
+          ...(this.creations.has(sessionId) ? [this.creations.get(sessionId)] : []),
+        ])
+        const handle = this.ownedHandles.get(sessionId)
+        if (handle === undefined) {
+          if (this.ctx.agents.get(sessionId) !== undefined) {
+            throw new WorkspaceSessionDeleteBusyError(sessionId)
+          }
+          return
+        }
+        if (!handle.disposeIfIdle || !await handle.disposeIfIdle()) {
+          throw new WorkspaceActiveSessionError(sessionId, [{ kind: 'turn' }], 'delete')
+        }
+        closed = true
+      },
+      finish: (deleted) => {
+        this.deleting.delete(sessionId)
+        if (deleted) this.deleted.add(sessionId)
+        // A closed Agent has already been removed; a failed physical delete can resume it from JSONL.
+        if (!deleted && closed) this.ownedHandles.delete(sessionId)
+      },
+    }
+  }
+
+  /** Recheck a previously resolved Agent before a command commits Session work. */
+  assertMutable(agent: Agent): void {
+    if (this.deleting.has(agent.id)) {
+      throw new RemoteError('session/agent-busy', 'session deletion is in progress', { reason: 'SESSION_DELETING' })
+    }
+    if (this.deleted.has(agent.id) || this.ctx.agents.get(agent.id) !== agent) {
+      throw new RemoteError('session/not-found', `session "${agent.id}" is no longer available`, { sessionId: agent.id })
+    }
+  }
+
+  /** Create a fork child under this controller's lifecycle ownership. */
+  async createOwned(options: CreateAgentOptions): Promise<Agent> {
+    if (this.deleting.has(options.sessionId) || this.deleted.has(options.sessionId)) {
+      throw new Error(`session "${options.sessionId}" is being deleted`)
+    }
+    let creation = this.creations.get(options.sessionId)
+    if (creation === undefined) {
+      creation = this.ctx.agents.create(options)
+        .then(handle => this.retainHandle(handle))
+        .finally(() => { this.creations.delete(options.sessionId) })
+      this.creations.set(options.sessionId, creation)
+    }
+    return creation
+  }
+
+  private retainHandle(handle: AgentHandle): Agent {
+    this.ownedHandles.set(handle.agent.id, handle)
+    return handle.agent
+  }
+
+  private unavailable(sessionId: SessionId): ApiSessionAgentResult {
+    return {
+      error: new RemoteError(
+        this.deleted.has(sessionId) ? 'session/not-found' : 'session/writer-held',
+        this.deleted.has(sessionId)
+          ? `session "${sessionId}" was deleted`
+          : `session "${sessionId}" is unavailable during deletion`,
+        { sessionId },
+      ),
+    }
   }
 
   private async resolve(
@@ -437,11 +532,11 @@ export class ApiSessionAgentController {
     if (published !== undefined && hasApiSessionSubagentOwner(this.ctx, published, live)) {
       throw new ApiSessionSubagentOwnership(sessionId)
     }
-    return (await this.ctx.agents.resume({
+    return this.retainHandle(await this.ctx.agents.resume({
       resumeSessionId: sessionId,
       agentOptions: this.agentOptions(),
       setup: composition.setup,
-    })).agent
+    }))
   }
 
   private async inOrder<Value>(sessionId: SessionId, operation: () => Promise<Value>): Promise<Value> {
@@ -491,11 +586,11 @@ export class ApiSessionAgentController {
     if (!reusable) return this.createMinted(request.cwd, composition)
     this.assertPresetApplicable(sessionId, request.agentPreset)
     try {
-      return (await this.ctx.agents.resume({
+      return this.retainHandle(await this.ctx.agents.resume({
         resumeSessionId: sessionId,
         agentOptions: this.agentOptions(),
         setup: this.reuseSetup(composition),
-      })).agent
+      }))
     } catch (error: unknown) {
       if (error instanceof ApiSessionStartedSinceObserved) return this.createMinted(request.cwd, composition)
       if (!(error instanceof Error) || error.name !== 'SessionAlreadyOwnedError') throw error
@@ -566,7 +661,7 @@ export class ApiSessionAgentController {
     } catch (error: unknown) {
       throw new Error(`failed to ensure project directory "${cwd}": ${String(error)}`, { cause: error })
     }
-    return (await this.ctx.agents.create({
+    return this.retainHandle(await this.ctx.agents.create({
       sessionId,
       agentOptions: this.agentOptions(),
       meta: {
@@ -574,7 +669,7 @@ export class ApiSessionAgentController {
         ...(composition.agentPreset === undefined ? {} : { agentPreset: composition.agentPreset }),
       },
       setup: composition.setup,
-    })).agent
+    }))
   }
 
   private agentOptions(): AgentOptions {

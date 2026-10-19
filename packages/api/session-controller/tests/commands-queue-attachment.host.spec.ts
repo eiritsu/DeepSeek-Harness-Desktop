@@ -104,6 +104,7 @@ async function commandHarness(
     resolveAgent: (id: SessionId) => Promise.resolve(id === agent.id
       ? { agent }
       : { error: new RemoteError('session/not-found', 'missing', { sessionId: id }) }),
+    assertMutable: () => {},
     selectionFor: () => selection,
     serializeImageAdmission: <Value>(_agent: Agent, operation: () => Promise<Value>) => operation(),
     composeAgent: () => Promise.resolve({ setup: () => {} }),

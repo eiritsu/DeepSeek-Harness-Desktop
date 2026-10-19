@@ -37,9 +37,11 @@ function controllerAgents(
 
 /** A creation outcome that publishes `sessionId` in `cwd` as a stand-in Agent. */
 function publishedSession(ctx: Context, sessionId: SessionId) {
-  return (request: ApiSessionCreateRequest): Promise<ApiSessionCreated> => {
+  return async (request: ApiSessionCreateRequest): Promise<ApiSessionCreated> => {
     const session = ctx.sessions.create(sessionId, { meta: { cwd: request.cwd } })
-    return Promise.resolve({ agent: { id: session.id, session, status: 'idle', ctx } as Agent, agentPreset: undefined })
+    const agent = { id: session.id, session, status: 'idle', ctx } as Agent
+    await ctx.agents.register(agent)
+    return { agent, agentPreset: undefined }
   }
 }
 

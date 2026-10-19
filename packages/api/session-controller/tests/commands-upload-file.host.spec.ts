@@ -96,6 +96,7 @@ async function uploadHarness(origin?: 'subagent'): Promise<{
     resolveAgent: () => Promise.resolve({ agent }),
     selectionFor: () => selection,
     serializeImageAdmission: <Value>(_agent: Agent, operation: () => Promise<Value>) => operation(),
+    assertMutable: () => {},
   } as unknown as ApiSessionAgentController
   const uploads = new FileUploads(ctx)
   if (uploadRoute === undefined) throw new Error('file upload route was not registered')
