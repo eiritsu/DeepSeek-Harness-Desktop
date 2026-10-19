@@ -424,4 +424,40 @@ describe('shared model catalog in the shipped composition', () => {
     expect(bodies[1]).toMatchObject({ reasoning: { effort: 'high' } })
     expect(bodies[2]).toMatchObject({ reasoning: { effort: 'none' } })
   }, 30_000)
+
+  it('resolves deepseek-v4.1-flash-1017 on custom chiyun provider with efforts', async () => {
+    const catalog = await mockServer([{
+      body: JSON.stringify({
+        models: {
+          'deepseek/deepseek-v4.1-flash-1017': {
+            id: 'deepseek/deepseek-v4.1-flash-1017',
+            reasoning: true,
+          },
+        },
+        providers: {
+          deepseek: {
+            models: {
+              'deepseek-flash': {
+                canonical_model_id: 'deepseek/deepseek-v4.1-flash-1017',
+                reasoning: true,
+                reasoning_options: [{ type: 'effort', values: ['low', 'high', 'max'] }],
+              },
+            },
+          },
+        },
+      }),
+    }])
+    const storageRoot = join(await mkdtemp(join(tmpdir(), 'dsh-catalog-chiyun-storage-')), 'storages')
+    roots.push(join(storageRoot, '..'))
+    const ctx = await boot(catalog.url, 'http://192.168.1.40:8080/v1', storageRoot, {
+      provider: 'chiyun',
+      api: 'openai-responses',
+      model: 'deepseek-v4.1-flash-1017',
+    })
+    await catalogOf(ctx).refresh()
+
+    const info = await ctx.llm.resolveModelInfo('chiyun', 'deepseek-v4.1-flash-1017')
+    expect(info.reasoning).toBeDefined()
+    expect(info.reasoning?.efforts.map(e => e.id)).toEqual(['low', 'high', 'max'])
+  })
 })

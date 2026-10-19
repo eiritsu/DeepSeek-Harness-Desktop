@@ -753,6 +753,12 @@ describe('per-model reasoning efforts', () => {
     expect(model.thinkingLevelMap).toEqual(catalogModel.thinkingLevelMap)
   })
 
+  it('infers reasoning capabilities for known reasoning model patterns when uncataloged', () => {
+    const model = modelOf(declared([{ id: 'deepseek-v4.1-flash-1017' }]))
+    expect(model.reasoning).toBe(true)
+    expect(getSupportedThinkingLevels(model)).toEqual(['off', 'minimal', 'low', 'medium', 'high', 'max'])
+  })
+
   it('rejects a declaration that offers nothing or spells a level it cannot send', () => {
     const declare = (efforts: NonNullable<LlmPiAi.PiAiModelProfile['reasoningEfforts']>): (() => unknown) =>
       () => resolveProfiles(declared([{ id: 'm', reasoningEfforts: efforts }]))

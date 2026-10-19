@@ -325,4 +325,8 @@ export function apply(ctx: Context, config: Config): void {
       ctx.logger.error(error)
     }
   })
+
+  ctx.on('model-catalog/updated', () => {
+    ctx.emit('llm/adapters-updated')
+  })
 }

@@ -309,6 +309,59 @@ describe('catalog view resolution', () => {
     })
   })
 
+  it('resolves a canonical basename even when unrelated channels conflict on unbound aliases', () => {
+    const document = {
+      models: {
+        'deepseek/deepseek-v4.1-flash-1017': {
+          id: 'deepseek/deepseek-v4.1-flash-1017',
+          reasoning: true,
+          limit: { context: 1_000_000, output: 384_000 },
+        },
+        'other/unrelated': {
+          id: 'other/unrelated',
+          reasoning: false,
+        },
+      },
+      providers: {
+        deepseek: {
+          id: 'deepseek',
+          models: {
+            'deepseek-flash': {
+              canonical_model_id: 'deepseek/deepseek-v4.1-flash-1017',
+              reasoning: true,
+              reasoning_options: [{ type: 'effort', values: ['low', 'high', 'max'] }],
+            },
+          },
+        },
+        conflicting1: {
+          id: 'conflicting1',
+          models: {
+            'deepseek-v4.1-flash-1017': {
+              canonical_model_id: 'deepseek/deepseek-v4.1-flash-1017',
+            },
+          },
+        },
+        conflicting2: {
+          id: 'conflicting2',
+          models: {
+            'deepseek-v4.1-flash-1017': {
+              canonical_model_id: 'other/unrelated',
+            },
+          },
+        },
+      },
+    }
+    const viewWithConflicts = new CatalogView(2, parseCatalogDocument(document), [])
+    expect(viewWithConflicts.facts({ model: 'deepseek-v4.1-flash-1017', ownedBy: 'chiyun' })).toEqual({
+      canonicalId: 'deepseek/deepseek-v4.1-flash-1017',
+      contextWindow: 1_000_000,
+      maxOutputTokens: 384_000,
+      reasoning: true,
+      reasoningEfforts: ['low', 'high', 'max'],
+      reasoningControl: { type: 'effort', efforts: ['low', 'high', 'max'] },
+    })
+  })
+
   it('denies reasoning through every channel when the shared record denies it', () => {
     // The openrouter record says nothing about reasoning, and its channel
     // entry says the model does not reason at all.

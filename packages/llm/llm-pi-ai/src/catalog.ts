@@ -736,6 +736,44 @@ interface ModelReasoning {
  * @param base - the installed catalog entry of the same id, when one exists.
  * @returns the reasoning fields the materialized model carries.
  */
+/** Whether a model id names a known reasoning model pattern. */
+function isKnownReasoningModelName(id: string): boolean {
+  const lower = id.toLowerCase()
+  return lower.includes('r1')
+    || lower.includes('reasoner')
+    || lower.includes('1017')
+    || lower.includes('v4.1')
+    || lower.includes('qwq')
+    || /(?:^|[-_/])o[134](?:[-_/]|$)/.test(lower)
+}
+
+/** Whether a model id names a known multimodal model pattern. */
+function isKnownMultimodalModelName(id: string): boolean {
+  const lower = id.toLowerCase()
+  return lower.includes('vision')
+    || lower.includes('vl')
+    || lower.includes('4o')
+    || lower.includes('v4')
+    || lower.includes('flash')
+    || lower.includes('omni')
+    || lower.includes('gemini')
+    || lower.includes('sonnet')
+    || lower.includes('opus')
+    || lower.includes('haiku')
+    || lower.includes('1017')
+}
+
+/** Infer default input modalities for uncataloged models. */
+function inferDefaultInput(
+  id: string,
+  defaultInput: Model<Api>['input'],
+): Model<Api>['input'] {
+  if (isKnownMultimodalModelName(id)) {
+    return ['text', 'image']
+  }
+  return [...defaultInput]
+}
+
 function resolveModelReasoning(
   provider: string,
   entry: PiAiModelProfile,
@@ -743,12 +781,20 @@ function resolveModelReasoning(
 ): ModelReasoning {
   const efforts = entry.reasoningEfforts
   if (efforts === undefined) {
-    // Reasoning rides the installed entry or is absent: a bare capability flag
-    // would make pi-ai advertise effort levels with no `thinkingLevelMap` to
-    // spell them, and no listing endpoint reports a model's reasoning
-    // protocol. The entry's map (when any) arrives through the `...base`
-    // spread in the model literal.
-    return { reasoning: base?.reasoning ?? false }
+    if (base?.reasoning !== undefined) {
+      return { reasoning: base.reasoning }
+    }
+    if (isKnownReasoningModelName(entry.id)) {
+      const thinkingLevelMap: ThinkingLevelMap = {
+        off: 'none',
+        low: 'low',
+        medium: 'medium',
+        high: 'high',
+        max: 'max',
+      }
+      return { reasoning: true, thinkingLevelMap }
+    }
+    return { reasoning: false }
   }
   // The installed entry's map may ride along through `...base`; pi-ai never
   // reads it on a non-reasoning model, so stripping it is not worth a field
@@ -994,7 +1040,7 @@ export function resolveRouteModels(
       api,
       provider,
       baseUrl,
-      input: declaredInput(entry.input) ?? base?.input ?? [...request.defaultInput],
+      input: declaredInput(entry.input) ?? base?.input ?? inferDefaultInput(entry.id, request.defaultInput),
       cost: base?.cost ?? NO_COST,
       contextWindow,
       maxTokens,

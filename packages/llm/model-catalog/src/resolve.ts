@@ -153,7 +153,12 @@ export class CatalogView implements ModelFactsView {
         ? sameId(channel.model, basenameOf(canonicalId))
         : sameId(channel.canonicalId, canonicalId)))
     const ownerExact = ownerChannels.filter(channel => sameId(channel.model, requestedModel))
-    return this.uniqueChannel(ownerExact.length > 0 ? ownerExact : ownerChannels)
+    const matchedOwner = this.uniqueChannel(ownerExact.length > 0 ? ownerExact : ownerChannels)
+    if (matchedOwner !== undefined) return matchedOwner
+
+    const anyChannels = this.channels.filter(channel => channel.canonicalId !== undefined
+      && sameId(channel.canonicalId, canonicalId) && channel.efforts && channel.efforts.length > 0)
+    return anyChannels.length > 0 ? this.uniqueChannel(anyChannels) : undefined
   }
 
   /** Conflicting declarations are ambiguous; identical duplicates are equivalent. */
@@ -187,16 +192,19 @@ export class CatalogView implements ModelFactsView {
     // would answer with a different model that happens to share the name.
     if (request.model.includes('/')) {
       const exact = this.byId.get(request.model.toLowerCase())
-      return exact ?? this.resolveChannelModel(request) ?? undefined
+      return exact ?? this.resolveBoundChannelModel(request) ?? this.resolveUnboundChannelModel(request) ?? undefined
     }
-    const route = this.resolveChannelModel(request)
+    const route = this.resolveBoundChannelModel(request)
     if (route === null) return undefined
     if (route !== undefined) return route
-    return this.byBasename.get(request.model.toLowerCase())
+    const base = this.byBasename.get(request.model.toLowerCase())
+    if (base !== undefined) return base
+    const unbound = this.resolveUnboundChannelModel(request)
+    return unbound ?? undefined
   }
 
   /** Resolve route, endpoint, and canonical-owner aliases without masking conflicts. */
-  private resolveChannelModel(request: ModelFactsRequest): CanonicalRecord | null | undefined {
+  private resolveBoundChannelModel(request: ModelFactsRequest): CanonicalRecord | null | undefined {
     const matching = this.channels.filter(channel => sameId(channel.model, request.model)
       && channel.canonicalId !== undefined)
     const byIdentity = (channels: typeof matching): CanonicalRecord | null | undefined => {
@@ -235,9 +243,18 @@ export class CatalogView implements ModelFactsView {
     const ownerResolved = byIdentity(ownerMatches)
     if (ownerResolved !== undefined) return ownerResolved
 
-    // A provider alias outside the route, endpoint, or canonical owner is
-    // useful only when all matching providers make the same claim.
-    return byIdentity(matching)
+    return undefined
+  }
+
+  /** A provider alias outside the route, endpoint, or canonical owner is useful only when all matching providers make the same claim. */
+  private resolveUnboundChannelModel(request: ModelFactsRequest): CanonicalRecord | undefined {
+    const matching = this.channels.filter(channel => sameId(channel.model, request.model)
+      && channel.canonicalId !== undefined)
+    const ids = new Set(matching.map(channel => channel.canonicalId?.toLowerCase())
+      .filter((id): id is string => id !== undefined))
+    if (ids.size !== 1) return undefined
+    const [id] = ids
+    return id === undefined ? undefined : this.byId.get(id) ?? undefined
   }
 
   /**
