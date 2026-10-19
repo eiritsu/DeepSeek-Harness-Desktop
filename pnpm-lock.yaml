@@ -398,6 +398,9 @@ importers:
       '@deepseek-ai/dsh-session-reference':
         specifier: workspace:*
         version: link:../../packages/context/session-reference
+      '@deepseek-ai/dsh-session-turn-edit-resend':
+        specifier: workspace:*
+        version: link:../../packages/bundle/session-turn-edit-resend
       '@deepseek-ai/dsh-skill':
         specifier: workspace:*
         version: link:../../packages/skill/skill
@@ -1463,6 +1466,9 @@ importers:
       '@deepseek-ai/dsh-session-reference':
         specifier: workspace:*
         version: link:../../context/session-reference
+      '@deepseek-ai/dsh-session-turn-edit-resend':
+        specifier: workspace:*
+        version: link:../../bundle/session-turn-edit-resend
       '@deepseek-ai/dsh-settings':
         specifier: workspace:*
         version: link:../../settings/settings
