@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-session-turn-edit-resend",
   "description": "Edit the latest replaceable user turn and resend it as a new turn over the turnResend Remote namespace",
-  "version": "0.2.1-rc.2",
+  "version": "0.2.1-rc.3",
   "publishConfig": {
     "access": "public"
   },

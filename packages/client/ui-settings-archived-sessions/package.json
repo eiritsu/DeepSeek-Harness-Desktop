@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-client-ui-settings-archived-sessions",
   "description": "Archived sessions settings section for the dsh web client: the Settings navigation entry and the page of archived Sessions grouped by Workspace",
-  "version": "0.2.1-rc.2",
+  "version": "0.2.1-rc.3",
   "publishConfig": {
     "access": "public"
   },
