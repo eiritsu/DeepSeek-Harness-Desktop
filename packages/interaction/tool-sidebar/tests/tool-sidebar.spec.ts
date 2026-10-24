@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import Tools from '@deepseek-ai/dsh-tools'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import * as ToolSidebar from '../src/index.ts'
 
@@ -8,6 +9,7 @@ describe('tool-sidebar', () => {
   it('registers sidebar_open and browser_open tools and system prompt section', async () => {
     const ctx = new Context()
     await ctx.plugin(Tools)
+    await ctx.plugin(NativeToolExecutor)
     await ctx.plugin(SystemPrompt)
     await ctx.plugin(ToolSidebar)
 
