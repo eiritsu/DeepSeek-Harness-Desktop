@@ -170,7 +170,7 @@ describe('hand-declared providers', () => {
       resolved.get(route)?.piProvider?.getModels() ?? []
 
     expect(modelsOf('acme-gateway')).toMatchObject([
-      { id: 'bare', contextWindow: 262_144, maxTokens: 32_768 },
+      { id: 'bare', contextWindow: 1_000_000, maxTokens: 128_000 },
       { id: 'sized', contextWindow: 8192, maxTokens: 512 },
     ])
     // The fallback is a guess, so a deployment whose gateway serves smaller
@@ -180,6 +180,29 @@ describe('hand-declared providers', () => {
     // the model's capability and stops there.
     expect(resolved.get('acme-gateway')?.configuredMaxTokens.get('bare')).toBeUndefined()
     expect(resolved.get('acme-gateway')?.configuredMaxTokens.get('sized')).toBe(512)
+  })
+
+  it('infers model context window from id patterns when uncataloged', () => {
+    const resolved = resolveProfiles({
+      'custom-gateway': {
+        api: 'openai-completions',
+        baseURL: 'https://custom.test',
+        models: [
+          { id: 'deepseek-chat' },
+          { id: 'qwen-plus-32k' },
+          { id: 'Qwen/Qwen2.5-72B-Instruct' },
+          { id: 'meta-llama/Llama-3.1-8B-Instruct' },
+          { id: 'my-model-128k' },
+        ],
+      },
+    })
+    const models = resolved.get('custom-gateway')?.piProvider?.getModels() ?? []
+    const contextMap = new Map(models.map(m => [m.id, m.contextWindow]))
+    expect(contextMap.get('deepseek-chat')).toBe(64_000)
+    expect(contextMap.get('qwen-plus-32k')).toBe(32_768)
+    expect(contextMap.get('Qwen/Qwen2.5-72B-Instruct')).toBe(128_000)
+    expect(contextMap.get('meta-llama/Llama-3.1-8B-Instruct')).toBe(128_000)
+    expect(contextMap.get('my-model-128k')).toBe(131_072)
   })
 
   it('takes a model’s declared modalities, then the catalog’s, then the route’s', () => {

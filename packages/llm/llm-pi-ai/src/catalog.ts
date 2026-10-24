@@ -307,6 +307,7 @@ const RESPONSES_COMPAT_GATE = {
   supportsToolSearch: 'withhold',
   supportsExplicitPromptCacheMode: 'withhold',
   supportsMidConvoSystemMessages: 'withhold',
+  supportsMidConvoEffort: 'withhold',
 } as const satisfies Record<keyof OpenAIResponsesCompat, CompatDisposition>
 
 /** Disposition of every `AnthropicMessagesCompat` field; a drift gate like the one above. */
@@ -774,6 +775,98 @@ function inferDefaultInput(
   return [...defaultInput]
 }
 
+/** Infer default context window for uncataloged models. */
+function inferDefaultContextWindow(
+  id: string,
+  defaultContextWindow: number,
+): number {
+  const lower = id.toLowerCase()
+
+  const matchK = lower.match(/(?:^|[-_/:])(\d+)k\b/)
+  if (matchK && matchK[1]) {
+    const k = parseInt(matchK[1], 10)
+    if (k > 0 && k <= 4096) {
+      return k * 1024
+    }
+  }
+  if (/(?:^|[-_/:])1m\b/.test(lower) || lower.includes('1000k')) {
+    return 1_000_000
+  }
+  if (/(?:^|[-_/:])2m\b/.test(lower)) {
+    return 2_000_000
+  }
+
+  let inferred: number | undefined
+
+  if (lower.includes('deepseek')) {
+    inferred = 64_000
+  } else if (lower.includes('claude')) {
+    inferred = 200_000
+  } else if (lower.includes('gemini')) {
+    inferred = 1_000_000
+  } else if (
+    /(?:^|[-_/])o[134](?:[-_/]|$)/.test(lower)
+    || lower.includes('gpt-4o')
+    || lower.includes('gpt-4-turbo')
+    || lower.includes('gpt-4.1')
+  ) {
+    inferred = 128_000
+  } else if (lower.includes('gpt-4')) {
+    inferred = 8_192
+  } else if (lower.includes('gpt-3.5')) {
+    inferred = 16_384
+  } else if (lower.includes('qwen') || lower.includes('qwq')) {
+    if (
+      lower.includes('2.5')
+      || lower.includes('max')
+      || lower.includes('plus')
+      || lower.includes('turbo')
+    ) {
+      inferred = 128_000
+    } else {
+      inferred = 32_768
+    }
+  } else if (
+    lower.includes('llama-3.1')
+    || lower.includes('llama-3.2')
+    || lower.includes('llama-3.3')
+    || lower.includes('llama3.1')
+    || lower.includes('llama3.2')
+    || lower.includes('llama3.3')
+  ) {
+    inferred = 128_000
+  } else if (lower.includes('llama-3') || lower.includes('llama3')) {
+    inferred = 8_192
+  } else if (lower.includes('llama-2') || lower.includes('llama2')) {
+    inferred = 4_096
+  } else if (lower.includes('glm-4')) {
+    inferred = 128_000
+  } else if (lower.includes('glm-3')) {
+    inferred = 32_768
+  } else if (lower.includes('mistral-large') || lower.includes('codestral')) {
+    inferred = 128_000
+  } else if (lower.includes('mistral') || lower.includes('mixtral')) {
+    inferred = 32_768
+  } else if (lower.includes('moonshot') || lower.includes('kimi')) {
+    inferred = 128_000
+  } else if (lower.includes('yi-') || lower.includes('yi/')) {
+    inferred = 200_000
+  } else if (lower.includes('minimax')) {
+    inferred = 1_000_000
+  } else if (lower.includes('gemma-2') || lower.includes('gemma2')) {
+    inferred = 8_192
+  }
+
+  if (inferred !== undefined) {
+    if (defaultContextWindow > 0 && defaultContextWindow < inferred) {
+      return defaultContextWindow
+    }
+    return inferred
+  }
+
+  return defaultContextWindow
+}
+
 function resolveModelReasoning(
   provider: string,
   entry: PiAiModelProfile,
@@ -1017,7 +1110,7 @@ export function resolveRouteModels(
     // discloses nothing but ids still yields a serviceable route. The fallback
     // is a guess by construction, which is why it is a configurable route field
     // rather than a constant buried here.
-    const contextWindow = entry.contextWindow ?? base?.contextWindow ?? request.defaultContextWindow
+    const contextWindow = entry.contextWindow ?? base?.contextWindow ?? inferDefaultContextWindow(entry.id, request.defaultContextWindow)
     if (!Number.isInteger(contextWindow) || contextWindow <= 0) {
       invalid(provider, `model "${entry.id}" contextWindow must be a positive integer`)
     }
