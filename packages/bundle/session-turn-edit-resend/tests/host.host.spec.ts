@@ -16,7 +16,9 @@ import SessionStore, { Session, SessionId, SessionLogOffset } from '@deepseek-ai
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
+import ToolRuntime from '@deepseek-ai/dsh-tools'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
+import { defineContentToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import SessionTurnEditResend from '../src/index.ts'
 import type { ResendOperationId } from '../src/types.ts'
 import { findResendOperation, readResendJournal } from '../src/journal.ts'
@@ -36,6 +38,7 @@ async function harness(script: ConstructorParameters<typeof MockAdapter>[0]): Pr
   await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
+  await ctx.plugin(NativeToolExecutor)
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(SessionTurnEditResend)
@@ -71,20 +74,26 @@ function conversation(agent: Agent): string[] {
 /** Turn every recorded operation of the session into a comparable entry. */
 function journalOf(ctx: Context, agent: Agent): readonly unknown[] {
   const state = ctx.sessionProjections.stateOf(agent.session, 'resendJournal')
-  if (state === undefined) throw new Error('resendJournal projection is not registered')
-  return readResendJournal(state)
+  if (state === undefined || state === null) throw new Error('resendJournal projection is not registered')
+  return readResendJournal(state as import('../src/types.ts').ResendJournalState)
 }
 
-function turnStateOf(ctx: Context, agent: Agent) {
+function turnStateOf(ctx: Context, agent: Agent): import('../src/types.ts').ResendTurnState {
   const state = ctx.sessionProjections.stateOf(agent.session, 'resendTurn')
-  if (state === undefined) throw new Error('resendTurn projection is not registered')
-  return state
+  if (state === undefined || state === null) throw new Error('resendTurn projection is not registered')
+  return state as import('../src/types.ts').ResendTurnState
 }
 
 function journalFor(ctx: Context, session: Session) {
   const state = ctx.sessionProjections.stateOf(session, 'resendJournal')
-  if (state === undefined) throw new Error('resendJournal projection is not registered')
-  return readResendJournal(state)
+  if (state === undefined || state === null) throw new Error('resendJournal projection is not registered')
+  return readResendJournal(state as import('../src/types.ts').ResendJournalState)
+}
+
+function turnStateFor(ctx: Context, session: Session): import('../src/types.ts').ResendTurnState {
+  const state = ctx.sessionProjections.stateOf(session, 'resendTurn')
+  if (state === undefined || state === null) throw new Error('resendTurn projection is not registered')
+  return state as import('../src/types.ts').ResendTurnState
 }
 
 describe('edit and resend eligibility', () => {
@@ -554,9 +563,7 @@ describe('journal across restart', () => {
     // predecessor's memory; `admitted` is proved by the surface replacement, so
     // the identity is never sent to the model twice.
     const restored = Session.create(SessionId('resend-host-restart'), agent.session.snapshotEvents())
-    const restoredTurnState = ctx.sessionProjections.stateOf(restored, 'resendTurn')
-    if (restoredTurnState === undefined) throw new Error('resendTurn projection is not registered')
-    expect(selectResendTarget(restored, restoredTurnState)).toMatchObject({
+    expect(selectResendTarget(restored, turnStateFor(ctx, restored))).toMatchObject({
       eligible: true,
       target: { prompt: { content: [{ type: 'text', text: 'edited question' }] } },
     })

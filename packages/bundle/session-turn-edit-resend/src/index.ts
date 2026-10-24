@@ -222,8 +222,8 @@ export class SessionTurnEditResend extends TypertRemoteService {
    */
   private turnState(session: Agent['session']): import('./types.ts').ResendTurnState {
     const state = this.ctx.sessionProjections.stateOf(session, 'resendTurn')
-    if (state === undefined) throw new Error('resendTurn projection is not registered')
-    return state
+    if (state === undefined || state === null) throw new Error('resendTurn projection is not registered')
+    return state as import('./types.ts').ResendTurnState
   }
 
   /**
@@ -233,8 +233,8 @@ export class SessionTurnEditResend extends TypertRemoteService {
    */
   private journalState(session: Agent['session']): import('./types.ts').ResendJournalState {
     const state = this.ctx.sessionProjections.stateOf(session, 'resendJournal')
-    if (state === undefined) throw new Error('resendJournal projection is not registered')
-    return state
+    if (state === undefined || state === null) throw new Error('resendJournal projection is not registered')
+    return state as import('./types.ts').ResendJournalState
   }
 }
 

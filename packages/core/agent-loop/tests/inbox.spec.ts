@@ -1,6 +1,6 @@
 import { unsupportedModel } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { Context } from '@deepseek-ai/cordis'
-import { agentEvents, type Agent } from '@deepseek-ai/dsh-agent'
+import { agentEvents, type Agent, type InboxState } from '@deepseek-ai/dsh-agent'
 import { createUserMessage, freezeMessage } from '@deepseek-ai/dsh-llm'
 import SessionStore, { Session, SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { UserMessage } from '@deepseek-ai/dsh-session'
@@ -16,6 +16,12 @@ function unsupportedInbox(): Agent['inbox'] {
     nextTurn: [], nextStep: [], clear: rejectMutation, append: rejectMutation,
     prepend: rejectMutation, replace: rejectMutation, remove: rejectMutation, splice: rejectMutation,
   }
+}
+
+function inboxState(ctx: Context, session: Session): InboxState {
+  const row = ctx.sessionProjections.checkpoint(session).inbox
+  if (row === undefined || !row.val) throw new Error('inbox projection missing')
+  return row.val as InboxState
 }
 
 function stubAgent(rawId: string, overrides: Partial<Agent> = {}): Agent {
@@ -291,7 +297,7 @@ describe('ReactLoopInbox resend replacements', () => {
 
     agent.inbox.splice('next-turn', Infinity, 0, [resent], { [resent.id]: range })
 
-    expect(ctx.sessionProjections.stateOf(session, 'inbox')?.replacements).toEqual({ [resent.id]: range })
+    expect(inboxState(ctx, session).replacements).toEqual({ [resent.id]: range })
     expect(session.snapshotEvents().at(-1)).toMatchObject({
       type: 'agent/inbox/spliced',
       data: { replacements: { [resent.id]: range } },
@@ -331,7 +337,7 @@ describe('ReactLoopInbox resend replacements', () => {
 
     expect(claimed.messages).toEqual([steering, resent])
     expect(claimed.replacements).toEqual({ [resent.id]: range })
-    expect(ctx.sessionProjections.stateOf(session, 'inbox')?.replacements).toEqual({})
+    expect(inboxState(ctx, session).replacements).toEqual({})
   })
 
   it('drops a queued range when its message is canceled or removed', async () => {
@@ -340,11 +346,11 @@ describe('ReactLoopInbox resend replacements', () => {
     agent.inbox.splice('next-turn', Infinity, 0, [resent], { [resent.id]: range })
 
     expect(agent.inbox.remove(resent.id)).toBe(true)
-    expect(ctx.sessionProjections.stateOf(session, 'inbox')?.replacements).toEqual({})
+    expect(inboxState(ctx, session).replacements).toEqual({})
 
     agent.inbox.splice('next-turn', Infinity, 0, [resent], { [resent.id]: range })
     agent.inbox.clear()
-    expect(ctx.sessionProjections.stateOf(session, 'inbox')?.replacements).toEqual({})
+    expect(inboxState(ctx, session).replacements).toEqual({})
     expect(session.snapshotEvents().map(event => event.type === 'agent/inbox/spliced'
       ? event.data.replacements
       : event.type)).toEqual([
@@ -358,7 +364,7 @@ describe('ReactLoopInbox resend replacements', () => {
     session.append('agent/inbox/spliced', { target: 'next-turn', start: 0, inserted: [legacy] })
     const resent = createUserMessage({ content: [{ type: 'text', text: 'edited' }], source: { kind: 'user' } })
     agent.inbox.splice('next-turn', Infinity, 0, [resent], { [resent.id]: range })
-    expect(ctx.sessionProjections.stateOf(session, 'inbox')?.replacements).toEqual({ [resent.id]: range })
+    expect(inboxState(ctx, session).replacements).toEqual({ [resent.id]: range })
 
     expect(legacy.id).toBe((agent.inbox as ReactLoopInbox).claim('next-turn', 1).messages[0]?.id)
     expect((agent.inbox as ReactLoopInbox).claim('next-turn', 2).replacements)
