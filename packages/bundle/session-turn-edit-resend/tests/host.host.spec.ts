@@ -23,7 +23,7 @@ import SessionTurnEditResend from '../src/index.ts'
 import type { ResendOperationId } from '../src/types.ts'
 import { findResendOperation, readResendJournal } from '../src/journal.ts'
 import { editPromptContent, selectResendTarget } from '../src/policy.ts'
-import { HANG, MockAdapter, SILENT_HANG, textResponse, toolCallResponse } from './mock-adapter.ts'
+import { HANG, MockAdapter, type ScriptEntry, SILENT_HANG, textResponse, toolCallResponse } from './mock-adapter.ts'
 
 const NEVER_ABORTED = new AbortController().signal
 
@@ -239,33 +239,65 @@ describe('edit and resend eligibility', () => {
     expect(adapter.requests).toEqual([])
   })
 
-  it('refuses a turn the environment failed', async () => {
-    const { ctx, agent } = await harness([])
+  it('offers a turn the environment failed and resends its prompt', async () => {
+    const script: ScriptEntry[] = []
+    const { ctx, agent, adapter } = await harness(script)
     prompt(agent, 'doomed question')
     await settle(agent)
 
     // The exhausted script fails the model call, so the turn ends in error.
     expect(agent.session.snapshotEvents().some(event => event.type === 'turn/end' && event.data.reason.kind === 'error')).toBe(true)
-    expect(ctx.turnResend.check(agent)).toEqual({ eligible: false, refusal: 'no-replaceable-turn' })
+    expect(ctx.turnResend.check(agent)).toEqual({
+      eligible: true,
+      text: 'doomed question',
+      turn: 1,
+      startSeq: agent.session.snapshotEvents().find(event => event.type === 'user/message')!.seq,
+      toolCalls: [],
+    })
+
+    script.push(textResponse('rescued answer'))
+    const submission = await ctx.turnResend.submit(agent, operation('op-failed-turn', 'edited doomed question'), NEVER_ABORTED)
+    await settle(agent)
+
+    expect(submission).toMatchObject({ recorded: true, operation: { outcome: 'admitted' } })
+    expect(conversation(agent)).toEqual(['edited doomed question', 'rescued answer'])
+    expect(adapter.requests).toHaveLength(2)
   })
 
-  it('refuses a settled turn once a later turn owns the surface', async () => {
-    const { ctx, agent } = await harness([textResponse('first answer'), HANG])
+  it('allows editing an earlier turn on the surface and shadows subsequent turns', async () => {
+    const { ctx, agent, adapter } = await harness([
+      textResponse('first answer'),
+      textResponse('second answer'),
+      textResponse('third answer after resend'),
+    ])
     prompt(agent, 'first question')
     await settle(agent)
-    const secondStarted = new Promise<void>((resolve) => {
-      const dispose = ctx.on('session/event', (_session, event) => {
-        if (event.type !== 'turn/start' || event.data.turn !== 2) return
-        dispose()
-        resolve()
-      })
-    })
     prompt(agent, 'second question')
-    await secondStarted
-
-    expect(selectResendTarget(agent.session, turnStateOf(ctx, agent))).toEqual({ eligible: false, refusal: 'not-latest-turn' })
-    agent.cancel({ kind: 'user' })
     await settle(agent)
+
+    expect(conversation(agent)).toEqual([
+      'first question', 'first answer',
+      'second question', 'second answer',
+    ])
+
+    const firstPromptSeq = agent.session.snapshotEvents().find(event => event.type === 'user/message')!.seq
+    expect(ctx.turnResend.check(agent, firstPromptSeq)).toMatchObject({
+      eligible: true,
+      text: 'first question',
+      turn: 1,
+      startSeq: firstPromptSeq,
+    })
+
+    const submission = await ctx.turnResend.submit(
+      agent,
+      { operationId: 'op-earlier' as ResendOperationId, text: 'edited first question', targetSeq: firstPromptSeq },
+      NEVER_ABORTED,
+    )
+    await settle(agent)
+
+    expect(submission).toMatchObject({ recorded: true, operation: { outcome: 'admitted' } })
+    expect(conversation(agent)).toEqual(['edited first question', 'third answer after resend'])
+    expect(adapter.requests).toHaveLength(3)
   })
 })
 

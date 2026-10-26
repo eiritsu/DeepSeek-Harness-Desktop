@@ -94,6 +94,7 @@ export const TurnResendBody = memo(function TurnResendBody({
       </div>
     )
   }
+  if (edit.startSeq !== matched.seq) return null
   const save = async (): Promise<void> => {
     actions.saving(sessionId, true)
     actions.settle(sessionId, undefined)

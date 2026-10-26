@@ -24,11 +24,11 @@ This Bundle lets the Host edit an Agent's latest replaceable turn by replacing i
 
 Mount the `session-turn-edit-resend` row alongside a live Agent service. The service is a `TypertRemoteService` under the `turnResend` Remote namespace. The `web` profile stacks this Bundle and mounts its browser row, `@deepseek-ai/dsh-client-ui-turn-edit-resend`, which offers the edit entry on the latest replaceable turn.
 
-`check(agent)` reports whether the Agent's latest turn can be edited now: the prompt text a composer is seeded with, its turn, the first replaced seq, and the tool names the turn called. `submit(agent, request, signal)` replaces the turn. A refusal is either the activity blocker (`agent-busy`, `inbox-pending`, `aborted`) or a selection refusal (`no-replaceable-turn`, `not-latest-turn`, `no-human-prompt`, `no-editable-text`).
+`check(agent, targetSeq?)` reports whether an Agent turn can be edited now: the prompt text a composer is seeded with, its turn, the first replaced seq, and the tool names the turn called. `submit(agent, request, signal)` replaces the turn. A refusal is either the activity blocker (`agent-busy`, `inbox-pending`, `aborted`) or a selection refusal (`no-replaceable-turn`, `not-latest-turn`, `no-human-prompt`, `no-editable-text`).
 
 ### When a turn is editable
 
-The Agent must be idle with no pending input, and its latest turn must have ended in a state this feature may replace: the loop completed it, or the user cancelled it. A turn that errored, was blocked, was truncated at its token ceiling, or was closed as a crash-orphan or fork seed is not replaceable. `check` reads current state and promises nothing about a later `submit`, which selects the target again while it owns the Agent's idle phase.
+The Agent must be idle with no pending input, and the prompt must be present on the current model-visible surface with editable text. Turns that completed, were cancelled, errored, or produced no assistant response remain editable so long as the Agent is idle. `check` reads current state and promises nothing about a later `submit`, which selects the target again while it owns the Agent's idle phase.
 
 A turn that ran tools stays editable, and its tool names ride `check`. The replacement shadows the turn's tool calls, their results, and its old answer in the model-visible surface, while the append-only log keeps every record. A resend asks the model to repeat those calls, so the browser entry confirms the repeat with the user before submitting; keeping the turn editable is the product decision, and the disclosure is the safeguard.
 

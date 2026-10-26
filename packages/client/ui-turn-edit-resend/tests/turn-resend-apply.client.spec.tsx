@@ -76,6 +76,35 @@ describe('edit-and-resend wiring', () => {
     }
   })
 
+  it('forwards the clicked seq to turnResend.check', async () => {
+    let checkedSeq: number | undefined
+    const runtime = await SlotTestRuntime.create()
+    const locale = new LocaleRuntime(runtime.ctx)
+    runtime.ctx.provide('locale', locale)
+    runtime.slots.installLocale(locale)
+    runtime.ctx.provide('uiChat', { claimUserMessageBody: () => () => {} } as never)
+    runtime.remote.provideNamespaces({
+      turnResend: {
+        check: async (_sid: SessionId, targetSeq?: number) => {
+          checkedSeq = targetSeq
+          return { ok: true, value: { eligible: true, text: 'seed', turn: 2, startSeq: targetSeq ?? 42, toolCalls: [] } }
+        },
+      },
+    })
+    await runtime.root.declare({
+      'conversation.chat.user-actions': { kind: 'list', scope: 'session' },
+      'conversation.chat.user-body': { kind: 'chain', scope: 'session' },
+    }, (_props: { renderSlot?: unknown; renderSlotChain?: unknown }) => null)
+    await runtime.mount({ inject: [...inject], apply })
+    const action = runtime.slots.entries('conversation.chat.user-actions')
+      .find(entry => entry.options.id === 'turn-edit-resend')
+    const beginEdit = (action!.inject as ErasedInject)(SID).beginEdit as TurnResendActionInjected['beginEdit']
+    const result = await beginEdit(42)
+    expect(checkedSeq).toBe(42)
+    expect(result).toMatchObject({ kind: 'edit', edit: { startSeq: 42 } })
+    await runtime.dispose()
+  })
+
   it('declines a click whose seq is not the Host target', async () => {
     const { runtime, claims, beginEdit } = await bench(eligible)
     try {

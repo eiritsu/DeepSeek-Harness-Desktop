@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-/** The edit entry only appears on the latest turn, passes its seq, and opens the returned edit or notice. */
+/** The edit entry appears on user turns, passes its seq, and opens the returned edit or notice. */
 
 import { createElement } from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
@@ -34,6 +34,15 @@ describe('TurnResendAction', () => {
     expect(beginEdit).toHaveBeenCalledWith(42)
   })
 
+  it('renders on an older turn, passes its seq, and begins the returned edit', async () => {
+    const { begin, beginEdit, props } = bench(1, 10)
+    render(createElement(TurnResendAction, props as never))
+
+    fireEvent.click(screen.getByRole('button', { name: 'action.label' }))
+    await vi.waitFor(() => { expect(begin).toHaveBeenCalledWith(edit) })
+    expect(beginEdit).toHaveBeenCalledWith(10)
+  })
+
   it('states the Host notice in place of the clicked message', async () => {
     const { begin, beginEdit, notice, props } = bench(2, 42)
     beginEdit.mockResolvedValueOnce({
@@ -65,10 +74,10 @@ describe('TurnResendAction', () => {
     expect(notice).not.toHaveBeenCalled()
   })
 
-  it('renders nothing on an older turn', () => {
+  it('renders on an older turn', () => {
     const { props } = bench(1)
     const { container } = render(createElement(TurnResendAction, props as never))
-    expect(container.querySelector('button')).toBeNull()
+    expect(container.querySelector('button')).not.toBeNull()
   })
 
   it('renders nothing when the message has no turn', () => {

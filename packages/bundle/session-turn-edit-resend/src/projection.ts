@@ -8,7 +8,7 @@ import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import type { ContentBlock, UserMessage } from '@deepseek-ai/dsh-llm'
 import { ToolCallId } from '@deepseek-ai/dsh-llm/brand'
 import type { ImageAttachmentRef, FileAttachmentRef } from '@deepseek-ai/dsh-attachment/types'
-import type { ResendJournalDraft, ResendJournalState, ResendTurnState } from './types.ts'
+import type { ResendJournalDraft, ResendJournalState, ResendPromptRecord, ResendTurnState } from './types.ts'
 
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
 
@@ -62,6 +62,14 @@ const userMessageSchema: z.ZodType<UserMessage> = z.object({
     && isJsonValue(value)),
 }).loose()
 
+const promptRecordSchema = z.object({
+  seq: z.number().int().nonnegative().transform(SessionSeq),
+  turn: z.number().int().nonnegative(),
+  message: userMessageSchema,
+  toolCalls: z.array(z.string()).readonly(),
+  endSeq: z.number().int().nonnegative().transform(SessionSeq).nullable(),
+}).strict()
+
 const turnStateSchema = z.object({
   latestStart: z.object({
     seq: z.number().int().nonnegative().transform(SessionSeq),
@@ -77,6 +85,7 @@ const turnStateSchema = z.object({
     message: userMessageSchema,
   }).strict().nullable(),
   toolCalls: z.array(z.string()).readonly(),
+  prompts: z.array(promptRecordSchema).readonly().default([]),
 }).strict()
 
 const journalDraftSchema = z.object({
@@ -100,6 +109,7 @@ const EMPTY_TURN_STATE: ResendTurnState = {
   latestEnd: null,
   prompt: null,
   toolCalls: [],
+  prompts: [],
 }
 
 const EMPTY_JOURNAL_STATE: ResendJournalState = { drafts: [] }
@@ -114,30 +124,71 @@ export const resendTurnProjectionDefinition = {
     switch (event.type) {
       case 'turn/start':
         return {
+          ...state,
           latestStart: { seq: event.seq, turn: event.data.turn },
           latestEnd: state.latestEnd,
           prompt: null,
           toolCalls: [],
         }
-      case 'turn/end':
+      case 'turn/end': {
+        const turn = event.data.turn
+        const updatedPrompts = state.prompts.map(p =>
+          p.turn === turn ? { ...p, endSeq: event.seq } : p,
+        )
         return {
           ...state,
           latestEnd: {
             seq: event.seq,
-            turn: event.data.turn,
-            replaceable: event.data.reason.kind === 'completed' || event.data.reason.kind === 'aborted',
+            turn,
+            replaceable: true,
           },
+          prompts: updatedPrompts,
         }
-      case 'user/message':
-        if (event.data.source.kind !== 'user' || state.latestStart === null || state.prompt !== null
-          || event.seq <= state.latestStart.seq
-          || state.latestEnd !== null && state.latestEnd.seq > state.latestStart.seq) return state
-        return { ...state, prompt: { seq: event.seq, message: event.data } }
-      case 'tool/call':
-        if (state.latestStart === null || event.data.turn !== state.latestStart.turn
-          || state.latestEnd !== null && state.latestEnd.seq > state.latestStart.seq
-          || state.toolCalls.includes(event.data.name)) return state
-        return { ...state, toolCalls: [...state.toolCalls, event.data.name] }
+      }
+      case 'user/message': {
+        if (event.data.source.kind !== 'user') return state
+        const turn = state.latestStart?.turn ?? 1
+        const newRecord: ResendPromptRecord = {
+          seq: event.seq,
+          turn,
+          message: event.data,
+          toolCalls: [],
+          endSeq: null,
+        }
+        const existingIdx = state.prompts.findIndex(p => p.seq === event.seq)
+        const prompts = existingIdx >= 0
+          ? state.prompts.toSpliced(existingIdx, 1, newRecord)
+          : [...state.prompts, newRecord]
+
+        const isLatestPrompt = state.latestStart !== null
+          && state.prompt === null
+          && event.seq > state.latestStart.seq
+          && (state.latestEnd === null || state.latestEnd.seq <= state.latestStart.seq)
+
+        return {
+          ...state,
+          prompt: isLatestPrompt ? { seq: event.seq, message: event.data } : state.prompt,
+          prompts,
+        }
+      }
+      case 'tool/call': {
+        const turn = event.data.turn
+        const toolName = event.data.name
+        const prompts = state.prompts.map((p) => {
+          if (p.turn !== turn || p.toolCalls.includes(toolName)) return p
+          return { ...p, toolCalls: [...p.toolCalls, toolName] }
+        })
+        const updateLatest = state.latestStart !== null
+          && turn === state.latestStart.turn
+          && (state.latestEnd === null || state.latestEnd.seq <= state.latestStart.seq)
+          && !state.toolCalls.includes(toolName)
+
+        return {
+          ...state,
+          toolCalls: updateLatest ? [...state.toolCalls, toolName] : state.toolCalls,
+          prompts,
+        }
+      }
       default:
         return state
     }

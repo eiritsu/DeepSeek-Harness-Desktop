@@ -63,7 +63,7 @@ Independent. The browser half changes no model request prefix.
 No runtime invariant companion is published because this plugin emits no independent event stream: the slot registry owns contribution lifecycles, while its Session-keyed draft and body claim are checked directly by interaction tests.
 
 - **Tool disclosure is advisory.** The editor names the tools a resend may rerun, but it does not and cannot prove the repeat safe; the user owns that decision.
-- **The entry appears on the latest turn only.** `check` selects the latest replaceable turn, so an older prompt shows no edit entry; the Host re-selects under its idle claim and refuses a stale target.
+- **Older turns may be edited.** When an earlier message on the surface is edited, resending shadows that message and all subsequent turns, allowing the user to branch the conversation from that point.
 - **An open attempt is process-local.** The editor and its draft live in client memory, so a reload drops the attempt; the Session log already holds every durable record.
 - **No optimistic transcript edit.** The editor closes on `admitted`; the replacement reaches the transcript when its `user/message` event arrives, not before.
 

@@ -1,4 +1,4 @@
-/** User-message action that opens the edit-and-resend card for the latest turn. */
+/** User-message action that opens the edit-and-resend card for a user turn. */
 import { memo } from 'react'
 import { IconEditOutlineRegular, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
@@ -32,14 +32,11 @@ export type TurnResendActionProps =
   & PropsStore<ReturnType<typeof createTurnResendStore>>
   & InjectFace<TurnResendActionInjected>
 
-/** One icon button on the latest turn's user prompt; it opens the shared edit card. */
+/** One icon button on a user prompt; it opens the shared edit card. */
 export const TurnResendAction = memo(function TurnResendAction({
-  seq, turn, beginEdit, useChat, actions, t,
+  seq, turn, beginEdit, actions, t,
 }: TurnResendActionProps) {
-  // The entry belongs only to the latest turn, so an older prompt never shows
-  // an affordance whose click would edit the newest one.
-  const lastTurn = useChat(snapshot => snapshot.timeline.turnOrder.at(-1))
-  if (turn === undefined || turn !== lastTurn) return null
+  if (turn === undefined) return null
   return (
     <Tooltip label={t('action.tip')} side="bottom">
       <button

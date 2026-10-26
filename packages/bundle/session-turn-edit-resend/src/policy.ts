@@ -34,42 +34,71 @@ function refuse(refusal: ResendRefusal): ResendSelection {
 }
 
 /**
- * Select the latest replaceable human turn, or the reason no turn is eligible.
+ * Select the replaceable human prompt (specific target or latest), or the reason no turn is eligible.
  *
- * The current surface determines the replacement range. A projected prompt
- * that an earlier replacement removed is no longer eligible.
+ * The current surface determines the replacement range. A prompt that an
+ * earlier replacement removed is no longer eligible.
  * @param session - session whose current surface is read.
  * @param state - incrementally folded turn facts.
+ * @param targetSeq - optional sequence of the specific human prompt to edit; defaults to latest.
  * @returns the eligible target, or the refusal that excludes it.
  */
-export function selectResendTarget(session: Session, state: ResendTurnState): ResendSelection {
-  const end = state.latestEnd
-  const start = state.latestStart
-  if (end === null || !end.replaceable) return refuse('no-replaceable-turn')
-  if (start !== null && start.seq > end.seq) return refuse('not-latest-turn')
-  if (start === null || start.turn !== end.turn || start.seq >= end.seq) return refuse('no-replaceable-turn')
+export function selectResendTarget(
+  session: Session,
+  state: ResendTurnState,
+  targetSeq?: SessionSeq,
+): ResendSelection {
+  let candidate: { seq: SessionSeq; turn: number; message: UserMessage } | undefined
 
-  const prompt = state.prompt
-  if (prompt === null || !session.surface.nodes.includes(prompt.seq)) return refuse('no-human-prompt')
-  const range = session.surface.nodes.filter(seq => seq >= prompt.seq && seq < end.seq)
-  if (range[0] !== prompt.seq) return refuse('no-human-prompt')
+  if (targetSeq !== undefined) {
+    const fromPrompts = state.prompts.find(p => p.seq === targetSeq)
+    if (fromPrompts !== undefined) {
+      candidate = fromPrompts
+    } else if (state.prompt !== null && state.prompt.seq === targetSeq) {
+      candidate = { seq: state.prompt.seq, turn: state.latestStart?.turn ?? 1, message: state.prompt.message }
+    }
+  } else {
+    const surfacePrompts = state.prompts.filter(p => session.surface.nodes.includes(p.seq))
+    if (surfacePrompts.length > 0) {
+      candidate = surfacePrompts.at(-1)
+    } else if (state.prompt !== null && session.surface.nodes.includes(state.prompt.seq)) {
+      candidate = { seq: state.prompt.seq, turn: state.latestStart?.turn ?? 1, message: state.prompt.message }
+    }
+  }
 
-  if (promptText(prompt.message) === undefined) return refuse('no-editable-text')
+  if (candidate === undefined) return refuse('no-replaceable-turn')
+  if (!session.surface.nodes.includes(candidate.seq)) return refuse('no-human-prompt')
+  if (promptText(candidate.message) === undefined) return refuse('no-editable-text')
+
+  const startIdx = session.surface.nodes.indexOf(candidate.seq)
+  if (startIdx === -1) return refuse('no-human-prompt')
+
+  const range = session.surface.nodes.slice(startIdx)
   const endSeq = range.at(-1)
   if (endSeq === undefined) return refuse('no-human-prompt')
+
+  const toolCallsSet = new Set<string>()
+  for (const p of state.prompts) {
+    if (p.seq >= candidate.seq) {
+      for (const tool of p.toolCalls) toolCallsSet.add(tool)
+    }
+  }
+  if (candidate.seq === state.latestStart?.seq || (state.prompt !== null && candidate.seq === state.prompt.seq)) {
+    for (const tool of state.toolCalls) toolCallsSet.add(tool)
+  }
 
   return {
     eligible: true,
     target: {
-      prompt: prompt.message,
-      turnStartSeq: start.seq,
-      turn: end.turn,
+      prompt: candidate.message,
+      turnStartSeq: candidate.seq,
+      turn: candidate.turn,
       replacement: {
-        startSeq: prompt.seq,
+        startSeq: candidate.seq,
         endSeq,
         sourceEventSeqs: range,
       },
-      toolCalls: [...state.toolCalls],
+      toolCalls: [...toolCallsSet],
     },
   }
 }

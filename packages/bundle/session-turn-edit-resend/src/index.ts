@@ -16,6 +16,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createMessage } from '@deepseek-ai/dsh-llm'
+import type { SessionSeq } from '@deepseek-ai/dsh-session/types'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { findResendOperation, readResendJournal } from './journal.ts'
 import { editPromptContent, promptText, selectResendTarget } from './policy.ts'
@@ -59,23 +60,24 @@ export class SessionTurnEditResend extends TypertRemoteService {
    */
   constructor(ctx: Context) {
     super(ctx, 'turnResend')
-    ctx.sessionProjections.register(resendTurnProjectionDefinition)
-    ctx.sessionProjections.register(resendJournalProjectionDefinition)
+    void ctx.sessionProjections.register(resendTurnProjectionDefinition)
+    void ctx.sessionProjections.register(resendJournalProjectionDefinition)
   }
 
   /**
-   * Report whether the agent's latest turn may be edited, and seed an edit.
+   * Report whether the agent's turn may be edited, and seed an edit.
    *
    * The answer uses incrementally folded turn facts and the current surface;
    * {@link submit} selects the target again under the agent's idle claim.
-   * @param agent - agent whose latest turn is offered.
+   * @param agent - agent whose turn is offered.
+   * @param targetSeq - optional sequence of the specific prompt to edit; defaults to latest.
    * @returns the editable prompt text and its turn, or why it is not editable.
    */
   @Remote
-  check(agent: Agent): ResendEligibility {
+  check(agent: Agent, targetSeq?: SessionSeq): ResendEligibility {
     const blocker = this.blocker(agent)
     if (blocker !== undefined) return { eligible: false, refusal: blocker }
-    const selection = selectResendTarget(agent.session, this.turnState(agent.session))
+    const selection = selectResendTarget(agent.session, this.turnState(agent.session), targetSeq)
     if (!selection.eligible) return { eligible: false, refusal: selection.refusal }
     return {
       eligible: true,
@@ -88,14 +90,14 @@ export class SessionTurnEditResend extends TypertRemoteService {
   }
 
   /**
-   * Replace the latest replaceable turn's prompt with the edited text and let the
+   * Replace a replaceable turn's prompt with the edited text and let the
    * driver send it as a new turn.
    *
    * Submission is idempotent in the caller's `operationId`: an identity the
    * journal already holds returns that record, so a repeated submission never
    * produces a second model request. A caller that wants a fresh attempt after
    * a recorded refusal submits a new identity.
-   * @param agent - agent whose latest turn is replaced.
+   * @param agent - agent whose turn is replaced.
    * @param request - the caller's operation identity and edited text.
    * @param signal - aborts the request before the durable commit.
    * @returns the recorded attempt, or the refusal that left no trace.
@@ -118,7 +120,7 @@ export class SessionTurnEditResend extends TypertRemoteService {
         // From the selection to the commits there is no await. `runMaintenance`
         // holds the agent's idle phase across them, so no turn can open and no
         // other submission can enter between deciding and committing.
-        const selection = selectResendTarget(session, this.turnState(session))
+        const selection = selectResendTarget(session, this.turnState(session), request.targetSeq)
         if (!selection.eligible) return { recorded: false, refusal: selection.refusal }
         const { turn, replacement, prompt } = selection.target
 
@@ -187,7 +189,7 @@ export class SessionTurnEditResend extends TypertRemoteService {
     request: ResendRequest,
     refusal: ResendBlocker,
   ): ResendSubmission {
-    const selection = selectResendTarget(agent.session, this.turnState(agent.session))
+    const selection = selectResendTarget(agent.session, this.turnState(agent.session), request.targetSeq)
     if (!selection.eligible) return { recorded: false, refusal }
     const { session } = agent
     const { turn, replacement } = selection.target

@@ -13,7 +13,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-session-turn-edit-resend/remote'
 import type { ResendOperationId, ResendSubmission } from '@deepseek-ai/dsh-session-turn-edit-resend/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
-import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { SessionId, SessionSeq } from '@deepseek-ai/dsh-session/types'
 import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
 import { TurnResendAction, type TurnResendActionInjected, type TurnResendBegin } from './TurnResendAction.tsx'
 import { TurnResendBody, type TurnResendBodyInjected, type TurnResendBodyMatch } from './TurnResendBody.tsx'
@@ -91,7 +91,7 @@ export function apply(ctx: ClientContext): void {
     store,
     inject: (sessionId: SessionId): TurnResendActionInjected => ({
       beginEdit: async (seq: number): Promise<TurnResendBegin> => {
-        const result = await ctx.remote.turnResend.check(sessionId)
+        const result = await ctx.remote.turnResend.check(sessionId, seq as SessionSeq)
         if (!result.ok) {
           claimBody(sessionId, seq)
           return {
@@ -110,8 +110,7 @@ export function apply(ctx: ClientContext): void {
             outcome: { kind: 'refused', refusal: result.value.refusal },
           }
         }
-        // The Host re-selects the latest turn; a click on any other prompt must
-        // not open an editor for a turn that prompt does not own.
+        // The Host selects the target prompt; verify startSeq matches clicked seq
         if (result.value.startSeq !== seq) return { kind: 'none' }
         claimBody(sessionId, seq)
         return {
@@ -143,7 +142,11 @@ export function apply(ctx: ClientContext): void {
       submit: async (edit: TurnResendEdit): Promise<TurnResendOutcome | undefined> => submissionOutcome(
         await ctx.remote.turnResend.submit(
           sessionId,
-          { operationId: edit.operationId as ResendOperationId, text: edit.text },
+          {
+            operationId: edit.operationId as ResendOperationId,
+            text: edit.text,
+            targetSeq: edit.startSeq as SessionSeq,
+          },
           new AbortController().signal,
         ),
       ),

@@ -25,9 +25,9 @@ import type { UserMessage } from '@deepseek-ai/dsh-llm/message'
  */
 export type ResendOperationId = Branded<'ResendOperationId'>
 
-/** Why the most recent user turn cannot be edited and resent. */
+/** Why a user turn cannot be edited and resent. */
 export type ResendRefusal =
-  /** The latest turn did not end in a state this feature may replace. */
+  /** The session contains no replaceable human turn on the surface. */
   | 'no-replaceable-turn'
   /** A turn opened after the target one, so the target is not the latest turn. */
   | 'not-latest-turn'
@@ -35,6 +35,20 @@ export type ResendRefusal =
   | 'no-human-prompt'
   /** The target prompt carries no text, so there is nothing in the composer to edit. */
   | 'no-editable-text'
+
+/** Facts about one human prompt recorded in the session. */
+export interface ResendPromptRecord {
+  /** Surface sequence of the human prompt. */
+  readonly seq: SessionSeq
+  /** Turn number the prompt originated in. */
+  readonly turn: number
+  /** The user message payload. */
+  readonly message: UserMessage
+  /** Tool names called in that turn. */
+  readonly toolCalls: readonly string[]
+  /** Turn end sequence if the turn settled, or null if open/unsettled. */
+  readonly endSeq: SessionSeq | null
+}
 
 /** Why the agent's latest turn cannot be edited right now. */
 export type ResendBlocker =
@@ -108,11 +122,13 @@ export type ResendSubmission =
    */
   | { readonly recorded: false; readonly refusal: ResendBlocker }
 
-/** Caller's request to edit the latest turn and send it again. */
+/** Caller's request to edit a user turn and send it again. */
 export interface ResendRequest {
   readonly operationId: ResendOperationId
   /** The edited text. */
   readonly text: string
+  /** The target prompt sequence on the surface (optional; defaults to the latest user prompt). */
+  readonly targetSeq?: SessionSeq
 }
 
 /** Current replaceable-turn facts folded from committed Session events. */
@@ -125,6 +141,8 @@ export interface ResendTurnState {
   readonly prompt: { readonly seq: SessionSeq; readonly message: UserMessage } | null
   /** Distinct tool names, in first-call order, for the most recently started turn. */
   readonly toolCalls: readonly string[]
+  /** All user prompts observed across turns. */
+  readonly prompts: readonly ResendPromptRecord[]
 }
 
 /** One persisted fold row for an edit-and-resend operation. */

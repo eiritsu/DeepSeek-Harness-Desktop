@@ -24,11 +24,11 @@ kind: "package-bundle"
 
 将 `session-turn-edit-resend` 行与实时 Agent 服务一起挂载。该服务是 `turnResend` Remote 命名空间下的 `TypertRemoteService`。`web` profile 叠加本 Bundle 并挂载其浏览器行 `@deepseek-ai/dsh-client-ui-turn-edit-resend`，它在最近一条可替换回合上提供编辑入口。
 
-`check(agent)` 报告该 Agent 最近一条回合当前能否编辑：composer 用于预填的提示文本、其回合号、首个被替换的 seq，以及该回合调用的工具名。`submit(agent, request, signal)` 替换该回合。拒绝要么是活动阻塞（`agent-busy`、`inbox-pending`、`aborted`），要么是选择拒绝（`no-replaceable-turn`、`not-latest-turn`、`no-human-prompt`、`no-editable-text`）。
+`check(agent, targetSeq?)` 报告某个 Agent 回合当前能否编辑：composer 用于预填的提示文本、其回合号、首个被替换的 seq，以及该回合调用的工具名。`submit(agent, request, signal)` 替换该回合。拒绝要么是活动阻塞（`agent-busy`、`inbox-pending`、`aborted`），要么是选择拒绝（`no-replaceable-turn`、`not-latest-turn`、`no-human-prompt`、`no-editable-text`）。
 
 ### 何时回合可编辑
 
-Agent 必须处于空闲且没有待处理输入，并且其最近一条回合的结束状态允许本功能替换：由循环正常完成，或由用户取消。出错、被阻塞、因输出 token 上限截断，或因崩溃遗留、fork 边界而关闭的回合不可替换。`check` 读取当前状态，并不对之后的 `submit` 作任何承诺；`submit` 在拥有 Agent 空闲阶段时会再次选择目标。
+Agent 必须处于空闲且没有待处理输入，且提示词在当前模型可见表面上存在可编辑文本。正常完成、用户取消、报错失败或未产生回答的回合，只要 Agent 处于空闲状态均可编辑重发。`check` 读取当前状态，并不对之后的 `submit` 作任何承诺；`submit` 在拥有 Agent 空闲阶段时会再次选择目标。
 
 运行过工具的回合仍可编辑，其工具名随 `check` 返回。替换会在模型可见表面遮蔽该回合的工具调用、其结果与其旧回答，而追加式日志保留每一条记录。重发要求模型再次调用这些工具，因此浏览器入口在提交前向用户确认该重复；保持可编辑是产品决定，披露即是保障。
 
