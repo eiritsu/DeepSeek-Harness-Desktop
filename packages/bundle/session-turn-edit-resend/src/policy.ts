@@ -56,26 +56,65 @@ export function selectResendTarget(
       candidate = fromPrompts
     } else if (state.prompt !== null && state.prompt.seq === targetSeq) {
       candidate = { seq: state.prompt.seq, turn: state.latestStart?.turn ?? 1, message: state.prompt.message }
+    } else {
+      const ev = session.eventAt(targetSeq)
+      if (ev?.type === 'user/message') {
+        const msg = ev.data
+        const sourceKind = (msg.source as { kind?: unknown }).kind
+        if (sourceKind !== 'compact-checkpoint') {
+          candidate = { seq: targetSeq, turn: state.latestStart?.turn ?? 1, message: msg }
+        }
+      }
     }
   } else {
     const surfacePrompts = state.prompts.filter(p => session.surface.nodes.includes(p.seq))
     if (surfacePrompts.length > 0) {
       candidate = surfacePrompts.at(-1)
-    } else if (state.prompt !== null && session.surface.nodes.includes(state.prompt.seq)) {
+    } else if (state.prompts.length > 0) {
+      candidate = state.prompts.at(-1)
+    } else if (state.prompt !== null) {
       candidate = { seq: state.prompt.seq, turn: state.latestStart?.turn ?? 1, message: state.prompt.message }
+    } else {
+      for (let s = session.seq - 1; s >= 0; s--) {
+        const ev = session.eventAt(s as SessionSeq)
+        if (ev?.type === 'user/message') {
+          const msg = ev.data
+          const sourceKind = (msg.source as { kind?: unknown }).kind
+          if (sourceKind !== 'compact-checkpoint') {
+            candidate = { seq: s as SessionSeq, turn: state.latestStart?.turn ?? 1, message: msg }
+            break
+          }
+        }
+      }
     }
   }
 
   if (candidate === undefined) return refuse('no-replaceable-turn')
-  if (!session.surface.nodes.includes(candidate.seq)) return refuse('no-human-prompt')
-  if (promptText(candidate.message) === undefined) return refuse('no-editable-text')
 
-  const startIdx = session.surface.nodes.indexOf(candidate.seq)
-  if (startIdx === -1) return refuse('no-human-prompt')
+  const surfaceNodes = session.surface.nodes
+  const headSeq = surfaceNodes[0]
+  const firstReplaceableIdx = (headSeq !== undefined && session.eventAt(headSeq)?.type === 'system/message')
+    ? 1
+    : 0
+  const replaceableNodes = surfaceNodes.slice(firstReplaceableIdx)
 
-  const range = session.surface.nodes.slice(startIdx)
+  if (replaceableNodes.length === 0) return refuse('no-replaceable-turn')
+
+  let range: readonly SessionSeq[]
+  const candidateIdx = replaceableNodes.indexOf(candidate.seq)
+  if (candidateIdx !== -1) {
+    range = replaceableNodes.slice(candidateIdx)
+  } else {
+    let targetIdx = replaceableNodes.findIndex(seq => seq >= candidate.seq)
+    if (targetIdx === -1) {
+      targetIdx = Math.max(0, replaceableNodes.length - 1)
+    }
+    range = replaceableNodes.slice(targetIdx)
+  }
+
+  const startSeq = range[0]
   const endSeq = range.at(-1)
-  if (endSeq === undefined) return refuse('no-human-prompt')
+  if (startSeq === undefined || endSeq === undefined) return refuse('no-replaceable-turn')
 
   const toolCallsSet = new Set<string>()
   for (const p of state.prompts) {
@@ -94,7 +133,7 @@ export function selectResendTarget(
       turnStartSeq: candidate.seq,
       turn: candidate.turn,
       replacement: {
-        startSeq: candidate.seq,
+        startSeq,
         endSeq,
         sourceEventSeqs: range,
       },
@@ -106,11 +145,13 @@ export function selectResendTarget(
 /**
  * Read the text a composer is seeded with when this prompt is edited.
  * @param prompt - the original human prompt recorded on the surface.
- * @returns the editable text, or undefined when the prompt carries none.
+ * @returns the editable text, or an empty string when the prompt carries none.
  */
-export function promptText(prompt: UserMessage): string | undefined {
-  const block = prompt.content.find(candidate => candidate.type === 'text')
-  return block?.type === 'text' ? block.text : undefined
+export function promptText(prompt: UserMessage): string {
+  const texts = prompt.content
+    .filter((block): block is Extract<typeof block, { type: 'text' }> => block.type === 'text')
+    .map(block => block.text)
+  return texts.join('\n')
 }
 
 /**
@@ -118,10 +159,11 @@ export function promptText(prompt: UserMessage): string | undefined {
  * @param prompt - the original human prompt recorded on the surface.
  * @param text - the edited text.
  * @returns the original message content with only its first text block changed.
- * @throws when the prompt carries no text block.
  */
 export function editPromptContent(prompt: UserMessage, text: string): UserMessage['content'] {
   const index = prompt.content.findIndex(block => block.type === 'text')
-  if (index < 0) throw new Error('the prompt to edit carries no text block')
+  if (index < 0) {
+    return [{ type: 'text', text }, ...prompt.content]
+  }
   return prompt.content.toSpliced(index, 1, { type: 'text', text })
 }

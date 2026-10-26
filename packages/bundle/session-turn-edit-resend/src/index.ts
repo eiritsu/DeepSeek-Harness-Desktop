@@ -81,10 +81,9 @@ export class SessionTurnEditResend extends TypertRemoteService {
     if (!selection.eligible) return { eligible: false, refusal: selection.refusal }
     return {
       eligible: true,
-      // The selection refuses a prompt that carries no text, so this read is total.
-      text: promptText(selection.target.prompt) ?? '',
+      text: promptText(selection.target.prompt),
       turn: selection.target.turn,
-      startSeq: selection.target.replacement.startSeq,
+      startSeq: selection.target.turnStartSeq,
       toolCalls: selection.target.toolCalls,
     }
   }

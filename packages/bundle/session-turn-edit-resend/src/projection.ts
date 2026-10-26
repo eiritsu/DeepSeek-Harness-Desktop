@@ -58,7 +58,7 @@ const userMessageSchema: z.ZodType<UserMessage> = z.object({
   source: z.custom<UserMessage['source']>(value => typeof value === 'object'
     && value !== null
     && !Array.isArray(value)
-    && (value as { kind?: unknown }).kind === 'user'
+    && (value as { kind?: unknown }).kind !== 'compact-checkpoint'
     && isJsonValue(value)),
 }).loose()
 
@@ -117,7 +117,7 @@ const EMPTY_JOURNAL_STATE: ResendJournalState = { drafts: [] }
 /** Host projection of latest-turn prompt, ending, and tool-call facts. */
 export const resendTurnProjectionDefinition = {
   key: 'resendTurn',
-  stateVersion: 1,
+  stateVersion: 2,
   stateSchema: turnStateSchema,
   init: () => EMPTY_TURN_STATE,
   apply: (state, event) => {
@@ -146,7 +146,8 @@ export const resendTurnProjectionDefinition = {
         }
       }
       case 'user/message': {
-        if (event.data.source.kind !== 'user') return state
+        const sourceKind = (event.data.source as { kind?: unknown } | undefined)?.kind
+        if (sourceKind === 'compact-checkpoint') return state
         const turn = state.latestStart?.turn ?? 1
         const newRecord: ResendPromptRecord = {
           seq: event.seq,

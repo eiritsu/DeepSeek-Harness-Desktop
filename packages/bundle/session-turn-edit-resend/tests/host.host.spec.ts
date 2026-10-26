@@ -12,7 +12,7 @@ import AgentRegistry from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { createUserMessage, LlmRuntime } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock, Message } from '@deepseek-ai/dsh-llm'
-import SessionStore, { Session, SessionId, SessionLogOffset } from '@deepseek-ai/dsh-session'
+import SessionStore, { Session, SessionId, SessionLogOffset, SessionSeq } from '@deepseek-ai/dsh-session'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
@@ -20,7 +20,7 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import { defineContentToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import SessionTurnEditResend from '../src/index.ts'
-import type { ResendOperationId } from '../src/types.ts'
+import type { ResendOperationId, ResendRequest } from '../src/types.ts'
 import { findResendOperation, readResendJournal } from '../src/journal.ts'
 import { editPromptContent, selectResendTarget } from '../src/policy.ts'
 import { HANG, MockAdapter, type ScriptEntry, SILENT_HANG, textResponse, toolCallResponse } from './mock-adapter.ts'
@@ -56,8 +56,16 @@ function settle(agent: Agent): Promise<void> {
   return agent.whenIdle()
 }
 
-function operation(id: string, text: string): { operationId: ResendOperationId; text: string } {
-  return { operationId: id as ResendOperationId, text }
+function operation(
+  id: string,
+  text: string,
+  targetSeq?: SessionSeq,
+): ResendRequest {
+  return {
+    operationId: id as ResendOperationId,
+    text,
+    ...(targetSeq !== undefined ? { targetSeq } : {}),
+  }
 }
 
 function textOf(message: { content: readonly ContentBlock[] }): string {
@@ -416,6 +424,98 @@ describe('admission', () => {
     expect(submission).toMatchObject({ recorded: true, operation: { outcome: 'refused', refusal: 'aborted' } })
     expect(adapter.requests).toHaveLength(1)
     expect(conversation(agent)).toEqual(['first question', 'first answer'])
+  })
+
+  it('allows editing and resending a historical prompt whose turn was already shadowed or compacted', async () => {
+    const { ctx, agent, adapter } = await harness([
+      textResponse('first answer'),
+      textResponse('second answer'),
+      textResponse('resent first answer'),
+    ])
+    prompt(agent, 'first question')
+    await settle(agent)
+    const firstPromptSeq = agent.session.snapshotEvents().find(event => event.type === 'user/message')!.seq
+
+    prompt(agent, 'second question')
+    await settle(agent)
+
+    // Simulate compaction of turn 1: replace nodes from turn 1 with a compaction summary
+    const firstNonSystemIdx = agent.session.surface.nodes.findIndex(seq => agent.session.eventAt(seq)?.type !== 'system/message')
+    const nonSystem = agent.session.surface.nodes.slice(firstNonSystemIdx)
+    expect(nonSystem.length).toBeGreaterThanOrEqual(4)
+
+    // Shadow turn 1 on the surface by replacing its prompt and answer with a checkpoint
+    const turn1Nodes = nonSystem.slice(0, 2)
+    agent.session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: 'summary of turn 1' }],
+      source: { kind: 'compact-checkpoint', compactionId: 'comp-1' as never },
+    }), {
+      surfaceOp: { op: 'replace', startSeq: turn1Nodes[0]!, endSeq: turn1Nodes[1]! },
+      sourceEventSeqs: turn1Nodes,
+    })
+
+    // Now firstPromptSeq is NOT in session.surface.nodes
+    expect(agent.session.surface.nodes).not.toContain(firstPromptSeq)
+
+    // The historical prompt is still eligible for edit and resend!
+    const check = ctx.turnResend.check(agent, firstPromptSeq)
+    expect(check).toMatchObject({
+      eligible: true,
+      text: 'first question',
+      turn: 1,
+      startSeq: firstPromptSeq,
+    })
+
+    // Submitting replaces the active surface starting from the compacted region
+    const submission = await ctx.turnResend.submit(
+      agent,
+      operation('op-resend-compacted', 'first question edited', firstPromptSeq),
+      NEVER_ABORTED,
+    )
+    await settle(agent)
+
+    expect(submission).toMatchObject({ recorded: true, operation: { outcome: 'admitted' } })
+    expect(conversation(agent)).toEqual(['first question edited', 'resent first answer'])
+    expect(adapter.requests).toHaveLength(3)
+  })
+
+  it('allows editing and resending a prompt with empty text or attachments', async () => {
+    const { ctx, agent, adapter } = await harness([textResponse('answered image'), textResponse('answered edited')])
+    const imageMessage = createUserMessage({
+      content: [{
+        type: 'image',
+        attachment: {
+          attachmentId: 'img-1' as never,
+          mediaType: 'image/png',
+          bytes: 100,
+          width: 10,
+          height: 10,
+        },
+      }],
+      source: { kind: 'user' },
+    })
+    agent.followup(imageMessage)
+    await settle(agent)
+
+    const promptSeq = agent.session.snapshotEvents().find(event => event.type === 'user/message')!.seq
+    const check = ctx.turnResend.check(agent, promptSeq)
+    expect(check).toMatchObject({
+      eligible: true,
+      text: '',
+      turn: 1,
+      startSeq: promptSeq,
+    })
+
+    const submission = await ctx.turnResend.submit(
+      agent,
+      operation('op-resend-img', 'now with text', promptSeq),
+      NEVER_ABORTED,
+    )
+    await settle(agent)
+
+    expect(submission).toMatchObject({ recorded: true, operation: { outcome: 'admitted' } })
+    expect(conversation(agent)).toEqual(['now with text', 'answered edited'])
+    expect(adapter.requests).toHaveLength(2)
   })
 })
 
