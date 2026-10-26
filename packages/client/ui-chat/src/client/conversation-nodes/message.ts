@@ -45,8 +45,8 @@ declare module '../contract/chat-nodes.ts' {
 
 function isCompactionCheckpoint(event: Parameters<ConversationNodeDefinition['match']>[0]): boolean {
   if (event.type !== 'user/message' || !isReplacementSurfaceEvent(event)) return false
-  const source = event.data.source as { kind?: unknown }
-  return source.kind === 'compact-checkpoint'
+  const source = event.data.source as { kind?: unknown; plugin?: unknown }
+  return source.kind === 'compact-checkpoint' || (source.kind === 'plugin' && source.plugin === 'compact')
 }
 
 /** Context presentation shared by user-role injections and developer messages. */
@@ -84,9 +84,14 @@ export const messageDefinition: ConversationNodeDefinition<MessageNode> = {
   target: 'chat',
   match: (event) => {
     if (event.type === 'user/message') {
-      return isAppendSurfaceEvent(event) && !isCompactionCheckpoint(event)
-        ? { id: String(event.data.id), role: 'start' }
-        : null
+      if (isCompactionCheckpoint(event)) return null
+      if (isAppendSurfaceEvent(event)) {
+        return { id: String(event.data.id), role: 'start' }
+      }
+      if (isReplacementSurfaceEvent(event) && event.data.source.kind === 'user') {
+        return { id: String(event.data.id), role: 'start' }
+      }
+      return null
     }
     return null
   },
@@ -112,6 +117,9 @@ export const messageDefinition: ConversationNodeDefinition<MessageNode> = {
     }
     const id = String(event.data.id)
     const claim = reader.previous<InboxState>('inbox-next-step')?.state
+    const shadowedRange = isReplacementSurfaceEvent(event) && event.surfaceOp.op === 'replace'
+      ? { startSeq: event.surfaceOp.startSeq, endSeq: event.surfaceOp.endSeq }
+      : undefined
     return claim?.currentClaimed.has(id) === true
       ? {
         kind: 'steering',
@@ -131,6 +139,7 @@ export const messageDefinition: ConversationNodeDefinition<MessageNode> = {
         time: event.time,
         content: event.data.content,
         source: event.data.source,
+        ...shadowedRange !== undefined ? { shadowedRange } : {},
       }
   },
   update: context => context.state,

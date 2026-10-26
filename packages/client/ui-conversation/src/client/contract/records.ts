@@ -48,6 +48,8 @@ export interface UserMessageNode {
   time: number
   content: readonly ContentBlock[]
   source: unknown
+  /** Range of surface sequence numbers shadowed by this replacement message. */
+  shadowedRange?: { readonly startSeq: number; readonly endSeq: number }
 }
 
 /** Recorded boundaries used to derive assistant latency and throughput. */

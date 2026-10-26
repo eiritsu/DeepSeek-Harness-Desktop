@@ -2570,6 +2570,50 @@ describe('built-in conversation node Definitions', () => {
     expect((node(current, 'tool-call')?.data as ToolChatData).root).not.toHaveProperty('kind')
   })
 
+  it('matches human user replacement message and shadows the replaced turn in Chat view', () => {
+    const value = assembler([
+      at(1, 'turn/start', { turn: 1 }),
+      at(2, 'step/start', { turn: 1, step: 1 }),
+      at(3, 'user/message', textMessage('original-user', 'original question'), { surfaceOp: 'append' }),
+      at(4, 'assistant/message', {
+        turn: 1,
+        step: 1,
+        message: assistantMessage('original-answer', 'first answer'),
+      }, { surfaceOp: 'append' }),
+      at(5, 'step/end', { turn: 1, step: 1 }),
+      at(6, 'turn/end', { turn: 1, reason: { kind: 'complete' } }),
+      at(7, 'turn/start', { turn: 2 }),
+      at(8, 'step/start', { turn: 2, step: 1 }),
+      at(9, 'user/message', {
+        ...textMessage('resent-user', 'edited question'),
+        source: { kind: 'user' },
+      }, { surfaceOp: { op: 'replace', startSeq: 3, endSeq: 4 } }),
+      at(10, 'assistant/message', {
+        turn: 2,
+        step: 1,
+        message: assistantMessage('second-answer', 'second answer'),
+      }, { surfaceOp: 'append' }),
+    ])
+
+    const current = snapshot(value)
+    const userNodes = current.order
+      .map(key => current.nodes.get(key))
+      .filter((n): n is ChatNode => n !== undefined && n.kind === 'user')
+    expect(userNodes).toHaveLength(1)
+    expect(userNodes[0]?.data).toMatchObject({
+      content: [{ type: 'text', text: 'edited question' }],
+      shadowedRange: { startSeq: 3, endSeq: 4 },
+    })
+
+    const assistantNodes = current.order
+      .map(key => current.nodes.get(key))
+      .filter((n): n is ChatNode => n !== undefined && n.kind === 'assistant-step')
+    expect(assistantNodes).toHaveLength(1)
+    expect(assistantNodes[0]?.data).toMatchObject({
+      turn: 2,
+    })
+  })
+
   it('assembles retry chains and keeps manual and automatic compaction ownership separate', () => {
     const retry = assembler([
       at(1, 'turn/start', { turn: 1 }),

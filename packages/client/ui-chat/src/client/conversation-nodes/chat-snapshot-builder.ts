@@ -512,6 +512,70 @@ function presentationPosition(
   return { anchor: node.anchorSeq, rank: 0, originalAnchor: node.anchorSeq }
 }
 
+interface ShadowedRange {
+  readonly startSeq: number
+  readonly endSeq: number
+  readonly replacementSeq: number
+  readonly minTurn?: number | undefined
+  readonly replacementTurn?: number | undefined
+}
+
+function userShadowedRange(node: ChatConversationViewNode | undefined): { readonly startSeq: number; readonly endSeq: number } | undefined {
+  if (node === undefined) return undefined
+  const candidate = node as ChatNode
+  return candidate.kind === 'user' ? candidate.data.shadowedRange : undefined
+}
+
+function activeShadowedRanges(nodes: readonly ChatConversationViewNode[]): readonly ShadowedRange[] {
+  const ranges: ShadowedRange[] = []
+  for (const node of nodes) {
+    const candidate = node as ChatNode
+    if (candidate.kind === 'user' && candidate.data.shadowedRange !== undefined) {
+      const replacementTurn = locationCoordinates(candidate.location).turn
+      let minTurn: number | undefined
+      for (const other of nodes) {
+        const otherCandidate = other as ChatNode
+        if ((otherCandidate.kind === 'user' || otherCandidate.kind === 'steering') && otherCandidate.data.seq === candidate.data.shadowedRange.startSeq) {
+          minTurn = locationCoordinates(other.location).turn
+          break
+        }
+      }
+      if (minTurn === undefined) {
+        for (const other of nodes) {
+          if (other.anchorSeq >= candidate.data.shadowedRange.startSeq && other.anchorSeq <= candidate.data.shadowedRange.endSeq) {
+            const turn = locationCoordinates(other.location).turn
+            if (turn !== undefined) {
+              minTurn = minTurn === undefined ? turn : Math.min(minTurn, turn)
+            }
+          }
+        }
+      }
+      ranges.push({
+        startSeq: candidate.data.shadowedRange.startSeq,
+        endSeq: candidate.data.shadowedRange.endSeq,
+        replacementSeq: candidate.data.seq,
+        minTurn,
+        replacementTurn,
+      })
+    }
+  }
+  return ranges
+}
+
+function isNodeShadowed(node: ChatConversationViewNode, ranges: readonly ShadowedRange[]): boolean {
+  if (ranges.length === 0) return false
+  const nodeTurn = locationCoordinates(node.location).turn
+  return ranges.some((range) => {
+    const inTurnRange = range.minTurn !== undefined
+      && range.replacementTurn !== undefined
+      && nodeTurn !== undefined
+      && nodeTurn >= range.minTurn
+      && nodeTurn < range.replacementTurn
+    const inSeqRange = node.anchorSeq >= range.startSeq && node.anchorSeq < range.replacementSeq
+    return inTurnRange || inSeqRange
+  })
+}
+
 /**
  * Order visible Chat Nodes without changing existing relative order as process
  * eligibility changes. Opening input precedes process candidates, while
@@ -522,7 +586,8 @@ function presentationPosition(
 export function orderedVisibleChatNodes(
   nodes: readonly ChatConversationViewNode[],
 ): ChatConversationViewNode[] {
-  const visible = nodes.filter(node => isVisibleChatNode(node as ChatNode))
+  const shadowed = activeShadowedRanges(nodes)
+  const visible = nodes.filter(node => isVisibleChatNode(node as ChatNode) && !isNodeShadowed(node, shadowed))
   const presentations = turnProcessPresentations(visible)
   return visible.sort((left, right) => {
     const leftPosition = presentationPosition(left, presentations)
@@ -1144,12 +1209,17 @@ export class ChatSnapshotBuilder implements ConversationViewBuilder<ChatConversa
     for (const node of upserts) {
       const previous = this.store.get(node.key)
       if (previous !== node) changes.push({ previous, current: node })
+      const previousShadowed = userShadowedRange(previous)
+      const currentShadowed = userShadowedRange(node)
+      const shadowChanged = previousShadowed?.startSeq !== currentShadowed?.startSeq
+        || previousShadowed?.endSeq !== currentShadowed?.endSeq
       const nodeStructural = previous === undefined
         || previous.kind !== node.kind
         || previous.anchorSeq !== node.anchorSeq
         || previous.visibility !== node.visibility
         || previous.groupTree !== node.groupTree
         || locationIdentity(previous.location) !== locationIdentity(node.location)
+        || shadowChanged
       structural ||= nodeStructural
       if (!nodeStructural) contentOnly.push(node)
       if (processPresentationInputChanged(previous as ChatNode | undefined, node as ChatNode, nodeStructural)) {
