@@ -1,3 +1,4 @@
+import type {} from '@deepseek-ai/dsh-client-ui-context-menu/client'
 /** Browser Chat target plugin. */
 export { apply, inject } from './apply.ts'
 export type {} from './conversation-nodes/assistant.ts'
@@ -38,7 +39,8 @@ export type {
   ChatFlowDataInjected, ChatFlowHookContext, ChatFlowInjected, ChatFlowOwnerProps, ChatFlowSlotProps, UseGroupHeaderAction,
   CommandRowOwnerProps, CommandRowProps, MessageImagesProps, OpenFileOptions, PresentationInjected,
   QuotaNoticeCode, QuotaNoticeHostProps, QuotaNoticeInjected, QuotaNoticeOwnerProps, QuotaNoticeState,
-  ReasoningBodyOwnerProps, ReasoningContentInput, UserActionOwnerProps, UserContentAttachment, UserContentData, UserContentInput,
+  ReasoningBodyOwnerProps, ReasoningContentInput, UserActionOwnerProps, UserBeforeOwnerProps,
+  UserContentAttachment, UserContentData, UserContentInput,
   UserMessageBodyOwnerProps,
   TurnProcessOwnerProps, TurnTailOwnerProps, UseChat, UseChatNodeTurnData, UseDisclosure, UsePresentation, UseGroupAction,
 } from './contract/slots.ts'
