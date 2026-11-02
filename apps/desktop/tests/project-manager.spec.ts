@@ -3,7 +3,12 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { resolveDesktopPaths } from '../src/paths.ts'
-import { DesktopProjectManager } from '../src/project-manager.ts'
+import {
+  cleanUninstalledOnDemandBundles,
+  DesktopProjectManager,
+  ensureCompatibilityExemptions,
+  migrateRecoveredPatch,
+} from '../src/project-manager.ts'
 import { readProfilePlugins } from '@deepseek-ai/dsh-app-boot'
 import { runtimeFixture } from './runtime-fixture.ts'
 
@@ -328,5 +333,100 @@ describe('desktop link-backend projections', () => {
     expect(existsSync(join(profile, '.dsh-module-fallback'))).toBe(false)
     expect(lstatSync(join(profile, 'node_modules', 'bridge'), { throwIfNoEntry: false })).toBeUndefined()
     expect(existsSync(join(target, 'package.json'))).toBe(true)
+  })
+})
+
+describe('desktop profile migrations and compatibility', () => {
+  it('automatically creates and merges compatibility exemptions', () => {
+    const root = temporaryRoot()
+    const pkgJson = join(root, 'package.json')
+    writeFileSync(pkgJson, JSON.stringify({
+      dependencies: {
+        '@deepseek-ai/dsh-custom-plugin': '0.2.1-rc.3',
+      },
+    }))
+
+    ensureCompatibilityExemptions(root, '0.2.2-alpha.2')
+
+    const compatPath = join(root, 'compatibility.json')
+    expect(existsSync(compatPath)).toBe(true)
+    const content = JSON.parse(readFileSync(compatPath, 'utf8')) as Record<string, string[]>
+    expect(content['@deepseek-ai/dsh-im-integration@0.2.1-rc.3']).toContain('0.2.2-alpha.2')
+    expect(content['@deepseek-ai/dsh-custom-plugin@0.2.1-rc.3']).toContain('0.2.2-alpha.2')
+
+    // Calling again with another version adds it without removing existing
+    ensureCompatibilityExemptions(root, '0.2.2')
+    const updated = JSON.parse(readFileSync(compatPath, 'utf8')) as Record<string, string[]>
+    expect(updated['@deepseek-ai/dsh-im-integration@0.2.1-rc.3']).toEqual(['0.2.2-alpha.2', '0.2.2'])
+  })
+
+  it('cleans uninstalled on-demand bundles from dsh.profile.bundles', () => {
+    const root = temporaryRoot()
+    const pkgJson = join(root, 'package.json')
+    writeFileSync(pkgJson, JSON.stringify({
+      dsh: {
+        profile: {
+          bundles: [
+            '@deepseek-ai/dsh-base',
+            '@deepseek-ai/dsh-cua-bundle',
+            '@deepseek-ai/dsh-subagent-claude-code',
+          ],
+        },
+      },
+      dependencies: {
+        '@deepseek-ai/dsh-subagent-claude-code': '0.2.2-alpha.2',
+      },
+    }))
+
+    cleanUninstalledOnDemandBundles(root)
+
+    const updated = JSON.parse(readFileSync(pkgJson, 'utf8')) as {
+      dsh: { profile: { bundles: string[] } }
+    }
+    // cua-bundle is not installed, so it should be removed
+    expect(updated.dsh.profile.bundles).not.toContain('@deepseek-ai/dsh-cua-bundle')
+    // subagent-claude-code is installed, so it should be retained
+    expect(updated.dsh.profile.bundles).toContain('@deepseek-ai/dsh-subagent-claude-code')
+    expect(updated.dsh.profile.bundles).toContain('@deepseek-ai/dsh-base')
+  })
+
+  it('migrates user configurations from backup patch if active patch is reset', () => {
+    const root = temporaryRoot()
+    const patchPath = join(root, 'cordis.patch.yml')
+    writeFileSync(patchPath, '[]\n')
+
+    const backupContent = `
+- id: ui-settings-account
+  name: "@deepseek-ai/dsh-client-ui-settings-account"
+
+- id: llm-pi-ai
+  name: "@deepseek-ai/dsh-llm-pi-ai"
+  config:
+    providers:
+      custom-ai:
+        api: openai-responses
+        apiKeyEnv: CUSTOM_KEY
+
+- id: agent-preset-registry
+  name: "@deepseek-ai/dsh-agent-preset-registry"
+  config:
+    presets:
+      ptc:
+        name: PTC
+`
+    const backupPath = join(root, 'cordis.patch.yml.bak-1793589758061')
+    writeFileSync(backupPath, backupContent)
+
+    migrateRecoveredPatch(root)
+
+    const restored = readFileSync(patchPath, 'utf8')
+    expect(restored).toContain('- id: llm-pi-ai')
+    expect(restored).toContain('- id: agent-preset-registry')
+    expect(restored).not.toContain('[]')
+
+    // Calling again does not duplicate entries
+    migrateRecoveredPatch(root)
+    const matches = restored.match(/- id: llm-pi-ai/g)
+    expect(matches?.length).toBe(1)
   })
 })

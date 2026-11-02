@@ -8,7 +8,9 @@ import {
   openSync,
   realpathSync,
   closeSync,
+  readdirSync,
   readFileSync,
+  statSync,
   unlinkSync,
   writeFileSync,
   writeSync,
@@ -23,7 +25,7 @@ import type { DesktopPaths } from './paths.ts'
 import type { DesktopRelease } from './release.ts'
 import { readDesktopRuntime } from './runtime-tree.ts'
 import { initProfile, removeLinkProjections, sanitizeProfile } from '@deepseek-ai/dsh-app-boot'
-import { PROFILE_TEMPLATES, type ProfileTemplate } from '@deepseek-ai/dsh-official-bundles'
+import { ON_DEMAND_BUNDLES, PROFILE_TEMPLATES, type ProfileTemplate } from '@deepseek-ai/dsh-official-bundles'
 
 const PROJECT_NAME = '@deepseek-ai/dsh-desktop-runtime'
 const DSH_PACKAGE = '@deepseek-ai/dsh'
@@ -56,6 +58,234 @@ function migrateProfileSettings(projectDir: string): void {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(item => typeof item === 'string')
+}
+
+const DEFAULT_ECOSYSTEM_EXEMPTIONS = [
+  '@deepseek-ai/dsh-im-integration@0.2.1-rc.3',
+  '@deepseek-ai/dsh-tools-connections@0.2.1-rc.3',
+  '@deepseek-ai/dsh-calendar@0.2.1-rc.3',
+  '@deepseek-ai/dsh-community-plugin-catalog@0.2.1-rc.3',
+  '@deepseek-ai/dsh-community-skill-catalog@0.2.1-rc.3',
+  '@deepseek-ai/dsh-lark-integration@0.2.1-rc.3',
+  '@deepseek-ai/dsh-subagent-claude-code@0.2.1-rc.3',
+  '@deepseek-ai/dsh-subagent-codex@0.2.1-rc.3',
+  '@deepseek-ai/dsh-superagent@0.2.1-rc.3',
+]
+
+/**
+ * Ensure compatibility exemptions exist for ecosystem plugins and local dependencies.
+ * @param projectDir - Profile directory.
+ * @param runtimeVersion - Running DSH version to grant exemption for.
+ */
+export function ensureCompatibilityExemptions(projectDir: string, runtimeVersion: string): void {
+  const compatPath = join(projectDir, 'compatibility.json')
+  const exemptions: Record<string, string[]> = {}
+  if (existsSync(compatPath)) {
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(compatPath, 'utf8'))
+      if (isRecord(parsed)) {
+        for (const [key, value] of Object.entries(parsed)) {
+          if (isStringArray(value)) {
+            exemptions[key] = [...value]
+          }
+        }
+      }
+    } catch {
+      // Treat unreadable compatibility file as empty
+    }
+  }
+
+  const manifestPath = join(projectDir, 'package.json')
+  const packageDeps: string[] = []
+  if (existsSync(manifestPath)) {
+    try {
+      const manifest: unknown = JSON.parse(readFileSync(manifestPath, 'utf8'))
+      if (isRecord(manifest)) {
+        const manifestsToInspect = [manifest.dependencies, manifest.optionalDependencies, manifest.peerDependencies]
+        for (const depMap of manifestsToInspect) {
+          if (isRecord(depMap)) {
+            for (const [name, versionSpec] of Object.entries(depMap)) {
+              if (typeof versionSpec === 'string' && name.startsWith('@deepseek-ai/')) {
+                const cleanVersion = versionSpec.replace(/^[~^]/, '').trim()
+                if (cleanVersion.length > 0) {
+                  packageDeps.push(`${name}@${cleanVersion}`)
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch {
+      // Ignore unparseable manifest
+    }
+  }
+
+  let modified = false
+  const targets = new Set([...DEFAULT_ECOSYSTEM_EXEMPTIONS, ...packageDeps])
+  for (const target of targets) {
+    const list = exemptions[target] ?? []
+    if (!list.includes(runtimeVersion)) {
+      exemptions[target] = [...list, runtimeVersion]
+      modified = true
+    }
+  }
+
+  if (modified || !existsSync(compatPath)) {
+    writeJson(compatPath, exemptions)
+  }
+}
+
+/**
+ * Remove uninstalled on-demand bundles from dsh.profile.bundles to prevent "not-bundle" errors.
+ * @param projectDir - Profile directory.
+ */
+export function cleanUninstalledOnDemandBundles(projectDir: string): void {
+  const manifestPath = join(projectDir, 'package.json')
+  if (!existsSync(manifestPath)) return
+  try {
+    const manifest: unknown = JSON.parse(readFileSync(manifestPath, 'utf8'))
+    if (!isRecord(manifest)) return
+    const dsh = manifest.dsh
+    if (!isRecord(dsh)) return
+    const profile = dsh.profile
+    if (!isRecord(profile) || !Array.isArray(profile.bundles)) return
+    const bundles = profile.bundles as unknown[]
+    const deps = isRecord(manifest.dependencies) ? manifest.dependencies : {}
+    const filtered = bundles.filter((bundle) => {
+      if (typeof bundle !== 'string') return false
+      if (ON_DEMAND_BUNDLES.includes(bundle)) {
+        return Object.hasOwn(deps, bundle) || existsSync(join(projectDir, 'node_modules', bundle))
+      }
+      return true
+    })
+    if (filtered.length !== bundles.length) {
+      profile.bundles = filtered
+      writeJson(manifestPath, manifest)
+    }
+  } catch {
+    // Leave invalid manifest for standard error handling
+  }
+}
+
+const USER_CONFIG_PATCH_IDS = [
+  'llm-pi-ai',
+  'agent-default-model',
+  'agent-preset-registry',
+  'subagent-model-selection-settings',
+  'permission',
+  'locale',
+  'ui-theme',
+  'web',
+  'ui-conversation',
+]
+
+/**
+ * Extract top-level patch entry blocks keyed by their identifier.
+ * @param content - cordis.patch.yml content.
+ * @returns Map of patch id to verbatim YAML block string.
+ */
+export function extractPatchBlocks(content: string): Map<string, string> {
+  const blocks = new Map<string, string>()
+  const lines = content.split(/\r?\n/)
+  let currentId: string | undefined
+  let currentLines: string[] = []
+
+  const flush = (): void => {
+    if (currentId !== undefined && currentLines.length > 0) {
+      blocks.set(currentId, currentLines.join('\n'))
+    }
+  }
+
+  for (const line of lines) {
+    const match = /^- id:\s*([^\s#]+)/.exec(line)
+    if (match) {
+      flush()
+      currentId = match[1]
+      currentLines = [line]
+    } else if (currentId !== undefined) {
+      currentLines.push(line)
+    }
+  }
+  flush()
+  return blocks
+}
+
+/**
+ * Restore user configurations from previous patch backups if active patch was wiped or reset.
+ * @param projectDir - Profile directory.
+ */
+export function migrateRecoveredPatch(projectDir: string): void {
+  const patchPath = join(projectDir, 'cordis.patch.yml')
+  if (!existsSync(patchPath)) return
+
+  let activeContent = readFileSync(patchPath, 'utf8')
+  const activeBlocks = extractPatchBlocks(activeContent)
+
+  if (activeBlocks.has('llm-pi-ai')) return
+
+  let files: string[]
+  try {
+    files = readdirSync(projectDir)
+  } catch {
+    return
+  }
+
+  const backupFiles = files
+    .filter(f => f.startsWith('cordis.patch.yml.bak-'))
+    .map((name) => {
+      const fullPath = join(projectDir, name)
+      try {
+        const stat = statSync(fullPath)
+        return { name, path: fullPath, mtimeMs: stat.mtimeMs }
+      } catch {
+        return undefined
+      }
+    })
+    .filter((entry): entry is { name: string; path: string; mtimeMs: number } => entry !== undefined)
+    .sort((a, b) => b.mtimeMs - a.mtimeMs)
+
+  let backupBlocks: Map<string, string> | undefined
+  for (const backup of backupFiles) {
+    try {
+      const content = readFileSync(backup.path, 'utf8')
+      const blocks = extractPatchBlocks(content)
+      if (blocks.has('llm-pi-ai')) {
+        backupBlocks = blocks
+        break
+      }
+    } catch {
+      // Continue to next backup
+    }
+  }
+
+  if (backupBlocks === undefined) return
+
+  const blocksToRestore: string[] = []
+  for (const id of USER_CONFIG_PATCH_IDS) {
+    const block = backupBlocks.get(id)
+    if (!activeBlocks.has(id) && block !== undefined) {
+      blocksToRestore.push(block)
+    }
+  }
+
+  if (blocksToRestore.length === 0) return
+
+  const trimmed = activeContent.trim()
+  if (trimmed === '[]' || trimmed.endsWith('\n[]') || trimmed.endsWith('\r\n[]')) {
+    activeContent = activeContent.replace(/\[\]\s*$/, '').trimEnd()
+  }
+
+  const separator = activeContent.length > 0 ? '\n\n' : ''
+  const restoredContent = `${activeContent}${separator}${blocksToRestore.join('\n\n')}\n`
+  writeFileSync(patchPath, restoredContent, { mode: 0o600 })
+}
+
 /** Initializes the Desktop profile and disables third-party bundles during recovery. */
 export class DesktopProjectManager {
   /**
@@ -82,9 +312,12 @@ export class DesktopProjectManager {
   async applyRelease(): Promise<void> {
     await this.withLock(() => {
       // Validation only: an unreadable or mismatched runtime descriptor stops preparation before the Host starts.
-      readDesktopRuntime(this.runtime.dsh)
+      const runtime = readDesktopRuntime(this.runtime.dsh)
       migrateProfileSettings(this.paths.profile)
       createPluginProfile(this.paths.profile)
+      cleanUninstalledOnDemandBundles(this.paths.profile)
+      ensureCompatibilityExemptions(this.paths.profile, runtime.release.version)
+      migrateRecoveredPatch(this.paths.profile)
       removeLinkProjections(this.paths.profile)
     })
   }
