@@ -25,7 +25,12 @@
 import { INVALID_CREDENTIAL_CODE, LlmError, normalizeApiKey } from '@deepseek-ai/dsh-llm'
 import type { LlmDiscoveredModel, LlmModelDiscoveryOperation } from '@deepseek-ai/dsh-llm'
 import { attributionHeaders } from '@deepseek-ai/dsh-llm'
-import { catalogModels } from './catalog.ts'
+import {
+  catalogModels,
+  catalogProvider,
+  isKnownMultimodalModelName,
+  sharedCatalogApi,
+} from './catalog.ts'
 
 /**
  * Protocols whose model listing this module can read. OpenAI protocols use
@@ -272,8 +277,77 @@ export async function discoverModels(
 ): Promise<readonly LlmDiscoveredModel[]> {
   // A catalog route already has its answer, and a better one: the installed
   // entries carry context windows and output caps no listing endpoint reports.
-  if (request.provider !== undefined) {
+  const providerDef = request.provider ? catalogProvider(request.provider) : undefined
+  if (providerDef !== undefined && request.provider !== undefined) {
     const installed = catalogModels(request.provider)
+    if (installed.size > 0 && request.apiKey === undefined && request.baseURL === undefined) {
+      return [...installed.values()].map(model => ({
+        id: model.id,
+        name: model.name,
+        contextWindow: model.contextWindow,
+        maxTokens: model.maxTokens,
+        inputModalities: [...model.input],
+      }))
+    }
+    const baseURL = request.baseURL ?? providerDef.baseUrl
+    const stored = storedProfile?.()
+    const supplied = request.apiKey ?? await stored?.resolveApiKey()
+    const apiKey = supplied === undefined ? undefined : usableProbeKey(supplied)
+    const api = request.api ?? (installed.size > 0 ? sharedCatalogApi(installed) : undefined) ?? 'openai-completions'
+
+    if (baseURL && apiKey && LISTABLE_PROTOCOLS.has(api)) {
+      try {
+        const url = listingUrl(baseURL, api)
+        const headers = new Headers(stored?.headers === undefined ? undefined : Object.entries(stored.headers))
+        headers.set('accept', 'application/json')
+        if (api === 'anthropic-messages') {
+          headers.set('anthropic-version', ANTHROPIC_VERSION)
+          headers.set('x-api-key', apiKey)
+        } else {
+          headers.set('authorization', `Bearer ${apiKey}`)
+        }
+        if (request.provider.toLowerCase().includes('opencode') || baseURL.toLowerCase().includes('opencode')) {
+          headers.set('x-opencode-session', 'ses_discovery')
+        }
+        for (const [name, value] of Object.entries(attributionHeaders())) headers.set(name, value)
+        const response = await fetch(url, {
+          method: 'GET',
+          headers,
+          ...request.signal === undefined ? {} : { signal: request.signal },
+        })
+        if (response.ok) {
+          const text = await readBounded(response, url)
+          const body: unknown = JSON.parse(text)
+          const liveModels = readListing(body)
+          if (liveModels.length > 0) {
+            const liveMap = new Map(liveModels.map(m => [m.id, m]))
+            const result: LlmDiscoveredModel[] = []
+            for (const model of installed.values()) {
+              const live = liveMap.get(model.id)
+              result.push({
+                id: model.id,
+                name: live?.name ?? model.name,
+                contextWindow: live?.contextWindow ?? model.contextWindow,
+                maxTokens: live?.maxTokens ?? model.maxTokens,
+                inputModalities: [...model.input],
+              })
+              liveMap.delete(model.id)
+            }
+            for (const live of liveMap.values()) {
+              const isMultimodal = isKnownMultimodalModelName(live.id)
+              result.push({
+                ...live,
+                ...isMultimodal ? { inputModalities: ['text', 'image'] as const } : {},
+              })
+            }
+            return result
+          }
+        }
+      } catch {
+        // Fall back to catalog on network or auth errors
+      }
+    }
+
     if (installed.size > 0) {
       return [...installed.values()].map(model => ({
         id: model.id,
@@ -322,6 +396,9 @@ export async function discoverModels(
       if (apiKey !== undefined) headers.set('x-api-key', apiKey)
     } else if (apiKey !== undefined) {
       headers.set('authorization', `Bearer ${apiKey}`)
+    }
+    if ((request.provider?.toLowerCase().includes('opencode')) || request.baseURL.toLowerCase().includes('opencode')) {
+      headers.set('x-opencode-session', 'ses_discovery')
     }
     for (const [name, value] of Object.entries(attributionHeaders())) headers.set(name, value)
     response = await fetch(url, {

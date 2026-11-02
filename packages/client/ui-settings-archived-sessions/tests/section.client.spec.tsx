@@ -134,6 +134,7 @@ function sectionProps(fixture: Fixture = {}, commands: PageCommands = {}): {
       useRemoteAccess: unusedHook,
       useSessionAccess: unusedHook,
       useWorkspaceAccess: unusedHook,
+      useContextMenu: unusedHook,
       useWorkspaces: workspaceHook({
         items: fixture.items ?? [],
         archivedSessionIds: (fixture.archived ?? []).map(sid),

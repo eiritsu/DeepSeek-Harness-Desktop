@@ -523,6 +523,10 @@ function requestHeaders(
       ...options.purpose === undefined ? {} : { purpose: options.purpose },
     })
     const headers = prepare === undefined ? initial : prepare(request, initial)
+    const isOpencode = options.provider.toLowerCase().includes('opencode') || baseURL.toLowerCase().includes('opencode')
+    if (isOpencode && options.sessionId !== undefined && !headers.has('x-opencode-session')) {
+      headers.set('x-opencode-session', String(options.sessionId))
+    }
     for (const [name, value] of Object.entries(attributionHeaders())) headers.set(name, value)
     return Object.fromEntries(headers)
   } catch (error) {

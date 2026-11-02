@@ -2,7 +2,7 @@ import { memo, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { PendingSubmission } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
-import type { InjectFace, PropsRenderFactories, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
+import type { InjectFace, PropsRenderFactories, PropsRenderSlots, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 import type { UserTextFacts } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { JsonBlock, StateDot, TextShimmer } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {
@@ -324,14 +324,19 @@ export function PendingSubmissionBubble({ submission, loadImage, renderFactorySl
   )
 }
 
+interface UserMessageBaseViewProps {
+  useMessageClaims?: SnapshotSelectorHook<MessageBodyClaimSet> | undefined
+  renderSlot?:
+    | PropsRenderSlots<'conversation.chat.user-actions'>['renderSlot']
+    | PropsRenderSlots<'conversation.chat.user.before'>['renderSlot']
+    | undefined
+  renderSlotChain: PropsRenderSlots<'conversation.chat.user.before'>['renderSlotChain']
+}
+
 /** Props of the user-message renderer carrying the message action seat and body chain. */
 type UserMessageNodeViewProps =
-  ChatNodeViewProps<'user' | 'steering'>
-  & Partial<InjectFace<{ hooks: { messageClaims: ObservableSnapshot<MessageBodyClaimSet> } }>>
-  & {
-    renderSlot?: PropsRenderSlots<'conversation.chat.user-actions'>['renderSlot']
-    renderSlotChain: PropsRenderSlots<'conversation.chat.user.before' | 'conversation.chat.user-body'>['renderSlotChain']
-  }
+  | (ChatNodeViewProps<'user'> & UserMessageBaseViewProps & Partial<InjectFace<{ hooks: { messageClaims: ObservableSnapshot<MessageBodyClaimSet> } }>>)
+  | (ChatNodeViewProps<'steering'> & UserMessageBaseViewProps)
 
 /** User and admitted-steering keyed Chat renderer carrying the message action seat and body chain. */
 export const UserMessageNodeView = memo(function UserMessageNodeView({
@@ -361,15 +366,28 @@ export const UserMessageNodeView = memo(function UserMessageNodeView({
           clock="start"
           className={css.actions}
           {...renderSlot !== undefined
-            ? { extraActions: renderSlot('conversation.chat.user-actions', { seq: data.seq, turn }) }
+            ? {
+              extraActions: (
+                renderSlot as (
+                  key: 'conversation.chat.user-actions',
+                  owner: { seq: number; turn: number | undefined },
+                ) => ReactNode
+              )('conversation.chat.user-actions', { seq: data.seq, turn }),
+            }
             : {}}
           t={t}
         />
       )}
     />
   )
-  if (node.kind !== 'user') return bubble
-  return renderSlotChain(
+  if (!claimed) return bubble
+  return (
+    renderSlotChain as (
+      key: 'conversation.chat.user-body',
+      owner: { seq: number; turn: number | undefined; claimed: boolean },
+      opts: { fallback: ReactNode; overlay: boolean },
+    ) => ReactNode
+  )(
     'conversation.chat.user-body',
     { seq: data.seq, turn, claimed },
     { fallback: bubble, overlay: true },

@@ -40,8 +40,11 @@ export interface NativeBuildSpec {
  * @throws When the receipt is invalid or the application executable is missing.
  */
 export async function nativeExecutablePath(directory: string): Promise<string> {
-  const receipt = NativeApplication.parse(JSON.parse(await readFile(join(directory, 'current.json'), 'utf8')))
-  const executable = join(directory, receipt.bundle, 'DSH Computer Use.app', 'Contents', 'MacOS', 'dsh-cua-native')
+  const resolvedDirectory = directory.includes('.asar')
+    ? directory.replace(/\.asar(?=[\\/])/u, '.asar.unpacked')
+    : directory
+  const receipt = NativeApplication.parse(JSON.parse(await readFile(join(resolvedDirectory, 'current.json'), 'utf8')))
+  const executable = join(resolvedDirectory, receipt.bundle, 'DSH Computer Use.app', 'Contents', 'MacOS', 'dsh-cua-native')
   await access(executable, constants.X_OK)
   return executable
 }
@@ -104,8 +107,26 @@ export async function buildNativeExecutable(spec: NativeBuildSpec): Promise<stri
  * @returns Executable inside a ready application without compiling or re-signing an installed package.
  */
 export async function prepareNativeExecutable(spec: NativeBuildSpec): Promise<string> {
-  if (await isSourcePackage(spec.packageRoot)) return buildNativeExecutable(spec)
-  const executable = await nativeExecutablePath(join(spec.packageRoot, 'native', 'bin', `darwin-${spec.architecture}`))
-  spec.signal.throwIfAborted()
-  return executable
+  if (await isSourcePackage(spec.packageRoot)) {
+    const prebuilt = join(spec.packageRoot, 'native', 'bin', `darwin-${spec.architecture}`)
+    try {
+      const executable = await nativeExecutablePath(prebuilt)
+      spec.signal.throwIfAborted()
+      return executable
+    } catch {
+      return buildNativeExecutable(spec)
+    }
+  }
+  const targetDir = join(spec.packageRoot, 'native', 'bin', `darwin-${spec.architecture}`)
+  try {
+    const executable = await nativeExecutablePath(targetDir)
+    spec.signal.throwIfAborted()
+    return executable
+  } catch (error) {
+    try {
+      return await buildNativeExecutable(spec)
+    } catch {
+      throw error
+    }
+  }
 }

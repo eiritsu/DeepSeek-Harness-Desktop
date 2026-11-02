@@ -229,6 +229,173 @@ export function catalogProviderIds(): readonly string[] {
   return [...catalogProviders().keys()]
 }
 
+/** Whether a model id names a known reasoning model pattern. */
+export function isKnownReasoningModelName(id: string): boolean {
+  const lower = id.toLowerCase()
+  return lower.includes('r1')
+    || lower.includes('reasoner')
+    || lower.includes('reasoning')
+    || lower.includes('thinking')
+    || lower.includes('1017')
+    || lower.includes('v4.1')
+    || lower.includes('qwq')
+    || lower.includes('qvq')
+    || /(?:^|[-_/])o[134](?:[-_/]|$)/.test(lower)
+}
+
+/** Whether a model id names a known multimodal model pattern. */
+export function isKnownMultimodalModelName(id: string): boolean {
+  const lower = id.toLowerCase()
+  return lower.includes('vision')
+    || lower.includes('vl')
+    || lower.includes('4v')
+    || lower.includes('4o')
+    || lower.includes('flash')
+    || lower.includes('omni')
+    || lower.includes('gemini')
+    || lower.includes('sonnet')
+    || lower.includes('opus')
+    || lower.includes('haiku')
+    || lower.includes('1017')
+    || lower.includes('qvq')
+    || lower.includes('multimodal')
+}
+
+/** Infer default input modalities for uncataloged or catalog models. */
+export function inferDefaultInput(
+  id: string,
+  defaultInput: Model<Api>['input'],
+): Model<Api>['input'] {
+  if (isKnownMultimodalModelName(id)) {
+    return ['text', 'image']
+  }
+  return [...defaultInput]
+}
+
+/** Infer default context window for uncataloged or catalog models. */
+export function inferDefaultContextWindow(
+  id: string,
+  defaultContextWindow: number,
+): number {
+  const lower = id.toLowerCase()
+
+  const matchK = lower.match(/(?:^|[-_/:])(\d+)k\b/)
+  if (matchK && matchK[1]) {
+    const k = parseInt(matchK[1], 10)
+    if (k > 0 && k <= 4096) {
+      return k * 1024
+    }
+  }
+  if (/(?:^|[-_/:])1m\b/.test(lower) || lower.includes('1000k')) {
+    return 1_000_000
+  }
+  if (/(?:^|[-_/:])2m\b/.test(lower)) {
+    return 2_000_000
+  }
+
+  let inferred: number | undefined
+
+  if (lower.includes('deepseek')) {
+    inferred = 64_000
+  } else if (lower.includes('claude')) {
+    inferred = 200_000
+  } else if (lower.includes('gemini')) {
+    inferred = 1_000_000
+  } else if (
+    /(?:^|[-_/])o[134](?:[-_/]|$)/.test(lower)
+    || lower.includes('gpt-4o')
+    || lower.includes('gpt-4-turbo')
+    || lower.includes('gpt-4.1')
+  ) {
+    inferred = 128_000
+  } else if (lower.includes('gpt-4')) {
+    inferred = 8_192
+  } else if (lower.includes('gpt-3.5')) {
+    inferred = 16_384
+  } else if (lower.includes('qwen') || lower.includes('qwq')) {
+    if (
+      lower.includes('2.5')
+      || lower.includes('max')
+      || lower.includes('plus')
+      || lower.includes('turbo')
+    ) {
+      inferred = 128_000
+    } else {
+      inferred = 32_768
+    }
+  } else if (
+    lower.includes('llama-3.1')
+    || lower.includes('llama-3.2')
+    || lower.includes('llama-3.3')
+    || lower.includes('llama3.1')
+    || lower.includes('llama3.2')
+    || lower.includes('llama3.3')
+  ) {
+    inferred = 128_000
+  } else if (lower.includes('llama-3') || lower.includes('llama3')) {
+    inferred = 8_192
+  } else if (lower.includes('llama-2') || lower.includes('llama2')) {
+    inferred = 4_096
+  } else if (lower.includes('glm-4')) {
+    inferred = 128_000
+  } else if (lower.includes('glm-3')) {
+    inferred = 32_768
+  } else if (lower.includes('mistral-large') || lower.includes('codestral')) {
+    inferred = 128_000
+  } else if (lower.includes('mistral') || lower.includes('mixtral')) {
+    inferred = 32_768
+  } else if (lower.includes('moonshot') || lower.includes('kimi')) {
+    inferred = 128_000
+  } else if (lower.includes('yi-') || lower.includes('yi/')) {
+    inferred = 200_000
+  } else if (lower.includes('minimax')) {
+    inferred = 1_000_000
+  } else if (lower.includes('gemma-2') || lower.includes('gemma2')) {
+    inferred = 8_192
+  }
+
+  if (inferred !== undefined) {
+    if (defaultContextWindow > 0 && defaultContextWindow < inferred) {
+      return defaultContextWindow
+    }
+    return inferred
+  }
+
+  return defaultContextWindow
+}
+
+/**
+ * Adapt a catalog model with multimodal and reasoning capabilities when its identity matches known patterns.
+ * @param model - model descriptor to adapt.
+ * @returns adapted model with reasoning and multimodal input preserved or upgraded.
+ */
+export function adaptCatalogModel(model: Model<Api>): Model<Api> {
+  const isMultimodal = isKnownMultimodalModelName(model.id)
+  const isReasoning = isKnownReasoningModelName(model.id)
+  let input = model.input
+  if (isMultimodal && !input.includes('image')) {
+    input = ['text', 'image']
+  }
+  let reasoning = model.reasoning
+  let thinkingLevelMap = model.thinkingLevelMap
+  if (isReasoning && !reasoning) {
+    reasoning = true
+    thinkingLevelMap = thinkingLevelMap ?? {
+      off: 'none',
+      low: 'low',
+      medium: 'medium',
+      high: 'high',
+      max: 'max',
+    }
+  }
+  return {
+    ...model,
+    input,
+    ...reasoning !== undefined ? { reasoning } : {},
+    ...thinkingLevelMap !== undefined ? { thinkingLevelMap } : {},
+  }
+}
+
 /**
  * The installed catalog models for one route, indexed by model id.
  * @param provider - provider route key.
@@ -237,7 +404,7 @@ export function catalogProviderIds(): readonly string[] {
 export function catalogModels(provider: string): Map<string, Model<Api>> {
   if (!catalogProviders().has(provider)) return new Map()
   const models = getBuiltinModels(provider as BuiltinProvider) as Model<Api>[]
-  return new Map(models.map(model => [model.id, model]))
+  return new Map(models.map(model => [model.id, adaptCatalogModel(model)]))
 }
 
 /**
@@ -706,7 +873,7 @@ function invalid(provider: string, detail: string): never {
  * spanning Responses and Chat Completions) has no such answer, so a model it
  * does not describe must name its protocol at the route.
  */
-function sharedCatalogApi(defaults: ReadonlyMap<string, Model<Api>>): string | undefined {
+export function sharedCatalogApi(defaults: ReadonlyMap<string, Model<Api>>): string | undefined {
   const apis = new Set<string>()
   for (const model of defaults.values()) apis.add(model.api)
   return apis.size === 1 ? [...apis][0] : undefined
@@ -737,136 +904,6 @@ interface ModelReasoning {
  * @param base - the installed catalog entry of the same id, when one exists.
  * @returns the reasoning fields the materialized model carries.
  */
-/** Whether a model id names a known reasoning model pattern. */
-function isKnownReasoningModelName(id: string): boolean {
-  const lower = id.toLowerCase()
-  return lower.includes('r1')
-    || lower.includes('reasoner')
-    || lower.includes('1017')
-    || lower.includes('v4.1')
-    || lower.includes('qwq')
-    || /(?:^|[-_/])o[134](?:[-_/]|$)/.test(lower)
-}
-
-/** Whether a model id names a known multimodal model pattern. */
-function isKnownMultimodalModelName(id: string): boolean {
-  const lower = id.toLowerCase()
-  return lower.includes('vision')
-    || lower.includes('vl')
-    || lower.includes('4o')
-    || lower.includes('v4')
-    || lower.includes('flash')
-    || lower.includes('omni')
-    || lower.includes('gemini')
-    || lower.includes('sonnet')
-    || lower.includes('opus')
-    || lower.includes('haiku')
-    || lower.includes('1017')
-}
-
-/** Infer default input modalities for uncataloged models. */
-function inferDefaultInput(
-  id: string,
-  defaultInput: Model<Api>['input'],
-): Model<Api>['input'] {
-  if (isKnownMultimodalModelName(id)) {
-    return ['text', 'image']
-  }
-  return [...defaultInput]
-}
-
-/** Infer default context window for uncataloged models. */
-function inferDefaultContextWindow(
-  id: string,
-  defaultContextWindow: number,
-): number {
-  const lower = id.toLowerCase()
-
-  const matchK = lower.match(/(?:^|[-_/:])(\d+)k\b/)
-  if (matchK && matchK[1]) {
-    const k = parseInt(matchK[1], 10)
-    if (k > 0 && k <= 4096) {
-      return k * 1024
-    }
-  }
-  if (/(?:^|[-_/:])1m\b/.test(lower) || lower.includes('1000k')) {
-    return 1_000_000
-  }
-  if (/(?:^|[-_/:])2m\b/.test(lower)) {
-    return 2_000_000
-  }
-
-  let inferred: number | undefined
-
-  if (lower.includes('deepseek')) {
-    inferred = 64_000
-  } else if (lower.includes('claude')) {
-    inferred = 200_000
-  } else if (lower.includes('gemini')) {
-    inferred = 1_000_000
-  } else if (
-    /(?:^|[-_/])o[134](?:[-_/]|$)/.test(lower)
-    || lower.includes('gpt-4o')
-    || lower.includes('gpt-4-turbo')
-    || lower.includes('gpt-4.1')
-  ) {
-    inferred = 128_000
-  } else if (lower.includes('gpt-4')) {
-    inferred = 8_192
-  } else if (lower.includes('gpt-3.5')) {
-    inferred = 16_384
-  } else if (lower.includes('qwen') || lower.includes('qwq')) {
-    if (
-      lower.includes('2.5')
-      || lower.includes('max')
-      || lower.includes('plus')
-      || lower.includes('turbo')
-    ) {
-      inferred = 128_000
-    } else {
-      inferred = 32_768
-    }
-  } else if (
-    lower.includes('llama-3.1')
-    || lower.includes('llama-3.2')
-    || lower.includes('llama-3.3')
-    || lower.includes('llama3.1')
-    || lower.includes('llama3.2')
-    || lower.includes('llama3.3')
-  ) {
-    inferred = 128_000
-  } else if (lower.includes('llama-3') || lower.includes('llama3')) {
-    inferred = 8_192
-  } else if (lower.includes('llama-2') || lower.includes('llama2')) {
-    inferred = 4_096
-  } else if (lower.includes('glm-4')) {
-    inferred = 128_000
-  } else if (lower.includes('glm-3')) {
-    inferred = 32_768
-  } else if (lower.includes('mistral-large') || lower.includes('codestral')) {
-    inferred = 128_000
-  } else if (lower.includes('mistral') || lower.includes('mixtral')) {
-    inferred = 32_768
-  } else if (lower.includes('moonshot') || lower.includes('kimi')) {
-    inferred = 128_000
-  } else if (lower.includes('yi-') || lower.includes('yi/')) {
-    inferred = 200_000
-  } else if (lower.includes('minimax')) {
-    inferred = 1_000_000
-  } else if (lower.includes('gemma-2') || lower.includes('gemma2')) {
-    inferred = 8_192
-  }
-
-  if (inferred !== undefined) {
-    if (defaultContextWindow > 0 && defaultContextWindow < inferred) {
-      return defaultContextWindow
-    }
-    return inferred
-  }
-
-  return defaultContextWindow
-}
-
 function resolveModelReasoning(
   provider: string,
   entry: PiAiModelProfile,
@@ -874,11 +911,8 @@ function resolveModelReasoning(
 ): ModelReasoning {
   const efforts = entry.reasoningEfforts
   if (efforts === undefined) {
-    if (base?.reasoning !== undefined) {
-      return { reasoning: base.reasoning }
-    }
     if (isKnownReasoningModelName(entry.id)) {
-      const thinkingLevelMap: ThinkingLevelMap = {
+      const thinkingLevelMap: ThinkingLevelMap = (base?.reasoning && base.thinkingLevelMap) ? base.thinkingLevelMap : {
         off: 'none',
         low: 'low',
         medium: 'medium',
@@ -886,6 +920,9 @@ function resolveModelReasoning(
         max: 'max',
       }
       return { reasoning: true, thinkingLevelMap }
+    }
+    if (base?.reasoning !== undefined) {
+      return { reasoning: base.reasoning, ...(base.thinkingLevelMap ? { thinkingLevelMap: base.thinkingLevelMap } : {}) }
     }
     return { reasoning: false }
   }
@@ -1121,6 +1158,13 @@ export function resolveRouteModels(
     // Only a value the profile named is a deployment choice; the catalog's is
     // the model's capability and stays out of request defaults.
     if (entry.maxTokens !== undefined) configuredMaxTokens.set(entry.id, entry.maxTokens)
+    const declaredModalities = declaredInput(entry.input)
+    const baseInput = base?.input
+    const resolvedInput: Model<Api>['input'] = declaredModalities ?? (
+      isKnownMultimodalModelName(entry.id)
+        ? (baseInput && baseInput.includes('image') ? baseInput : ['text', 'image'])
+        : (baseInput ?? inferDefaultInput(entry.id, request.defaultInput))
+    )
     const resolved: Model<Api> = {
       // The installed entry lays the floor, and the fields below override it.
       // Enumerating instead would silently drop every `Model` field this
@@ -1133,7 +1177,7 @@ export function resolveRouteModels(
       api,
       provider,
       baseUrl,
-      input: declaredInput(entry.input) ?? base?.input ?? inferDefaultInput(entry.id, request.defaultInput),
+      input: resolvedInput,
       cost: base?.cost ?? NO_COST,
       contextWindow,
       maxTokens,
@@ -1144,7 +1188,6 @@ export function resolveRouteModels(
     // shared model catalog answers with them only where its own record leaves
     // a field open. Recorded after the model builds, so a refused entry
     // contributes no declaration.
-    const declaredModalities = declaredInput(entry.input)
     declaredFacts.set(entry.id, {
       ...declaredModalities === undefined ? {} : { inputModalities: declaredModalities },
       ...entry.contextWindow === undefined ? {} : { contextWindow: entry.contextWindow },
