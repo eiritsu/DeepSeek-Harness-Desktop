@@ -360,6 +360,35 @@ describe('desktop profile migrations and compatibility', () => {
     expect(updated['@deepseek-ai/dsh-im-integration@0.2.1-rc.3']).toEqual(['0.2.2-alpha.2', '0.2.2'])
   })
 
+  it('names the installed ecosystem plugin version in a compatibility exemption', () => {
+    const root = temporaryRoot()
+    const directory = join(root, 'node_modules', '@deepseek-ai', 'dsh-calendar')
+    mkdirSync(directory, { recursive: true })
+    writeFileSync(join(directory, 'package.json'), JSON.stringify({
+      name: '@deepseek-ai/dsh-calendar',
+      version: '0.2.0-rc.2',
+    }))
+
+    ensureCompatibilityExemptions(root, '0.2.2-alpha.2')
+
+    const content = JSON.parse(readFileSync(join(root, 'compatibility.json'), 'utf8')) as Record<string, string[]>
+    expect(content['@deepseek-ai/dsh-calendar@0.2.0-rc.2']).toContain('0.2.2-alpha.2')
+  })
+
+  it('names no compatibility exemption for a dependency whose version is a range', () => {
+    const root = temporaryRoot()
+    writeFileSync(join(root, 'package.json'), JSON.stringify({
+      dependencies: {
+        '@deepseek-ai/dsh-ranged-plugin': '^0.2.1-rc.3',
+      },
+    }))
+
+    ensureCompatibilityExemptions(root, '0.2.2-alpha.2')
+
+    const content = JSON.parse(readFileSync(join(root, 'compatibility.json'), 'utf8')) as Record<string, string[]>
+    expect(Object.keys(content).some(key => key.startsWith('@deepseek-ai/dsh-ranged-plugin@'))).toBe(false)
+  })
+
   it('cleans uninstalled on-demand bundles from dsh.profile.bundles', () => {
     const root = temporaryRoot()
     const pkgJson = join(root, 'package.json')
@@ -428,5 +457,43 @@ describe('desktop profile migrations and compatibility', () => {
     migrateRecoveredPatch(root)
     const matches = restored.match(/- id: llm-pi-ai/g)
     expect(matches?.length).toBe(1)
+  })
+
+  it('restores a user configuration block lost from an otherwise intact patch', () => {
+    const root = temporaryRoot()
+    const patchPath = join(root, 'cordis.patch.yml')
+    writeFileSync(patchPath, [
+      '- id: llm-pi-ai',
+      '  name: "@deepseek-ai/dsh-llm-pi-ai"',
+      '  config:',
+      '    providers:',
+      '      custom-ai:',
+      '        api: openai-responses',
+      '        apiKeyEnv: CUSTOM_KEY',
+      '',
+    ].join('\n'))
+
+    writeFileSync(join(root, 'cordis.patch.yml.bak-1793589758061'), [
+      '- id: web',
+      '  name: "@deepseek-ai/dsh-web"',
+      '  config:',
+      '    searchProvider: tavily',
+      '',
+      '- id: llm-pi-ai',
+      '  name: "@deepseek-ai/dsh-llm-pi-ai"',
+      '  config:',
+      '    providers:',
+      '      custom-ai:',
+      '        api: openai-responses',
+      '        apiKeyEnv: CUSTOM_KEY',
+      '',
+    ].join('\n'))
+
+    migrateRecoveredPatch(root)
+
+    const restored = readFileSync(patchPath, 'utf8')
+    expect(restored).toContain('- id: web')
+    expect(restored).toContain('searchProvider: tavily')
+    expect(restored.match(/- id: llm-pi-ai/g)?.length).toBe(1)
   })
 })

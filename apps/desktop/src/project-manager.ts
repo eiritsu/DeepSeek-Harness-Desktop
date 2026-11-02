@@ -16,6 +16,7 @@ import {
   writeSync,
 } from 'node:fs'
 import { join } from 'node:path'
+import { parse } from 'semver'
 import {
   DESKTOP_HOST_PACKAGE,
   desktopCorePackageOverrides,
@@ -66,20 +67,68 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every(item => typeof item === 'string')
 }
 
-const DEFAULT_ECOSYSTEM_EXEMPTIONS = [
-  '@deepseek-ai/dsh-im-integration@0.2.1-rc.3',
-  '@deepseek-ai/dsh-tools-connections@0.2.1-rc.3',
-  '@deepseek-ai/dsh-calendar@0.2.1-rc.3',
-  '@deepseek-ai/dsh-community-plugin-catalog@0.2.1-rc.3',
-  '@deepseek-ai/dsh-community-skill-catalog@0.2.1-rc.3',
-  '@deepseek-ai/dsh-lark-integration@0.2.1-rc.3',
-  '@deepseek-ai/dsh-subagent-claude-code@0.2.1-rc.3',
-  '@deepseek-ai/dsh-subagent-codex@0.2.1-rc.3',
-  '@deepseek-ai/dsh-superagent@0.2.1-rc.3',
+/**
+ * The ecosystem plugins this deployment ships beside the harness. An exemption
+ * key names one exact plugin version, so each of these names is resolved
+ * against the version the profile holds; a key pinned to one version stops
+ * matching as soon as the plugin is upgraded, and the exemption then silently
+ * stops applying.
+ */
+const ECOSYSTEM_PLUGIN_NAMES = [
+  '@deepseek-ai/dsh-im-integration',
+  '@deepseek-ai/dsh-tools-connections',
+  '@deepseek-ai/dsh-calendar',
+  '@deepseek-ai/dsh-community-plugin-catalog',
+  '@deepseek-ai/dsh-community-skill-catalog',
+  '@deepseek-ai/dsh-lark-integration',
+  '@deepseek-ai/dsh-subagent-claude-code',
+  '@deepseek-ai/dsh-subagent-codex',
+  '@deepseek-ai/dsh-superagent',
 ]
 
 /**
+ * The ecosystem release this deployment publishes. The marketplace serves these
+ * plugins at this version, so the exemption is granted before the plugin is
+ * installed and the gate reads it at install time; the versions the profile
+ * already holds are granted in addition, so an upgraded copy stays covered.
+ */
+const ECOSYSTEM_RELEASE_VERSION = '0.2.1-rc.3'
+
+/**
+ * Whether a version spec names one exact release, which a compatibility
+ * exemption key must.
+ * @param value - Version spec read from a manifest.
+ * @returns True for an exact version, false for a range or a locator.
+ */
+function isExactVersion(value: string): boolean {
+  const parsed = parse(value)
+  return parsed !== null && value === `${parsed.version}${parsed.build.length === 0 ? '' : `+${parsed.build.join('.')}`}`
+}
+
+/**
+ * Read the version of one package the profile actually installed.
+ * @param projectDir - Profile directory.
+ * @param name - Package name.
+ * @returns The installed version, or undefined when the package is absent.
+ */
+function installedPackageVersion(projectDir: string, name: string): string | undefined {
+  const manifestPath = join(projectDir, 'node_modules', ...name.split('/'), 'package.json')
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(manifestPath, 'utf8'))
+    if (isRecord(parsed) && typeof parsed.version === 'string' && isExactVersion(parsed.version)) {
+      return parsed.version
+    }
+  } catch {
+    // The package is not installed under this profile.
+  }
+  return undefined
+}
+
+/**
  * Ensure compatibility exemptions exist for ecosystem plugins and local dependencies.
+ * Each exemption names one exact plugin version, so a plugin the profile already
+ * installed is exempted at its installed version and an ecosystem plugin is also
+ * exempted at the version this deployment publishes.
  * @param projectDir - Profile directory.
  * @param runtimeVersion - Running DSH version to grant exemption for.
  */
@@ -111,11 +160,8 @@ export function ensureCompatibilityExemptions(projectDir: string, runtimeVersion
         for (const depMap of manifestsToInspect) {
           if (isRecord(depMap)) {
             for (const [name, versionSpec] of Object.entries(depMap)) {
-              if (typeof versionSpec === 'string' && name.startsWith('@deepseek-ai/')) {
-                const cleanVersion = versionSpec.replace(/^[~^]/, '').trim()
-                if (cleanVersion.length > 0) {
-                  packageDeps.push(`${name}@${cleanVersion}`)
-                }
+              if (typeof versionSpec === 'string' && name.startsWith('@deepseek-ai/') && versionSpec.length > 0) {
+                packageDeps.push(`${name}@${versionSpec}`)
               }
             }
           }
@@ -126,8 +172,25 @@ export function ensureCompatibilityExemptions(projectDir: string, runtimeVersion
     }
   }
 
+  // An exemption key names one exact plugin version, so a version the
+  // profile does not hold cannot be named. A dependency spec may be a range or
+  // a locator, so the installed manifest decides the exact version.
+  const targets = new Set<string>()
+  for (const name of ECOSYSTEM_PLUGIN_NAMES) {
+    const version = installedPackageVersion(projectDir, name)
+    if (version !== undefined) targets.add(`${name}@${version}`)
+    targets.add(`${name}@${ECOSYSTEM_RELEASE_VERSION}`)
+  }
+  for (const dependency of packageDeps) {
+    const separator = dependency.lastIndexOf('@')
+    if (separator <= 0) continue
+    const name = dependency.slice(0, separator)
+    const spec = dependency.slice(separator + 1)
+    const version = installedPackageVersion(projectDir, name) ?? (isExactVersion(spec) ? spec : undefined)
+    if (version !== undefined) targets.add(`${name}@${version}`)
+  }
+
   let modified = false
-  const targets = new Set([...DEFAULT_ECOSYSTEM_EXEMPTIONS, ...packageDeps])
   for (const target of targets) {
     const list = exemptions[target] ?? []
     if (!list.includes(runtimeVersion)) {
@@ -218,6 +281,8 @@ export function extractPatchBlocks(content: string): Map<string, string> {
 
 /**
  * Restore user configurations from previous patch backups if active patch was wiped or reset.
+ * A block the active patch still carries is kept, and a block only the backup carries
+ * is restored, so a profile that lost one configuration keeps the others.
  * @param projectDir - Profile directory.
  */
 export function migrateRecoveredPatch(projectDir: string): void {
@@ -227,7 +292,11 @@ export function migrateRecoveredPatch(projectDir: string): void {
   let activeContent = readFileSync(patchPath, 'utf8')
   const activeBlocks = extractPatchBlocks(activeContent)
 
-  if (activeBlocks.has('llm-pi-ai')) return
+  // A reset drops every user-config block at once, but a partial loss keeps
+  // some of them. Skip the recovery only when every block this function
+  // restores is still present; a profile that kept 'llm-pi-ai' while losing
+  // 'web' still needs the missing ones back.
+  if (USER_CONFIG_PATCH_IDS.every(id => activeBlocks.has(id))) return
 
   let files: string[]
   try {
