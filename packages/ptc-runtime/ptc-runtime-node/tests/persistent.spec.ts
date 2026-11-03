@@ -349,6 +349,18 @@ it('retains implicit REPL globals and does not attribute a completed callback ex
   expect(await run('implicitValue')).toMatchObject({ logs: [], value: 7 })
 })
 
+it('allows redeclaring top-level const, let, and class bindings across evaluations in REPL mode', async () => {
+  const { run } = await setupRuntime()
+  expect((await run('const wr = await Promise.resolve({ stdout: { text: "first" } }); wr.stdout.text')).value).toBe('first')
+  expect((await run('const wr = await Promise.resolve({ stdout: { text: "second" } }); wr.stdout.text')).value).toBe('second')
+  expect((await run('let count = 1; count')).value).toBe(1)
+  expect((await run('let count = 2; count')).value).toBe(2)
+  expect((await run('class Worker { run() { return 10 } }; new Worker().run()')).value).toBe(10)
+  expect((await run('class Worker { run() { return 20 } }; new Worker().run()')).value).toBe(20)
+  expect((await run('const { x, y } = { x: "a", y: "b" }; [x, y]')).value).toEqual(['a', 'b'])
+  expect((await run('const { x, y } = { x: "c", y: "d" }; [x, y]')).value).toEqual(['c', 'd'])
+})
+
 it('settles an asynchronous exception once while a later evaluation awaits a tool', async () => {
   const { run } = await setupRuntime()
   const failed = await run('let retained = 17; let resume; const paused = new Promise(resolve => { resume = resolve }); setImmediate(() => { throw new Error("async failure") }); await paused; retained')
