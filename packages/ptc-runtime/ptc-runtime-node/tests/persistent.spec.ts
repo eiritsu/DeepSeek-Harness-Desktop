@@ -359,6 +359,14 @@ it('allows redeclaring top-level const, let, and class bindings across evaluatio
   expect((await run('class Worker { run() { return 20 } }; new Worker().run()')).value).toBe(20)
   expect((await run('const { x, y } = { x: "a", y: "b" }; [x, y]')).value).toEqual(['a', 'b'])
   expect((await run('const { x, y } = { x: "c", y: "d" }; [x, y]')).value).toEqual(['c', 'd'])
+  expect((await run('const fs = await import("node:fs/promises"); typeof fs.readFile')).value).toBe('function')
+  expect((await run('const { a: renamed, b = 2, ...restObj } = { a: 1, c: 3 }; const [first, , ...restArr] = [4, 5, 6]; ({ renamed, b, restObj, first, restArr })')).value).toEqual({
+    renamed: 1,
+    b: 2,
+    restObj: { c: 3 },
+    first: 4,
+    restArr: [6],
+  })
 })
 
 it('settles an asynchronous exception once while a later evaluation awaits a tool', async () => {

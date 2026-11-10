@@ -8,6 +8,7 @@ import { clampTimeout } from '@deepseek-ai/dsh-timeout'
 import type { ResolvedConfig } from './config.ts'
 import { validateBindings } from './bindings.ts'
 import type { PolicyProcesses } from './policy-processes.ts'
+import { formatTypeScriptSyntaxError } from './syntax-diagnostic.ts'
 import { ProgramWorker } from './worker.ts'
 
 /** Syntax, state retention and model guidance selected during provider construction. */
@@ -144,6 +145,15 @@ const STRIP_PREFIX = 'async function __dsh_program__() {\n'
 const STRIP_SUFFIX = '\n}'
 const RETAINED_STATE_INSTRUCTIONS = 'Changing the session sandbox mode clears retained variables. An approved sandbox escalation runs in a separate temporary environment: it cannot access retained variables, and its declarations are discarded afterward. Restart, Agent disposal, cancellation, timeout, output overflow, or process failure clears the environment. If a variable is undefined, recreate it and reacquire its resources. State is not restored from the conversation, and failed evaluations can leave earlier mutations in memory. Redeclaring an existing let, const, or class name fails; assign to a mutable binding or use a new name. Await all tool calls; background callbacks cannot call tools after their evaluation ends. Await child-process completion before ending an evaluation; raw subprocess output belongs to whichever evaluation is active when it arrives.'
 
+/** Erase TypeScript syntax in standalone REPL or Script source while retaining parse context. */
+function stripStandaloneTypes(program: string): string {
+  try {
+    return stripTypeScriptTypes(program)
+  } catch (error: unknown) {
+    throw formatTypeScriptSyntaxError(error, program, 0)
+  }
+}
+
 function resolveMode(config: ResolvedConfig): ExecutionMode {
   switch (config.executionMode) {
     case 'per-call': return {
@@ -151,15 +161,19 @@ function resolveMode(config: ResolvedConfig): ExecutionMode {
       retainsState: false,
       executionInstructions: 'The program is the body of an async TypeScript function; only erasable syntax is accepted, with no enum or namespaces. Type annotations are advisory. Top-level await and return are supported. Emit output with console.log(...) or return a lossless JSON value. Only printed values and the returned value become program output. Each call runs in a fresh Node process. Node APIs are available through await import(...). Relative paths use the supplied working directory; process.env starts empty. Direct filesystem access follows this execution\'s sandbox policy.',
       stripTypes(program) {
-        const stripped = stripTypeScriptTypes(STRIP_PREFIX + program + STRIP_SUFFIX)
-        return stripped.slice(STRIP_PREFIX.length, stripped.length - STRIP_SUFFIX.length)
+        try {
+          const stripped = stripTypeScriptTypes(STRIP_PREFIX + program + STRIP_SUFFIX)
+          return stripped.slice(STRIP_PREFIX.length, stripped.length - STRIP_SUFFIX.length)
+        } catch (error: unknown) {
+          throw formatTypeScriptSyntaxError(error, program, 1)
+        }
       },
     }
     case 'persistent-in-memory': return {
       format: 'repl',
       retainsState: true,
       executionInstructions: 'The program contains TypeScript REPL statements; only erasable syntax is accepted, with no enum or namespaces. Type annotations are advisory. Top-level declarations and await are supported; top-level return is not supported. Emit output with console.log(...) or a final lossless JSON expression. Only printed values and that final expression become program output. Variables, functions, and imported modules remain in memory for this Agent across calls. Use await import(...) for modules. Direct filesystem access follows this execution\'s sandbox policy; process.env starts empty. ' + RETAINED_STATE_INSTRUCTIONS,
-      stripTypes: stripTypeScriptTypes,
+      stripTypes: stripStandaloneTypes,
     }
     case 'vm-script': {
       const lifetime = config.scriptPersistence
@@ -174,7 +188,7 @@ function resolveMode(config: ResolvedConfig): ExecutionMode {
         format: 'script',
         retainsState: config.scriptPersistence,
         executionInstructions: 'The program contains TypeScript script statements; only erasable syntax is accepted, with no enum or namespaces. Type annotations are advisory. Top-level declarations and await are supported; top-level return is not supported. Emit output with console.log(...) or a final lossless JSON expression. The final expression is awaited if it is a Promise. Only printed values and that final expression become program output. ' + lifetime + ' Use await import(...) for modules. Relative paths use the supplied working directory. Direct filesystem access follows this execution\'s sandbox policy; process.env starts empty. ' + asynchronousFailure + ' Values from bindings and imports can belong to another realm; use Array.isArray for arrays and the supplied binding error classes for failures, because instanceof Array or Error may be false.' + recovery,
-        stripTypes: stripTypeScriptTypes,
+        stripTypes: stripStandaloneTypes,
       }
     }
     /* v8 ignore next -- Loader validates the closed execution-mode union before selection. */

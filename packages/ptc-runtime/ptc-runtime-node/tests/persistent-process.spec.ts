@@ -157,3 +157,14 @@ it('ignores a REPL asynchronous diagnostic after its evaluation has completed', 
   expect(decodePtcJsonWire((await h.run('2')).value)).toBe(2)
   expect(h.seen.filter(message => message.type === 'done')).toHaveLength(2)
 })
+
+it('relaxes top-level destructuring, classes, hashbangs, and built-in module imports in REPL', async () => {
+  const h = await setup()
+  expect(decodePtcJsonWire((await h.run('#!/usr/bin/env node\nlet hashed = 5; hashed')).value)).toBe(5)
+  const imported = await h.run('const fs = await import("node:fs/promises"); typeof fs.readFile')
+  expect(decodePtcJsonWire(imported.value)).toBe('function')
+  const reimported = await h.run('const fs = { ok: true }; fs.ok')
+  expect(decodePtcJsonWire(reimported.value)).toBe(true)
+  const destructured = await h.run('const { a: renamed, b = 2, ...restObj } = { a: 1, c: 3 }; const [first, , ...restArr] = [4, 5, 6]; class Helper { v() { return renamed + b } }; ({ first, restArr, restObj, cls: new Helper().v() })')
+  expect(decodePtcJsonWire(destructured.value)).toEqual({ first: 4, restArr: [6], restObj: { c: 3 }, cls: 3 })
+})

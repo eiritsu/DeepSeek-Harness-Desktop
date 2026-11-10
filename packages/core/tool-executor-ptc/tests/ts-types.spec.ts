@@ -150,6 +150,7 @@ describe('renderToolsSdk', () => {
     expect(text).toContain('rejects with `ToolCallError`')
     expect(text).toContain('MAY overlap under `Promise.all`')
     expect(text).toContain('lossless JSON')
+    expect(text).toContain('template literals (`...`, escaping inner ` and ${...})')
   })
 
   it('lists the program before its description', () => {
