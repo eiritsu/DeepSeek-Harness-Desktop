@@ -425,8 +425,6 @@
     - id: ui-turn-edit-resend
       name: '@deepseek-ai/dsh-client-ui-turn-edit-resend'
 
-    - id: ui-deepseek-model-label-1017
-      name: '@deepseek-ai/dsh-client-ui-deepseek-model-label-1017'
     - id: ui-permission
       name: '@deepseek-ai/dsh-client-ui-permission-presets'
 
