@@ -47,8 +47,8 @@ const ALIASED_DOCUMENT = {
     },
   },
   providers: {
-    chiyun: {
-      id: 'chiyun',
+    custom: {
+      id: 'custom',
       models: {
         'deepseek-flash': {
           canonical_model_id: 'deepseek/deepseek-v4.1-flash',
@@ -146,7 +146,7 @@ describe('catalog document parsing', () => {
 
   it('keeps provider aliases attached to their canonical model identity', () => {
     expect(parseCatalogDocument(ALIASED_DOCUMENT).channels).toEqual([{
-      namespace: 'chiyun',
+      namespace: 'custom',
       model: 'deepseek-flash',
       canonicalId: 'deepseek/deepseek-v4.1-flash',
       efforts: ['low', 'high', 'max'],
@@ -299,7 +299,7 @@ describe('catalog view resolution', () => {
   it('resolves efforts through a provider alias by canonical identity', () => {
     const aliased = new CatalogView(2, parseCatalogDocument(ALIASED_DOCUMENT), [])
 
-    expect(aliased.facts({ model: 'deepseek-v4.1-flash', ownedBy: 'chiyun' })).toEqual({
+    expect(aliased.facts({ model: 'deepseek-v4.1-flash', ownedBy: 'custom' })).toEqual({
       canonicalId: 'deepseek/deepseek-v4.1-flash',
       contextWindow: 1_000_000,
       maxOutputTokens: 384_000,
@@ -352,7 +352,7 @@ describe('catalog view resolution', () => {
       },
     }
     const viewWithConflicts = new CatalogView(2, parseCatalogDocument(document), [])
-    expect(viewWithConflicts.facts({ model: 'deepseek-v4.1-flash-1017', ownedBy: 'chiyun' })).toEqual({
+    expect(viewWithConflicts.facts({ model: 'deepseek-v4.1-flash-1017', ownedBy: 'custom' })).toEqual({
       canonicalId: 'deepseek/deepseek-v4.1-flash-1017',
       contextWindow: 1_000_000,
       maxOutputTokens: 384_000,

@@ -425,7 +425,7 @@ describe('shared model catalog in the shipped composition', () => {
     expect(bodies[2]).toMatchObject({ reasoning: { effort: 'none' } })
   }, 30_000)
 
-  it('resolves deepseek-v4.1-flash-1017 on custom chiyun provider with efforts', async () => {
+  it('resolves deepseek-v4.1-flash-1017 on a custom provider with efforts', async () => {
     const catalog = await mockServer([{
       body: JSON.stringify({
         models: {
@@ -447,16 +447,16 @@ describe('shared model catalog in the shipped composition', () => {
         },
       }),
     }])
-    const storageRoot = join(await mkdtemp(join(tmpdir(), 'dsh-catalog-chiyun-storage-')), 'storages')
+    const storageRoot = join(await mkdtemp(join(tmpdir(), 'dsh-catalog-custom-storage-')), 'storages')
     roots.push(join(storageRoot, '..'))
-    const ctx = await boot(catalog.url, 'http://192.168.1.40:8080/v1', storageRoot, {
-      provider: 'chiyun',
+    const ctx = await boot(catalog.url, 'http://127.0.0.1:8080/v1', storageRoot, {
+      provider: 'custom',
       api: 'openai-responses',
       model: 'deepseek-v4.1-flash-1017',
     })
     await catalogOf(ctx).refresh()
 
-    const info = await ctx.llm.resolveModelInfo('chiyun', 'deepseek-v4.1-flash-1017')
+    const info = await ctx.llm.resolveModelInfo('custom', 'deepseek-v4.1-flash-1017')
     expect(info.reasoning).toBeDefined()
     expect(info.reasoning?.efforts.map(e => e.id)).toEqual(['low', 'high', 'max'])
   })

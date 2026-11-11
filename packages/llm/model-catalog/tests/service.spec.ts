@@ -405,7 +405,7 @@ describe('model catalog service', () => {
     const first = await storageHarness(root)
     respondWith(JSON.stringify({
       models: { 'deepseek/deepseek-v4.1-flash': { id: 'deepseek/deepseek-v4.1-flash', limit: { context: 1_000_000 } } },
-      providers: { chiyun: { id: 'chiyun', models: {
+      providers: { custom: { id: 'custom', models: {
         'deepseek-flash': {
           canonical_model_id: 'deepseek/deepseek-v4.1-flash',
           reasoning_options: [{ type: 'effort', values: ['low', 'max'] }],
@@ -424,7 +424,7 @@ describe('model catalog service', () => {
     second.on('model-catalog/updated', ({ generation }) => { updates.push(generation) })
     const updated = {
       models: { 'deepseek/deepseek-v4.1-flash': { id: 'deepseek/deepseek-v4.1-flash', limit: { context: 2_000_000 } } },
-      providers: { chiyun: { id: 'chiyun', models: {
+      providers: { custom: { id: 'custom', models: {
         'deepseek-flash': {
           canonical_model_id: 'deepseek/deepseek-v4.1-flash',
           reasoning_options: [{ type: 'effort', values: ['low', 'high'] }],
@@ -436,13 +436,13 @@ describe('model catalog service', () => {
     await second.plugin(SharedModelCatalog, {
       catalogURL: 'https://example.test/catalog.json', refreshIntervalMs: 3_600_000,
     })
-    const cached = second.modelCatalog.facts.facts({ model: 'deepseek-flash', ownedBy: 'chiyun' })
+    const cached = second.modelCatalog.facts.facts({ model: 'deepseek-flash', ownedBy: 'custom' })
     expect(cached?.reasoningEfforts).toEqual(['low', 'max'])
     const refresh = second.modelCatalog.refresh()
     finish(new Response(JSON.stringify(updated)))
     await refresh
 
-    expect(second.modelCatalog.facts.facts({ model: 'deepseek-flash', ownedBy: 'chiyun' })).toMatchObject({
+    expect(second.modelCatalog.facts.facts({ model: 'deepseek-flash', ownedBy: 'custom' })).toMatchObject({
       contextWindow: 2_000_000,
       reasoningEfforts: ['low', 'high'],
     })
